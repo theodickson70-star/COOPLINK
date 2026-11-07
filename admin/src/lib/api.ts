@@ -1,0 +1,75 @@
+// Mteja wa API ya CoopLink. Inaongeza token, chama kilichochaguliwa (x-amcos-id)
+// na kugeuza makosa ya backend kuwa ujumbe wa Kiswahili unaosomeka.
+const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '';
+
+export class ApiError extends Error {
+  constructor(public status: number, public code: string, message: string, public details?: unknown) {
+    super(message);
+  }
+}
+
+function store(key: string, value?: string | null) {
+  try {
+    if (value === undefined) return localStorage.getItem(key);
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    /* storage haipatikani */
+  }
+  return null;
+}
+
+let token: string | null = store('cl_token');
+let amcosId: string | null = store('cl_amcos');
+
+export const getToken = () => token;
+export function setToken(t: string | null) {
+  token = t;
+  store('cl_token', t);
+}
+export const getSelectedAmcos = () => amcosId;
+export function setSelectedAmcos(id: string | null) {
+  amcosId = id;
+  store('cl_amcos', id);
+}
+
+export type Query = Record<string, string | number | boolean | undefined | null>;
+
+export async function api<T = any>(path: string, opts: { method?: string; body?: unknown; query?: Query } = {}): Promise<T> {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(opts.query ?? {})) {
+    if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
+  }
+  const url = `${BASE}/api/v1${path}${qs.toString() ? `?${qs}` : ''}`;
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (token) headers.authorization = `Bearer ${token}`;
+  if (amcosId) headers['x-amcos-id'] = amcosId;
+
+  let res: Response;
+  try {
+    res = await fetch(url, { method: opts.method ?? 'GET', headers, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  } catch {
+    throw new ApiError(0, 'NETWORK', 'Imeshindwa kufikia seva. Angalia mtandao au VITE_API_URL.');
+  }
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const e = data?.error ?? {};
+    if (res.status === 401 && path !== '/auth/login') {
+      setToken(null);
+      window.dispatchEvent(new Event('cl:logout'));
+    }
+    if (e.code === 'PASSWORD_CHANGE_REQUIRED') window.dispatchEvent(new Event('cl:password-change'));
+    let message: string = e.message ?? `Hitilafu (${res.status})`;
+    if (e.code === 'VALIDATION_ERROR' && Array.isArray(e.details) && e.details.length) {
+      message = e.details.map((d: { field: string; message: string }) => (d.field ? `${d.field}: ${d.message}` : d.message)).join(' · ');
+    }
+    throw new ApiError(res.status, e.code ?? 'ERROR', message, e.details);
+  }
+  return data as T;
+}
+
+export interface Paged<T> {
+  data: T[];
+  meta: { page: number; pageSize: number; total: number; pages: number };
+}

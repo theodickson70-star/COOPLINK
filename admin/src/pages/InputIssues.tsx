@@ -1,0 +1,193 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { api, type Paged } from '../lib/api';
+import { useAction, useFetch } from '../lib/hooks';
+import { dateTime, fullName, num, tsh, UNIT_LABEL } from '../lib/format';
+import { useAuth, ROLE_GROUPS } from '../lib/auth';
+import { Alert, Badge, Button, clientRef, Empty, Loading, MemberPicker, Modal, PageHead, Pager, Select, TextField, type MemberLite } from '../components/ui';
+
+interface Issue {
+  id: string; issueNo: string; issuedAt: string; totalAmount: string; status: string; notes: string | null; cancelReason: string | null;
+  member: { id: string; memberNo: string; firstName: string; lastName: string };
+  lines?: { id: string; quantity: string; unitPrice: string; amount: string; inputItem: { name: string; unit: string } }[];
+}
+
+export function InputIssues() {
+  const { can } = useAuth();
+  const [status, setStatus] = useState('');
+  const [page, setPage] = useState(1);
+  const { data, loading, error } = useFetch<Paged<Issue>>('/input-issues', { status, page, pageSize: 25 });
+  return (
+    <>
+      <PageHead title="Utoaji wa Pembejeo" sub="Pembejeo zilizotolewa kwa mkopo. Kila utoaji unaingia kwenye deni la mkulima.">
+        {can(...ROLE_GROUPS.STAFF) && <Link className="btn btn-gold" to="/input-issues/new">+ Toa pembejeo</Link>}
+      </PageHead>
+      <Alert>{error}</Alert>
+      <section className="card">
+        <div className="toolbar">
+          <Select aria-label="Hali" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
+            <option value="">Hali zote</option><option value="ISSUED">Imetolewa</option><option value="CANCELLED">Imefutwa</option>
+          </Select>
+        </div>
+        {loading && !data ? <Loading /> : data?.data.length === 0 ? <Empty>Bado hakuna utoaji wa pembejeo.</Empty> : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead><tr><th>Namba</th><th>Mwanachama</th><th>Tarehe</th><th className="num">Kiasi</th><th>Hali</th></tr></thead>
+              <tbody>
+                {data?.data.map((i) => (
+                  <tr key={i.id}>
+                    <td><Link className="row-link" to={`/input-issues/${i.id}`}>{i.issueNo}</Link></td>
+                    <td>{i.member.firstName} {i.member.lastName}<div className="muted" style={{ fontSize: 13 }}>{i.member.memberNo}</div></td>
+                    <td>{dateTime(i.issuedAt)}</td>
+                    <td className="num">{tsh(i.totalAmount)}</td>
+                    <td><Badge status={i.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <Pager meta={data?.meta} onPage={setPage} />
+      </section>
+    </>
+  );
+}
+
+interface Item { id: string; name: string; unit: string; isActive: boolean }
+interface Price { inputItemId: string; unitPrice: string }
+interface Stock { inputItemId: string; balance: string }
+
+export function InputIssueNew() {
+  const nav = useNavigate();
+  const [params] = useSearchParams();
+  const [member, setMember] = useState<MemberLite | null>(null);
+  const [lines, setLines] = useState<{ inputItemId: string; quantity: string }[]>([{ inputItemId: '', quantity: '' }]);
+  const [notes, setNotes] = useState('');
+  const [ref] = useState(clientRef);
+  const items = useFetch<{ data: Item[] }>('/inputs/items', { active: 'true' });
+  const prices = useFetch<{ data: Price[] }>('/inputs/prices');
+  const stock = useFetch<{ data: Stock[] }>('/inputs/stock');
+  const { busy, error, run } = useAction();
+
+  useEffect(() => {
+    const id = params.get('member');
+    if (id && !member) api<{ member: MemberLite }>(`/members/${id}`).then((r) => setMember(r.member)).catch(() => {});
+  }, [params, member]);
+
+  const priceOf = useMemo(() => new Map(prices.data?.data.map((p) => [p.inputItemId, Number(p.unitPrice)])), [prices.data]);
+  const stockOf = useMemo(() => new Map(stock.data?.data.map((s) => [s.inputItemId, Number(s.balance)])), [stock.data]);
+  const itemOf = useMemo(() => new Map(items.data?.data.map((i) => [i.id, i])), [items.data]);
+  const total = lines.reduce((s, l) => s + (priceOf.get(l.inputItemId) ?? 0) * Number(l.quantity || 0), 0);
+  const valid = member && lines.every((l) => l.inputItemId && Number(l.quantity) > 0);
+
+  const setLine = (i: number, patch: Partial<{ inputItemId: string; quantity: string }>) =>
+    setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+
+  const save = async () => {
+    const r = await run(() => api<{ issue: Issue }>('/input-issues', { method: 'POST', body: { memberId: member!.id, notes: notes || undefined, clientRef: ref, lines } }));
+    if (r) nav(`/input-issues/${r.issue.id}`, { replace: true });
+  };
+
+  if (items.loading && !items.data) return <Loading />;
+  return (
+    <>
+      <PageHead title="Toa pembejeo kwa mkopo" sub="Kiasi chote kitaingia kama deni kwenye ledger ya mwanachama" />
+      <div className="stack">
+        <Alert>{error}</Alert>
+        <section className="card card-pad stack">
+          <MemberPicker value={member} onChange={setMember} />
+          <div className="table-wrap">
+            <table className="table">
+              <thead><tr><th>Pembejeo</th><th style={{ width: 140 }}>Kiasi</th><th className="num">Bei</th><th className="num">Stoo</th><th className="num">Jumla</th><th /></tr></thead>
+              <tbody>
+                {lines.map((l, i) => {
+                  const it = itemOf.get(l.inputItemId);
+                  const price = priceOf.get(l.inputItemId);
+                  const bal = stockOf.get(l.inputItemId) ?? 0;
+                  const over = !!l.inputItemId && Number(l.quantity) > bal;
+                  return (
+                    <tr key={i}>
+                      <td>
+                        <Select aria-label={`Pembejeo ${i + 1}`} value={l.inputItemId} onChange={(e) => setLine(i, { inputItemId: e.target.value })}>
+                          <option value="">Chagua pembejeo…</option>
+                          {items.data?.data.map((o) => (
+                            <option key={o.id} value={o.id} disabled={lines.some((x, j) => j !== i && x.inputItemId === o.id)}>{o.name}</option>
+                          ))}
+                        </Select>
+                      </td>
+                      <td><input className="input" aria-label={`Kiasi ${i + 1}`} type="number" min="0.01" step="0.01" value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} /></td>
+                      <td className="num">{l.inputItemId ? (price ? tsh(price) : <span className="badge badge-warn">Hakuna bei</span>) : '—'}</td>
+                      <td className={`num ${over ? 'money-neg' : ''}`}>{l.inputItemId ? `${num(bal)} ${it ? UNIT_LABEL[it.unit].toLowerCase() : ''}` : '—'}</td>
+                      <td className="num">{price && l.quantity ? tsh(price * Number(l.quantity)) : '—'}</td>
+                      <td className="num">{lines.length > 1 && <Button size="sm" variant="ghost" aria-label="Ondoa mstari" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}>✕</Button>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="actions" style={{ justifyContent: 'space-between' }}>
+            <Button variant="secondary" onClick={() => setLines((ls) => [...ls, { inputItemId: '', quantity: '' }])}>+ Ongeza pembejeo</Button>
+            <div style={{ fontFamily: 'var(--font-head)', fontSize: 22, fontWeight: 700, color: 'var(--forest)' }}>Jumla: {tsh(total)}</div>
+          </div>
+          <TextField label="Maelezo" value={notes} onChange={setNotes} />
+        </section>
+        <div className="actions">
+          <Button variant="gold" busy={busy} disabled={!valid} onClick={save} style={{ minHeight: 48 }}>Thibitisha na toa pembejeo</Button>
+          <Link className="btn btn-secondary" to="/input-issues">Ghairi</Link>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export function InputIssueDetail() {
+  const { id } = useParams();
+  const { can } = useAuth();
+  const { data, loading, error, reload } = useFetch<{ issue: Issue }>(`/input-issues/${id}`);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const act = useAction();
+
+  if (loading && !data) return <Loading />;
+  if (error) return <Alert>{error}</Alert>;
+  if (!data) return null;
+  const i = data.issue;
+  const cancel = async () => {
+    const r = await act.run(() => api(`/input-issues/${i.id}/cancel`, { method: 'POST', body: { reason } }));
+    if (r) { setCancelOpen(false); reload(); }
+  };
+
+  return (
+    <>
+      <PageHead title={`Utoaji ${i.issueNo}`} sub={<><Badge status={i.status} /> · {dateTime(i.issuedAt)}</>}>
+        <Button variant="secondary" className="no-print" onClick={() => window.print()}>Chapisha risiti</Button>
+        {i.status === 'ISSUED' && can(...ROLE_GROUPS.MANAGERS) && <Button variant="danger" className="no-print" onClick={() => setCancelOpen(true)}>Futa utoaji</Button>}
+      </PageHead>
+      {i.status === 'CANCELLED' && <div style={{ marginBottom: 16 }}><Alert kind="warn">Utoaji huu umefutwa: {i.cancelReason}. Stoo ilirudishwa na deni likafutwa kwa REVERSAL.</Alert></div>}
+      <section className="card">
+        <div className="card-pad" style={{ paddingBottom: 0 }}>
+          <h2>Mwanachama: <Link to={`/members/${i.member.id}`}>{fullName(i.member)}</Link> <span className="muted" style={{ fontSize: 15 }}>· {i.member.memberNo}</span></h2>
+        </div>
+        <div className="table-wrap">
+          <table className="table">
+            <thead><tr><th>Pembejeo</th><th className="num">Kiasi</th><th className="num">Bei</th><th className="num">Jumla</th></tr></thead>
+            <tbody>
+              {i.lines?.map((l) => (
+                <tr key={l.id}><td>{l.inputItem.name}</td><td className="num">{num(l.quantity)} {UNIT_LABEL[l.inputItem.unit].toLowerCase()}</td><td className="num">{tsh(l.unitPrice)}</td><td className="num">{tsh(l.amount)}</td></tr>
+              ))}
+              <tr><td colSpan={3} style={{ fontWeight: 700 }}>Jumla ya deni</td><td className="num" style={{ fontWeight: 700, fontSize: 18 }}>{tsh(i.totalAmount)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        {i.notes && <div className="card-pad muted">Maelezo: {i.notes}</div>}
+      </section>
+      <Modal open={cancelOpen} title="Futa utoaji huu?" onClose={() => setCancelOpen(false)}
+        footer={<><Button variant="secondary" onClick={() => setCancelOpen(false)}>Hapana</Button><Button variant="danger" busy={act.busy} disabled={reason.trim().length < 5} onClick={cancel}>Ndiyo, futa</Button></>}>
+        <Alert kind="warn">Pembejeo zitarudi stoo na deni la {tsh(i.totalAmount)} litafutwa kwa rekodi ya REVERSAL. Historia itabaki.</Alert>
+        <Alert>{act.error}</Alert>
+        <TextField label="Sababu ya kufuta *" value={reason} onChange={setReason} />
+      </Modal>
+    </>
+  );
+}

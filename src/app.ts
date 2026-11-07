@@ -1,0 +1,76 @@
+import fs from 'fs';
+import path from 'path';
+import express from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import morgan from 'morgan';
+import { sql } from 'drizzle-orm';
+import { env } from './config/env';
+import { db } from './db';
+import { authenticate } from './middleware/auth';
+import { errorHandler, notFoundHandler } from './middleware/error';
+import { authRouter } from './modules/auth.routes';
+import { usersRouter } from './modules/users.routes';
+import { unionsRouter, amcosRouter } from './modules/organizations.routes';
+import { seasonsRouter, buyersRouter } from './modules/seasons.routes';
+import { membersRouter } from './modules/members.routes';
+import { estimatesRouter } from './modules/estimates.routes';
+import { inputsRouter, inputIssuesRouter } from './modules/inputs.routes';
+import { reportsRouter, auditRouter } from './modules/reports.routes';
+
+export function createApp() {
+  const app = express();
+  app.set('trust proxy', 1); // Railway / Vercel / Nginx
+  app.disable('x-powered-by');
+  app.use(helmet({ contentSecurityPolicy: { directives: { upgradeInsecureRequests: null } } }));
+  app.use(cors({ origin: env.CORS_ORIGINS === '*' ? true : env.CORS_ORIGINS.split(',').map((s) => s.trim()) }));
+  app.use(express.json({ limit: '1mb' }));
+  if (env.NODE_ENV !== 'test') app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+
+  app.get('/health', async (_req, res) => {
+    try {
+      await db.execute(sql`select 1`);
+      res.json({ status: 'ok', db: 'ok', time: new Date().toISOString() });
+    } catch {
+      res.status(503).json({ status: 'error', db: 'down' });
+    }
+  });
+
+  const api = express.Router();
+  api.use('/auth', authRouter);
+
+  // Kila kitu chini ya hapa kinahitaji kuingia
+  api.use(authenticate);
+  api.use('/users', usersRouter);
+  api.use('/unions', unionsRouter);
+  api.use('/amcos', amcosRouter);
+  api.use('/seasons', seasonsRouter);
+  api.use('/buyers', buyersRouter);
+  api.use('/members', membersRouter);
+  api.use('/estimates', estimatesRouter);
+  api.use('/inputs', inputsRouter);
+  api.use('/input-issues', inputIssuesRouter);
+  api.use('/reports', reportsRouter);
+  api.use('/audit-logs', auditRouter);
+
+  app.use('/api/v1', api);
+
+  // ---------------- ADMIN WEB (React) ----------------
+  // Baada ya `npm run build`, kurasa za admin ziko admin/dist na zinahudumiwa hapa hapa.
+  // Kwa hiyo Railway inahitaji service MOJA tu: API + admin kwenye anwani moja.
+  const adminDir = path.resolve(__dirname, '..', 'admin', 'dist');
+  if (fs.existsSync(path.join(adminDir, 'index.html'))) {
+    app.use('/assets', express.static(path.join(adminDir, 'assets'), { maxAge: '1y', immutable: true }));
+    app.use('/assets', (_req, res) => res.status(404).end()); // faili la zamani lisirudishe index.html
+    app.use(express.static(adminDir, { index: false, maxAge: '1h' }));
+    // Kurasa kama /members/123 zinarudisha index.html (React Router inashughulikia)
+    app.get(/^\/(?!api\/|health$).*/, (_req, res) => {
+      res.setHeader('Cache-Control', 'no-cache');
+      res.sendFile(path.join(adminDir, 'index.html'));
+    });
+  }
+
+  app.use(notFoundHandler);
+  app.use(errorHandler);
+  return app;
+}
