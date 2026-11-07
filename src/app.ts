@@ -17,6 +17,7 @@ import { membersRouter } from './modules/members.routes';
 import { estimatesRouter } from './modules/estimates.routes';
 import { inputsRouter, inputIssuesRouter } from './modules/inputs.routes';
 import { reportsRouter, auditRouter } from './modules/reports.routes';
+import { superAdminStatus } from './lib/super-admin';
 
 // Toleo la mfumo (kutoka package.json) — linaonekana kwenye /health
 const VERSION: string = (() => {
@@ -39,7 +40,8 @@ export function createApp() {
   app.get('/health', async (_req, res) => {
     try {
       await db.execute(sql`select 1`);
-      res.json({ status: 'ok', db: 'ok', version: VERSION, time: new Date().toISOString() });
+      const superAdmin = await superAdminStatus().catch(() => undefined);
+      res.json({ status: 'ok', db: 'ok', version: VERSION, superAdmin, time: new Date().toISOString() });
     } catch {
       res.status(503).json({ status: 'error', db: 'down', version: VERSION });
     }

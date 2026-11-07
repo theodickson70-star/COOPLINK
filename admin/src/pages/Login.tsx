@@ -78,13 +78,14 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [sound, setSound] = useState(soundEnabled());
+  const [showPw, setShowPw] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const u = await login(phone, password);
+      const u = await login(phone.trim(), password);
       playTone();
       nav(u.mustChangePassword ? '/change-password' : '/', { replace: true });
     } catch (err) {
@@ -104,8 +105,11 @@ export function Login() {
             <p className="muted" style={{ margin: '6px 0 0' }}>Ingia kwa namba yako ya simu na nenosiri.</p>
           </div>
           <Alert>{error}</Alert>
-          <TextField label="Namba ya simu" type="tel" inputMode="tel" autoComplete="username" placeholder="0712 345 678" value={phone} onChange={setPhone} required />
-          <TextField label="Nenosiri" type="password" autoComplete="current-password" value={password} onChange={setPassword} required />
+          <TextField label="Namba ya simu" type="tel" inputMode="tel" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="0712 345 678" value={phone} onChange={setPhone} required />
+          <TextField label="Nenosiri" type={showPw ? 'text' : 'password'} autoComplete="current-password" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={password} onChange={setPassword} required />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--muted)', marginTop: -8 }}>
+            <input type="checkbox" checked={showPw} onChange={(e) => setShowPw(e.target.checked)} /> Onyesha nenosiri
+          </label>
           <Button type="submit" variant="primary" busy={busy} style={{ minHeight: 48 }}>Ingia</Button>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--muted)' }}>
             <input type="checkbox" checked={sound} onChange={(e) => { setSound(e.target.checked); setSoundEnabled(e.target.checked); }} />
