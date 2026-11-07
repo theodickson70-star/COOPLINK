@@ -97,7 +97,7 @@ export function Layout() {
             );
           })}
         </nav>
-        <div className="sidebar-foot">CoopLink · Uwazi · Haki · Maendeleo</div>
+        <div className="sidebar-foot">CoopLink v{__APP_VERSION__}<br />Uwazi · Haki · Maendeleo</div>
       </aside>
 
       <div className="main">

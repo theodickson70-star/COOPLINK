@@ -57,6 +57,7 @@ export function Login() {
             <input type="checkbox" checked={sound} onChange={(e) => { setSound(e.target.checked); setSoundEnabled(e.target.checked); }} />
             Cheza tone ya CoopLink nikiingia
           </label>
+          <p className="muted" style={{ fontSize: 12, margin: '8px 0 0', textAlign: 'center' }}>CoopLink v{__APP_VERSION__}</p>
         </form>
       </section>
     </div>

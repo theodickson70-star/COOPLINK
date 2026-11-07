@@ -18,6 +18,15 @@ import { estimatesRouter } from './modules/estimates.routes';
 import { inputsRouter, inputIssuesRouter } from './modules/inputs.routes';
 import { reportsRouter, auditRouter } from './modules/reports.routes';
 
+// Toleo la mfumo (kutoka package.json) — linaonekana kwenye /health
+const VERSION: string = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'package.json'), 'utf8')).version;
+  } catch {
+    return 'unknown';
+  }
+})();
+
 export function createApp() {
   const app = express();
   app.set('trust proxy', 1); // Railway / Vercel / Nginx
@@ -30,9 +39,9 @@ export function createApp() {
   app.get('/health', async (_req, res) => {
     try {
       await db.execute(sql`select 1`);
-      res.json({ status: 'ok', db: 'ok', time: new Date().toISOString() });
+      res.json({ status: 'ok', db: 'ok', version: VERSION, time: new Date().toISOString() });
     } catch {
-      res.status(503).json({ status: 'error', db: 'down' });
+      res.status(503).json({ status: 'error', db: 'down', version: VERSION });
     }
   });
 
