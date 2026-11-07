@@ -32,7 +32,7 @@ Mfumo wa kisasa wa kusimamia **Vyama vya Msingi (AMCOS)** vya tumbaku.
 npm run setup                 # inasakinisha backend + admin
 copy .env.example .env        # jaza DATABASE_URL, DIRECT_URL, JWT_SECRET
 npm run db:migrate            # kutengeneza meza
-npm run db:seed               # SUPER_ADMIN 0700000000 / Admin12345
+npm run db:seed               # SUPER_ADMIN kutoka SEED_ADMIN_PHONE / SEED_ADMIN_PASSWORD (.env)
 ```
 
 Kisha fungua **terminal mbili**:
@@ -61,7 +61,9 @@ Data ya majaribio: `$env:SEED_DEMO="true"; npm run db:seed`. Kisha ingia kama Ka
 
 5. **Settings → Networking → Generate Domain**.
 6. Railway itajenga kila kitu, itaendesha migrations yenyewe kabla ya kuwasha (`preDeployCommand`), na itakagua `/health`.
-7. **Mara moja tu**, baada ya deploy ya kwanza, fungua **Railway Shell** au endesha `railway run npm run db:seed:prod` ili kuunda SUPER_ADMIN. Ingia, kisha **badilisha nenosiri** mara moja.
+7. Weka `SEED_ADMIN_PHONE` (namba yako) na, kwa mara ya kwanza, `SEED_ADMIN_PASSWORD`. Kisha endesha `npm run db:seed:prod` kwenye **Railway Shell**. Ingia, kisha **badilisha nenosiri** mara moja.
+   - Seed ni salama kuendesha mara nyingi. Ukibadilisha `SEED_ADMIN_PHONE`, inabadilisha namba ya SUPER_ADMIN **aliyepo**, haiundi wa pili, na data nyingine zote zinabaki.
+   - Kubadilisha nenosiri kupitia Railway: weka `SEED_ADMIN_PASSWORD` mpya pamoja na `SEED_ADMIN_RESET_PASSWORD=true`, endesha seed, kisha **futa vigezo hivyo viwili**.
 
 Kila mara utakapo-push GitHub, Railway itadeploy yenyewe.
 
