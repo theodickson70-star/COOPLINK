@@ -1,6 +1,6 @@
 {
   "name": "cooplink",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "description": "CoopLink - mfumo wa kisasa wa kusimamia vyama vya msingi (AMCOS): backend + admin web",
   "main": "dist/server.js",
   "scripts": {
@@ -11,12 +11,15 @@
     "build:api": "tsc",
     "build:admin": "npm --prefix admin ci --include=dev && npm --prefix admin run build",
     "start": "node dist/server.js",
+    "release": "npm run db:migrate:prod && npm run db:seed:prod",
     "typecheck": "tsc --noEmit && npm --prefix admin run typecheck",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:migrate:prod": "node dist/db/migrate.js",
     "db:seed": "tsx src/db/seed.ts",
     "db:seed:prod": "node dist/db/seed.js",
+    "admin:check": "node dist/scripts/admin-check.js",
+    "admin:check:dev": "tsx src/scripts/admin-check.ts",
     "db:studio": "drizzle-kit studio",
     "test": "tsx --test test/*.test.ts"
   },

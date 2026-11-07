@@ -61,9 +61,8 @@ Data ya majaribio: `$env:SEED_DEMO="true"; npm run db:seed`. Kisha ingia kama Ka
 
 5. **Settings → Networking → Generate Domain**.
 6. Railway itajenga kila kitu, itaendesha migrations yenyewe kabla ya kuwasha (`preDeployCommand`), na itakagua `/health`.
-7. Weka `SEED_ADMIN_PHONE` (namba yako) na, kwa mara ya kwanza, `SEED_ADMIN_PASSWORD`. Kisha endesha `npm run db:seed:prod` kwenye **Railway Shell**. Ingia, kisha **badilisha nenosiri** mara moja.
-   - Seed ni salama kuendesha mara nyingi. Ukibadilisha `SEED_ADMIN_PHONE`, inabadilisha namba ya SUPER_ADMIN **aliyepo**, haiundi wa pili, na data nyingine zote zinabaki.
-   - Kubadilisha nenosiri kupitia Railway: weka `SEED_ADMIN_PASSWORD` mpya pamoja na `SEED_ADMIN_RESET_PASSWORD=true`, endesha seed, kisha **futa vigezo hivyo viwili**.
+7. **SUPER_ADMIN** — weka kwenye Variables: `SEED_ADMIN_PHONE` (namba yako), `SEED_ADMIN_PASSWORD`, `SEED_ADMIN_RESET_PASSWORD=true`, `SEED_ADMIN_SINGLE=true`. Kila deploy, Railway inaendesha `npm run release` (migrations + seed) **kabla** ya kuwasha. Seed inabadilisha SUPER_ADMIN **aliyepo** (haiundi wa pili, haifuti data), kisha inathibitisha login. Ikishindwa, deploy inasimama na toleo la zamani linaendelea.
+   - Baada ya kuingia na kubadilisha nenosiri, **futa** `SEED_ADMIN_PASSWORD` na `SEED_ADMIN_RESET_PASSWORD`, la sivyo deploy ijayo italirudisha nenosiri la Variables.
 
 Kila mara utakapo-push GitHub, Railway itadeploy yenyewe.
 
