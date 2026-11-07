@@ -204,10 +204,11 @@ table.table { width: 100%; border-collapse: collapse; }
 .hero-slides { position: absolute; inset: 0; }
 .hero-slide {
   position: absolute; inset: 0; background-size: cover; background-repeat: no-repeat;
-  opacity: 0; transform: scale(1.06); transition: opacity 1.6s ease;
+  opacity: 0; transform: scale(1.04); transition: opacity 3s ease-in-out;
 }
-.hero-slide.on { opacity: 1; animation: heroZoom 9s ease-out forwards; }
-@keyframes heroZoom { from { transform: scale(1.06); } to { transform: scale(1.16); } }
+/* Slow motion: picha inavutwa karibu polepole kwa sekunde 15 (zaidi ya muda wake wa sekunde 12) */
+.hero-slide.on { opacity: 1; animation: heroZoom 15s linear forwards; }
+@keyframes heroZoom { from { transform: scale(1.04); } to { transform: scale(1.14); } }
 /* Kivuli cha kijani juu ya picha ili maandishi yasomeke */
 .hero-scrim {
   position: absolute; inset: 0;
@@ -226,9 +227,9 @@ table.table { width: 100%; border-collapse: collapse; }
 }
 .hero-caption p { margin: 0; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5); }
 .hero-caption strong { color: var(--gold); font-family: var(--font-head); letter-spacing: .04em; }
-.hero-dots { display: flex; gap: 2px; flex: none; }
+.hero-dots { display: flex; gap: 0; flex: none; flex-wrap: wrap; justify-content: flex-end; }
 .hero-dots button {
-  width: 32px; height: 32px; padding: 0; border: none; background: transparent; cursor: pointer;
+  width: 26px; height: 32px; padding: 0; border: none; background: transparent; cursor: pointer;
   display: grid; place-items: center;
 }
 .hero-dots button::before {

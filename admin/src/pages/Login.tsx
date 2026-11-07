@@ -5,13 +5,19 @@ import { playTone, setSoundEnabled, soundEnabled } from '../lib/tone';
 import { LogoMark, Wordmark } from '../components/Logo';
 import { Alert, Button, TextField } from '../components/ui';
 
-// Picha za mzunguko wa tumbaku: shamba -> kukausha -> ghala -> chama
+// Picha za mzunguko mzima wa tumbaku: shamba -> kukausha -> daraja -> ghala -> chama -> soko
 const SLIDES = [
+  { src: '/login/uvunaji.webp', title: 'Uvunaji', text: 'Uvunaji wa tumbaku shambani', pos: '40% center' },
   { src: '/login/shambani.webp', title: 'Shambani', text: 'Makisio sahihi tangu kitalu', pos: '35% center' },
+  { src: '/login/kukausha2.webp', title: 'Kukausha', text: 'Kukausha tumbaku (curing)', pos: '55% center' },
   { src: '/login/kukausha.webp', title: 'Kukausha', text: 'Ubora unaoonekana kwenye kila jani', pos: '55% center' },
+  { src: '/login/uchambuzi.webp', title: 'Uchambuzi', text: 'Uchambuzi na upangaji wa daraja', pos: '35% center' },
   { src: '/login/ghalani.webp', title: 'Ghalani', text: 'Kila belo linarekodiwa kwa uwazi', pos: '30% center' },
-  { src: '/login/chamani.webp', title: 'Chamani', text: 'Kila mwanachama anaona fedha zake', pos: '60% center' },
+  { src: '/login/ufungashaji.webp', title: 'Ufungashaji', text: 'Ufungashaji na kuhifadhi', pos: '40% center' },
+  { src: '/login/chamani.webp', title: 'Chamani', text: 'Mikutano ya Chama cha Ushirika', pos: '60% center' },
+  { src: '/login/usafirishaji.webp', title: 'Usafirishaji', text: 'Usafirishaji kwenda sokoni', pos: '50% center' },
 ];
+const SLIDE_MS = 12_000; // kila picha inakaa sekunde 12
 
 function useReducedMotion() {
   const [reduced, setReduced] = useState(false);
@@ -35,7 +41,7 @@ function AuthHero() {
   }, []);
   useEffect(() => {
     if (reduced) return;
-    const t = setInterval(() => setIdx((i) => (i + 1) % SLIDES.length), 6000);
+    const t = setInterval(() => setIdx((i) => (i + 1) % SLIDES.length), SLIDE_MS);
     return () => clearInterval(t);
   }, [reduced, idx]);
 
