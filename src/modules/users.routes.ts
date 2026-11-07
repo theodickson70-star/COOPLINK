@@ -8,6 +8,7 @@ import { badRequest, forbidden, notFound } from '../lib/errors';
 import { requireRole, ROLES, type Role } from '../middleware/auth';
 import { canAccessAmcos } from '../middleware/tenant';
 import { audit } from '../lib/audit';
+import { isPlatformRole, isStaffRole } from '../lib/permissions';
 
 export const usersRouter = Router();
 
@@ -89,6 +90,8 @@ usersRouter.post(
       })
       .parse(req.body);
 
+    // Wafanyakazi wa jukwaa wanasimamiwa kwenye Owner > Staff Management
+    if (isStaffRole(body.role)) throw badRequest('Tumia Staff Management kuunda wafanyakazi wa CoopLink');
     // Watumiaji wa chama hawahitaji kutaja amcosId — ni chama chao
     if (req.auth!.role === 'AMCOS_ADMIN') body.amcosId = req.auth!.amcosId!;
     if (req.auth!.role === 'UNION_ADMIN' && UNION_ROLES.includes(body.role)) body.unionId = req.auth!.unionId!;
@@ -139,6 +142,9 @@ usersRouter.patch(
       throw forbidden('Huwezi kubadilisha role au kujizima mwenyewe');
     }
     await assertCanManage(req, existing);
+    if (isPlatformRole(existing.role) || (body.role && isPlatformRole(body.role))) {
+      throw badRequest('Wasimamizi wa jukwaa wanasimamiwa kwenye Owner > Staff Management');
+    }
     if (body.role) {
       const sameKind =
         (UNION_ROLES.includes(body.role) && UNION_ROLES.includes(existing.role)) ||

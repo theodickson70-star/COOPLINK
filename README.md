@@ -86,6 +86,21 @@ Kila mara utakapo-push GitHub, Railway itadeploy yenyewe.
 4. **Kila kitendo kinaandikwa kwenye audit log.**
 5. **Mwanachama hafutwi.** Hali yake inabadilishwa tu.
 
+## Owner Control Panel (v0.2.0)
+
+SUPER_ADMIN (Owner) akiingia anapelekwa `/owner`. Sehemu 11: Owner Dashboard, AMCOS Management, Subscriptions & Pricing,
+Finance & Revenue, Staff Management, System Control Center, Marketing & Communication, Security & Audit, Backup & Database,
+NAYA Group Business na Owner Settings. Kitufe "Mwonekano wa Vyama" kinarudisha upande wa vyama.
+
+- **Wafanyakazi wa NAYA GROUP** (Finance Manager, Tech Support, Customer Support, Marketing Manager) wanaundwa kwenye Staff Management.
+  Ruhusa zinakaguliwa kwenye backend (`src/lib/permissions.ts`). Hawaoni data za wanachama wala fedha za vyama.
+- **Hatua nyeti** (kuthibitisha/kurudisha malipo, kusitisha chama, kuongeza muda, maintenance, export, restore) zinaomba nenosiri tena, na msimbo wa 2FA kama umewashwa.
+- **Malipo ya CoopLink** yanaanza "Inasubiri" na hayawi "Imethibitishwa" bila Owner/Finance kuthibitisha. Mapato ya CoopLink hayachanganywi na fedha za vyama.
+- **Subscription ikiisha** (baada ya siku za grace), chama kinasitishwa kiotomatiki na kinarudishwa malipo yakithibitishwa (kazi ya kila saa).
+- **Backup halisi** zinachukuliwa na Railway. Mfumo haufanyi restore wala kufuta database wenyewe.
+
+Vigezo vya ziada (hiari) kwenye Railway: `AT_USERNAME`, `AT_API_KEY`, `AT_SENDER_ID` (SMS kupitia Africa's Talking). Bila hivyo SMS zinarekodiwa kama "Imerukwa".
+
 ## Brand
 
 Rangi ni Msitu `#0B2F23`, Kijani `#1F7A52`, Jani `#2FA36B`, Dhahabu `#E3A83A` na Krimu `#F6F0E1`. Herufi ni Outfit na Inter.

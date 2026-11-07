@@ -2,6 +2,7 @@ import { env } from './config/env';
 import { createApp } from './app';
 import { pool } from './db';
 import { ensureSuperAdmin } from './lib/super-admin';
+import { startJobs } from './lib/jobs';
 
 async function start() {
   // SUPER_ADMIN kutoka Railway Variables (SEED_ADMIN_*) — kila server inapowaka.
@@ -19,6 +20,7 @@ async function start() {
   const server = app.listen(env.PORT, () => {
     console.log(`🌱 CoopLink inafanya kazi: http://localhost:${env.PORT}  (${env.NODE_ENV})`);
   });
+  startJobs(); // subscriptions: hali + kusitisha/kuwasha vyama (kila saa)
 
   // Kuzima kwa utaratibu (Railway hutuma SIGTERM wakati wa deploy)
   for (const sig of ['SIGTERM', 'SIGINT'] as const) {

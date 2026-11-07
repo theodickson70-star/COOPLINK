@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { AppError } from '../lib/errors';
+import { db, schema } from '../db';
 
 interface PgError { code?: string; detail?: string; constraint?: string; message?: string }
 
@@ -45,5 +46,11 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
   }
 
   console.error(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`, err);
+  // Kumbukumbu ya kosa kwa System Control Center (bila body ya ombi wala siri)
+  const e = err as Error;
+  void db.insert(schema.systemErrors).values({
+    method: req.method, path: req.path.slice(0, 300), status: 500,
+    message: String(e?.message ?? err).slice(0, 1000), stack: e?.stack?.slice(0, 4000) ?? null, userId: req.auth?.userId ?? null,
+  }).catch(() => {});
   res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Hitilafu ya mfumo. Jaribu tena baadaye.' } });
 }

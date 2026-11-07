@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../lib/auth';
+import { homeFor, useAuth, type User } from '../lib/auth';
+import { api } from '../lib/api';
 import { playTone, setSoundEnabled, soundEnabled } from '../lib/tone';
 import { LogoMark, Wordmark } from '../components/Logo';
 import { Alert, Button, TextField } from '../components/ui';
@@ -76,8 +77,10 @@ function AuthHero() {
   );
 }
 
+interface PublicStatus { maintenance: { enabled: boolean; message: string }; banner: { message: string; tone: 'info' | 'warn' } | null; brand: { companyName: string; slogan: string } }
+
 export function Login() {
-  const { login } = useAuth();
+  const { login, verify2fa } = useAuth();
   const nav = useNavigate();
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -85,17 +88,37 @@ export function Login() {
   const [busy, setBusy] = useState(false);
   const [sound, setSound] = useState(soundEnabled());
   const [showPw, setShowPw] = useState(false);
+  const [challenge, setChallenge] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+  const [status, setStatus] = useState<PublicStatus | null>(null);
+
+  useEffect(() => {
+    api<PublicStatus>('/public/status').then(setStatus).catch(() => {});
+  }, []);
+
+  const done = (u: User) => {
+    playTone();
+    nav(u.mustChangePassword ? '/change-password' : homeFor(u), { replace: true });
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const u = await login(phone.trim(), password);
-      playTone();
-      nav(u.mustChangePassword ? '/change-password' : '/', { replace: true });
+      if (challenge) {
+        done(await verify2fa(challenge, code.trim()));
+        return;
+      }
+      const r = await login(phone.trim(), password);
+      if ('twoFactor' in r) {
+        setChallenge(r.challenge);
+        return;
+      }
+      done(r.user);
     } catch (err) {
       setError((err as Error).message);
+      if (challenge && /Ingia tena/.test((err as Error).message)) setChallenge(null);
     } finally {
       setBusy(false);
     }
@@ -106,22 +129,41 @@ export function Login() {
       <AuthHero />
       <section className="auth-form">
         <form className="auth-card" onSubmit={submit}>
-          <div>
-            <h1>Karibu tena</h1>
-            <p className="muted" style={{ margin: '6px 0 0' }}>Ingia kwa namba yako ya simu na nenosiri.</p>
-          </div>
-          <Alert>{error}</Alert>
-          <TextField label="Namba ya simu" type="tel" inputMode="tel" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="0712 345 678" value={phone} onChange={setPhone} required />
-          <TextField label="Nenosiri" type={showPw ? 'text' : 'password'} autoComplete="current-password" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={password} onChange={setPassword} required />
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--muted)', marginTop: -8 }}>
-            <input type="checkbox" checked={showPw} onChange={(e) => setShowPw(e.target.checked)} /> Onyesha nenosiri
-          </label>
-          <Button type="submit" variant="primary" busy={busy} style={{ minHeight: 48 }}>Ingia</Button>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--muted)' }}>
-            <input type="checkbox" checked={sound} onChange={(e) => { setSound(e.target.checked); setSoundEnabled(e.target.checked); }} />
-            Cheza tone ya CoopLink nikiingia
-          </label>
-          <p className="muted" style={{ fontSize: 12, margin: '8px 0 0', textAlign: 'center' }}>CoopLink v{__APP_VERSION__}</p>
+          {status?.maintenance.enabled && <Alert kind="warn"><strong>Matengenezo:</strong> {status.maintenance.message}</Alert>}
+          {status?.banner && <Alert kind={status.banner.tone === 'warn' ? 'warn' : 'ok'}>{status.banner.message}</Alert>}
+          {!challenge ? (
+            <>
+              <div>
+                <h1>Karibu tena</h1>
+                <p className="muted" style={{ margin: '6px 0 0' }}>Ingia kwa namba yako ya simu na nenosiri.</p>
+              </div>
+              <Alert>{error}</Alert>
+              <TextField label="Namba ya simu" type="tel" inputMode="tel" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="0712 345 678" value={phone} onChange={setPhone} required />
+              <TextField label="Nenosiri" type={showPw ? 'text' : 'password'} autoComplete="current-password" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={password} onChange={setPassword} required />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--muted)', marginTop: -8 }}>
+                <input type="checkbox" checked={showPw} onChange={(e) => setShowPw(e.target.checked)} /> Onyesha nenosiri
+              </label>
+              <Button type="submit" variant="primary" busy={busy} style={{ minHeight: 48 }}>Ingia</Button>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--muted)' }}>
+                <input type="checkbox" checked={sound} onChange={(e) => { setSound(e.target.checked); setSoundEnabled(e.target.checked); }} />
+                Cheza tone ya CoopLink nikiingia
+              </label>
+            </>
+          ) : (
+            <>
+              <div>
+                <h1>Uthibitisho wa hatua mbili</h1>
+                <p className="muted" style={{ margin: '6px 0 0' }}>Weka msimbo wa tarakimu 6 kutoka kwenye app yako ya Authenticator.</p>
+              </div>
+              <Alert>{error}</Alert>
+              <TextField label="Msimbo wa 2FA" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="123456" value={code} onChange={(v) => setCode(v.replace(/\D/g, ''))} required autoFocus />
+              <Button type="submit" variant="primary" busy={busy} disabled={code.length !== 6} style={{ minHeight: 48 }}>Thibitisha</Button>
+              <Button variant="ghost" onClick={() => { setChallenge(null); setCode(''); setError(null); }}>Rudi nyuma</Button>
+            </>
+          )}
+          <p className="muted" style={{ fontSize: 12, margin: '8px 0 0', textAlign: 'center' }}>
+            CoopLink v{__APP_VERSION__} · Powered by <strong>{status?.brand.companyName ?? 'NAYA GROUP'}</strong>
+          </p>
         </form>
       </section>
     </div>
@@ -144,7 +186,7 @@ export function ChangePassword() {
     setError(null);
     try {
       await changePassword(current, next);
-      nav('/', { replace: true });
+      nav(user ? homeFor(user) : '/', { replace: true });
     } catch (err) {
       setError((err as Error).message);
     } finally {

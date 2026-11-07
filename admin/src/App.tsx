@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
-import { AuthProvider, useAuth, ROLE_GROUPS, type Role } from './lib/auth';
+import { AuthProvider, useAuth, ROLE_GROUPS, homeFor, isPlatform, isStaff, type Role } from './lib/auth';
 import { Layout } from './components/Layout';
 import { LogoMark } from './components/Logo';
 import { Empty } from './components/ui';
@@ -12,12 +12,25 @@ import { Estimates } from './pages/Estimates';
 import { Inputs } from './pages/Inputs';
 import { InputIssues, InputIssueNew, InputIssueDetail } from './pages/InputIssues';
 import { Balances, Users, Organizations, Audit } from './pages/Admin';
+import { OwnerLayout, OWNER_NAV } from './owner/OwnerLayout';
+import { OwnerDashboard } from './owner/Dashboard';
+import { OwnerAmcos, OwnerAmcosDetail } from './owner/Amcos';
+import { OwnerSubscriptions } from './owner/Subscriptions';
+import { OwnerFinance } from './owner/Finance';
+import { OwnerStaff } from './owner/Staff';
+import { OwnerSystem } from './owner/System';
+import { OwnerComms } from './owner/Comms';
+import { OwnerSecurity } from './owner/Security';
+import { OwnerBackup } from './owner/Backup';
+import { OwnerBusiness } from './owner/Business';
+import { OwnerSettings } from './owner/Settings';
+import type { Permission } from './lib/auth';
 
 function Splash() {
   return <div className="center" style={{ minHeight: '100%', background: 'var(--forest)' }}><LogoMark size={120} animate /></div>;
 }
 
-function Protected({ children, roles }: { children: ReactNode; roles?: Role[] }) {
+function Protected({ children, roles, area = 'amcos' }: { children: ReactNode; roles?: Role[]; area?: 'amcos' | 'owner' }) {
   const { user, loading, can } = useAuth();
   const nav = useNavigate();
   useEffect(() => {
@@ -28,14 +41,29 @@ function Protected({ children, roles }: { children: ReactNode; roles?: Role[] })
   if (loading) return <Splash />;
   if (!user) return <Navigate to="/login" replace />;
   if (user.mustChangePassword) return <Navigate to="/change-password" replace />;
+  // Wafanyakazi wa jukwaa hawaingii upande wa vyama; watumiaji wa vyama hawaingii Owner Panel.
+  if (area === 'amcos' && isStaff(user.role)) return <Navigate to="/owner" replace />;
+  if (area === 'owner' && !isPlatform(user.role)) return <Navigate to="/" replace />;
   if (roles && !can(...roles)) return <Empty>Huna ruhusa ya kuona ukurasa huu.</Empty>;
   return <>{children}</>;
+}
+
+function Perm({ p, children }: { p: Permission; children: ReactNode }) {
+  const { has } = useAuth();
+  return has(p) ? <>{children}</> : <Empty>Huna ruhusa ya sehemu hii. Wasiliana na Owner.</Empty>;
+}
+
+function OwnerHome() {
+  const { has } = useAuth();
+  if (has('platform.dashboard')) return <OwnerDashboard />;
+  const first = OWNER_NAV.find((n) => n.to !== '/owner' && (!n.perm || has(n.perm)));
+  return <Navigate to={first?.to ?? '/owner/settings'} replace />;
 }
 
 function PublicOnly({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) return <Splash />;
-  if (user && !user.mustChangePassword) return <Navigate to="/" replace />;
+  if (user && !user.mustChangePassword) return <Navigate to={homeFor(user)} replace />;
   return <>{children}</>;
 }
 
@@ -53,6 +81,21 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
           <Route path="/change-password" element={<NeedsUser><ChangePassword /></NeedsUser>} />
+          <Route path="/owner" element={<Protected area="owner"><OwnerLayout /></Protected>}>
+            <Route index element={<OwnerHome />} />
+            <Route path="amcos" element={<Perm p="amcos.read"><OwnerAmcos /></Perm>} />
+            <Route path="amcos/:id" element={<Perm p="amcos.read"><OwnerAmcosDetail /></Perm>} />
+            <Route path="subscriptions" element={<Perm p="subscriptions.read"><OwnerSubscriptions /></Perm>} />
+            <Route path="finance" element={<Perm p="finance.read"><OwnerFinance /></Perm>} />
+            <Route path="staff" element={<Perm p="staff.manage"><OwnerStaff /></Perm>} />
+            <Route path="system" element={<Perm p="system.read"><OwnerSystem /></Perm>} />
+            <Route path="comms" element={<Perm p="comms.read"><OwnerComms /></Perm>} />
+            <Route path="security" element={<Perm p="security.read"><OwnerSecurity /></Perm>} />
+            <Route path="backup" element={<Perm p="backup.read"><OwnerBackup /></Perm>} />
+            <Route path="business" element={<Perm p="business.read"><OwnerBusiness /></Perm>} />
+            <Route path="settings" element={<OwnerSettings />} />
+            <Route path="*" element={<Empty>Ukurasa haupo.</Empty>} />
+          </Route>
           <Route element={<Protected><Layout /></Protected>}>
             <Route index element={<Dashboard />} />
             <Route path="members" element={<Members />} />

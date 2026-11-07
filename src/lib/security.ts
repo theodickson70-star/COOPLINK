@@ -7,14 +7,22 @@ export const hashPassword = (pw: string) => bcrypt.hash(pw, 12);
 export const verifyPassword = (pw: string, hash: string) => bcrypt.compare(pw, hash);
 
 export interface TokenPayload {
-  sub: string; // user id
-  tv: number;  // tokenVersion
+  sub: string;  // user id
+  tv: number;   // tokenVersion
+  sid?: string; // session id (user_sessions) — tokens za zamani hazina
+  typ?: '2fa';  // token ya hatua ya pili ya kuingia (haitumiki kwa API)
 }
 
 export const signToken = (p: TokenPayload) =>
   jwt.sign(p, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'] });
 
+/** Token fupi (dakika 5) ya kusubiri msimbo wa 2FA. */
+export const signChallenge = (sub: string, tv: number) => jwt.sign({ sub, tv, typ: '2fa' }, env.JWT_SECRET, { expiresIn: '5m' });
+
 export const verifyToken = (token: string) => jwt.verify(token, env.JWT_SECRET) as TokenPayload & jwt.JwtPayload;
+
+/** Muda wa kuisha kwa token (kwa user_sessions.expiresAt). */
+export const tokenExpiry = (token: string) => new Date(((jwt.decode(token) as jwt.JwtPayload).exp ?? 0) * 1000);
 
 // Nenosiri la muda (rahisi kusoma kwa simu, bila herufi zinazochanganya)
 export function tempPassword(len = 10) {

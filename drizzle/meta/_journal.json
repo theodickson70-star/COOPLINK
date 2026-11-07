@@ -15,6 +15,13 @@
       "when": 1793903078295,
       "tag": "0001_immutable_records",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794087236068,
+      "tag": "0002_owner_control_panel",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api, getToken, setSelectedAmcos, setToken } from './api';
 
-export type Role = 'SUPER_ADMIN' | 'UNION_ADMIN' | 'UNION_VIEWER' | 'AMCOS_ADMIN' | 'ACCOUNTANT' | 'CLERK' | 'AMCOS_VIEWER';
+export type Role =
+  | 'SUPER_ADMIN' | 'UNION_ADMIN' | 'UNION_VIEWER' | 'AMCOS_ADMIN' | 'ACCOUNTANT' | 'CLERK' | 'AMCOS_VIEWER'
+  | 'FINANCE_MANAGER' | 'TECH_SUPPORT' | 'CUSTOMER_SUPPORT' | 'MARKETING_MANAGER';
+
+export type Permission =
+  | 'platform.dashboard' | 'amcos.read' | 'amcos.create' | 'amcos.approve' | 'amcos.suspend'
+  | 'subscriptions.read' | 'subscriptions.manage' | 'finance.read' | 'finance.manage' | 'staff.manage'
+  | 'system.read' | 'system.manage' | 'comms.read' | 'comms.send' | 'security.read' | 'security.manage'
+  | 'backup.read' | 'backup.manage' | 'business.read' | 'business.manage';
 
 export interface User {
   id: string;
@@ -11,18 +19,33 @@ export interface User {
   role: Role;
   unionId: string | null;
   amcosId: string | null;
+  jobTitle: string | null;
   mustChangePassword: boolean;
+  totpEnabled: boolean;
+  permissions: Permission[];
 }
 export interface Amcos { id: string; name: string; code: string; district?: string | null }
+
+export const PLATFORM_ROLES: Role[] = ['SUPER_ADMIN', 'FINANCE_MANAGER', 'TECH_SUPPORT', 'CUSTOMER_SUPPORT', 'MARKETING_MANAGER'];
+export const STAFF_ROLES: Role[] = ['FINANCE_MANAGER', 'TECH_SUPPORT', 'CUSTOMER_SUPPORT', 'MARKETING_MANAGER'];
+export const isPlatform = (r?: Role) => !!r && PLATFORM_ROLES.includes(r);
+export const isStaff = (r?: Role) => !!r && STAFF_ROLES.includes(r);
+/** Ukurasa wa kwanza baada ya kuingia. */
+export const homeFor = (u: User) => (isPlatform(u.role) ? '/owner' : '/');
+
+type LoginResult = { user: User } | { twoFactor: true; challenge: string };
 
 interface AuthState {
   user: User | null;
   amcos: Amcos | null;
   loading: boolean;
-  login: (phone: string, password: string) => Promise<User>;
+  login: (phone: string, password: string) => Promise<LoginResult>;
+  verify2fa: (challenge: string, code: string) => Promise<User>;
   logout: () => void;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  refresh: () => Promise<void>;
   can: (...roles: Role[]) => boolean;
+  has: (...perms: Permission[]) => boolean;
 }
 
 const Ctx = createContext<AuthState | null>(null);
@@ -41,10 +64,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(!!getToken());
 
   const logout = useCallback(() => {
+    void api('/auth/logout', { method: 'POST' }).catch(() => {});
     setToken(null);
     setSelectedAmcos(null);
     setUser(null);
     setAmcos(null);
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const me = await api<{ user: User; amcos: Amcos | null }>('/auth/me');
+    setUser(me.user);
+    setAmcos(me.amcos);
   }, []);
 
   useEffect(() => {
@@ -54,25 +84,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener('cl:logout', onLogout);
     if (getToken()) {
-      api<{ user: User; amcos: Amcos | null }>('/auth/me')
-        .then((r) => {
-          setUser(r.user);
-          setAmcos(r.amcos);
-        })
-        .catch(() => setToken(null))
-        .finally(() => setLoading(false));
+      refresh().catch(() => setToken(null)).finally(() => setLoading(false));
     }
     return () => window.removeEventListener('cl:logout', onLogout);
-  }, []);
+  }, [refresh]);
 
-  const login = async (phone: string, password: string) => {
-    const r = await api<{ token: string; user: User }>('/auth/login', { method: 'POST', body: { phone, password } });
-    setToken(r.token);
+  const finish = async (token: string) => {
+    setToken(token);
     setSelectedAmcos(null);
     const me = await api<{ user: User; amcos: Amcos | null }>('/auth/me');
     setUser(me.user);
     setAmcos(me.amcos);
     return me.user;
+  };
+
+  const login = async (phone: string, password: string): Promise<LoginResult> => {
+    const r = await api<{ token?: string; twoFactorRequired?: boolean; challenge?: string }>('/auth/login', { method: 'POST', body: { phone, password } });
+    if (r.twoFactorRequired && r.challenge) return { twoFactor: true, challenge: r.challenge };
+    return { user: await finish(r.token!) };
+  };
+
+  const verify2fa = async (challenge: string, code: string) => {
+    const r = await api<{ token: string }>('/auth/2fa/verify', { method: 'POST', body: { challenge, code } });
+    return finish(r.token);
   };
 
   const changePassword = async (currentPassword: string, newPassword: string) => {
@@ -82,8 +116,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const can = (...roles: Role[]) => !!user && roles.flat().includes(user.role);
+  const has = (...perms: Permission[]) => !!user && perms.some((p) => user.permissions?.includes(p));
 
-  return <Ctx.Provider value={{ user, amcos, loading, login, logout, changePassword, can }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ user, amcos, loading, login, verify2fa, logout, changePassword, refresh, can, has }}>{children}</Ctx.Provider>;
 }
 
 export function useAuth() {

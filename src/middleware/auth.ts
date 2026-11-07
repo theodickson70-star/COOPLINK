@@ -1,8 +1,11 @@
 import type { Request, Response, NextFunction } from 'express';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { db, schema } from '../db';
-import { verifyToken } from '../lib/security';
+import { verifyPassword, verifyToken } from '../lib/security';
 import { AppError, forbidden, unauthorized } from '../lib/errors';
+import { effectivePermissions, isPlatformRole, isStaffRole, type Permission } from '../lib/permissions';
+import { getSetting } from '../lib/settings';
+import { decryptSecret, verifyTotp } from '../lib/totp';
 
 export type Role = (typeof schema.roleEnum.enumValues)[number];
 
@@ -12,6 +15,8 @@ export interface AuthContext {
   fullName: string;
   unionId: string | null;
   amcosId: string | null;
+  permissions: Permission[];
+  sessionId: string | null;
 }
 
 // Makundi ya roles yanayotumika mara kwa mara
@@ -22,6 +27,9 @@ export const ROLES = {
   ADMINS: ['SUPER_ADMIN', 'UNION_ADMIN', 'AMCOS_ADMIN'] as Role[],                  // watumiaji
   SUPER: ['SUPER_ADMIN'] as Role[],
 };
+
+const INVALID = () => new AppError(401, 'TOKEN_INVALID', 'Muda wa kuingia umeisha, tafadhali ingia tena');
+const SEEN_EVERY_MS = 5 * 60 * 1000;
 
 /** Kwa /auth/me, /auth/change-password, /auth/logout-all — zinaruhusiwa hata kama nenosiri halijabadilishwa. */
 export const authenticateAllowPending = (req: Request, res: Response, next: NextFunction) =>
@@ -39,12 +47,20 @@ async function authenticateImpl(req: Request, _res: Response, next: NextFunction
     try {
       payload = verifyToken(header.slice(7));
     } catch {
-      throw new AppError(401, 'TOKEN_INVALID', 'Muda wa kuingia umeisha, tafadhali ingia tena');
+      throw INVALID();
     }
+    if (payload.typ === '2fa') throw INVALID(); // token ya hatua ya 2FA si token ya kuingia
 
     const user = await db.query.users.findFirst({ where: eq(schema.users.id, payload.sub) });
-    if (!user || !user.isActive || user.tokenVersion !== payload.tv) {
-      throw new AppError(401, 'TOKEN_INVALID', 'Muda wa kuingia umeisha, tafadhali ingia tena');
+    if (!user || !user.isActive || user.tokenVersion !== payload.tv) throw INVALID();
+
+    // Session: ikifutwa (revoked) token inakufa mara moja
+    if (payload.sid) {
+      const s = await db.query.userSessions.findFirst({ where: and(eq(schema.userSessions.id, payload.sid), eq(schema.userSessions.userId, user.id)) });
+      if (!s || s.revokedAt) throw INVALID();
+      if (Date.now() - s.lastSeenAt.getTime() > SEEN_EVERY_MS) {
+        await db.update(schema.userSessions).set({ lastSeenAt: new Date(), ip: req.ip ?? s.ip }).where(eq(schema.userSessions.id, s.id));
+      }
     }
 
     if (user.amcosId) {
@@ -62,6 +78,8 @@ async function authenticateImpl(req: Request, _res: Response, next: NextFunction
       fullName: user.fullName,
       unionId: user.unionId,
       amcosId: user.amcosId,
+      permissions: effectivePermissions(user.role, user.permissions),
+      sessionId: payload.sid ?? null,
     };
     next();
   } catch (err) {
@@ -77,3 +95,57 @@ export const requireRole =
     if (!roles.includes(req.auth.role)) return next(forbidden());
     next();
   };
+
+/** Watumiaji wa jukwaa tu (Owner na wafanyakazi wa NAYA). */
+export function requirePlatform(req: Request, _res: Response, next: NextFunction) {
+  if (!req.auth) return next(unauthorized());
+  if (!isPlatformRole(req.auth.role)) return next(forbidden('Eneo hili ni la wasimamizi wa CoopLink tu'));
+  next();
+}
+
+/** Lazima awe na angalau ruhusa moja kati ya hizi. */
+export const requirePermission =
+  (...perms: Permission[]) =>
+  (req: Request, _res: Response, next: NextFunction) => {
+    if (!req.auth) return next(unauthorized());
+    if (!perms.some((p) => req.auth!.permissions.includes(p))) return next(forbidden('Huna ruhusa ya kufanya hivi'));
+    next();
+  };
+
+/** Wafanyakazi wa jukwaa (si Owner) hawaruhusiwi kugusa data za vyama. */
+export function blockPlatformStaff(req: Request, _res: Response, next: NextFunction) {
+  if (req.auth && isStaffRole(req.auth.role)) return next(forbidden('Wafanyakazi wa CoopLink hawaruhusiwi kuona data za vyama'));
+  next();
+}
+
+/** Maintenance mode: watumiaji wa vyama wanazuiwa; wasimamizi wa jukwaa wanaendelea. */
+export async function maintenanceGuard(req: Request, _res: Response, next: NextFunction) {
+  try {
+    if (req.auth && isPlatformRole(req.auth.role)) return next();
+    const m = await getSetting('maintenance');
+    if (m.enabled) return next(new AppError(503, 'MAINTENANCE', m.message));
+    next();
+  } catch (e) {
+    next(e);
+  }
+}
+
+/**
+ * Uthibitisho wa ziada kwa vitendo nyeti (kuthibitisha/kurudisha malipo, maintenance, export, restore...).
+ * Body lazima iwe na confirmPassword (na confirmCode ikiwa 2FA imewashwa).
+ */
+export async function requireReauth(req: Request) {
+  const body = (req.body ?? {}) as { confirmPassword?: string; confirmCode?: string };
+  if (!body.confirmPassword) throw new AppError(403, 'REAUTH_REQUIRED', 'Thibitisha kwa nenosiri lako ili kuendelea');
+  const user = await db.query.users.findFirst({ where: eq(schema.users.id, req.auth!.userId) });
+  if (!user || !(await verifyPassword(body.confirmPassword, user.passwordHash))) {
+    throw new AppError(403, 'REAUTH_FAILED', 'Nenosiri la uthibitisho si sahihi');
+  }
+  if (user.totpEnabled && user.totpSecret) {
+    if (!body.confirmCode || !verifyTotp(decryptSecret(user.totpSecret), body.confirmCode)) {
+      throw new AppError(403, 'REAUTH_FAILED', 'Msimbo wa 2FA si sahihi');
+    }
+  }
+}
+
+export const activeSessionsWhere = (userId: string) => and(eq(schema.userSessions.userId, userId), isNull(schema.userSessions.revokedAt));

@@ -17,7 +17,7 @@ import {
   pgTable, pgEnum, uuid, text, boolean, integer, numeric, timestamp, date,
   jsonb, uniqueIndex, index, primaryKey, type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 
 // ---------------------------------------------------------------------
 //  ENUMS
@@ -30,7 +30,13 @@ export const roleEnum = pgEnum('role', [
   'ACCOUNTANT',   // Mhasibu
   'CLERK',        // Karani
   'AMCOS_VIEWER', // Mjumbe wa bodi / mkaguzi (kusoma tu)
+  // Wafanyakazi wa NAYA GROUP / CoopLink (jukwaa) — HAWANA access ya data za vyama
+  'FINANCE_MANAGER',
+  'TECH_SUPPORT',
+  'CUSTOMER_SUPPORT',
+  'MARKETING_MANAGER',
 ]);
+export const amcosStatusEnum = pgEnum('amcos_status', ['PENDING', 'ACTIVE', 'SUSPENDED', 'REJECTED']);
 export const genderEnum = pgEnum('gender', ['MALE', 'FEMALE']);
 export const memberStatusEnum = pgEnum('member_status', ['ACTIVE', 'SUSPENDED', 'EXITED', 'DECEASED']);
 export const mobileMoneyProviderEnum = pgEnum('mobile_money_provider', ['MPESA', 'AIRTEL_MONEY', 'MIXX_BY_YAS', 'HALOPESA', 'TPESA']);
@@ -94,10 +100,18 @@ export const amcos = pgTable('amcos', {
   village: text(),
   phone: text(),
   email: text(),
-  isActive: boolean().notNull().default(true),
+  isActive: boolean().notNull().default(true), // access ya watumiaji wa chama (inafuata status)
+  // Biashara ya CoopLink (Owner)
+  status: amcosStatusEnum().notNull().default('ACTIVE'),
+  statusReason: text(),
+  contactName: text(),
+  contactPhone: text(),
+  registeredById: uuid(),
+  approvedById: uuid(),
+  approvedAt: timestamp({ withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
-}, (t) => [index().on(t.unionId)]);
+}, (t) => [index().on(t.unionId), index().on(t.status)]);
 
 // ---------------------------------------------------------------------
 //  WATUMIAJI
@@ -115,9 +129,13 @@ export const users = pgTable('users', {
   tokenVersion: integer().notNull().default(0), // ikiongezwa, tokens zote za zamani zinakufa
   mustChangePassword: boolean().notNull().default(true),
   lastLoginAt: timestamp({ withTimezone: true }),
+  jobTitle: text(),                 // wafanyakazi wa jukwaa
+  permissions: text().array(),      // null = ruhusa za kawaida za role
+  totpSecret: text(),               // 2FA (imesimbwa kwa AES-256-GCM)
+  totpEnabled: boolean().notNull().default(false),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
-}, (t) => [index().on(t.amcosId), index().on(t.unionId)]);
+}, (t) => [index().on(t.amcosId), index().on(t.unionId), index().on(t.role)]);
 
 // ---------------------------------------------------------------------
 //  MISIMU NA WANUNUZI (vya mfumo mzima)
@@ -473,6 +491,7 @@ export const auditLogs = pgTable('audit_logs', {
   amcosId: uuid(),
   unionId: uuid(),
   userId: uuid(),
+  userRole: text(),
   action: text().notNull(), // mf. MEMBER_CREATE
   entity: text().notNull(),
   entityId: text(),
@@ -486,6 +505,208 @@ export const auditLogs = pgTable('audit_logs', {
   index().on(t.entity, t.entityId),
   index().on(t.userId, t.createdAt),
 ]);
+
+
+// =====================================================================
+//  OWNER CONTROL PANEL — biashara ya CoopLink (NAYA GROUP)
+//  Fedha za kampuni HAZICHANGANYWI na fedha za vyama wala za wakulima.
+// =====================================================================
+export const billingCycleEnum = pgEnum('billing_cycle', ['TRIAL', 'MONTHLY', 'ANNUAL']);
+export const subscriptionStatusEnum = pgEnum('subscription_status', ['TRIAL', 'ACTIVE', 'PAST_DUE', 'EXPIRED', 'CANCELLED']);
+export const platformPaymentStatusEnum = pgEnum('platform_payment_status', ['PENDING', 'VERIFIED', 'FAILED', 'REFUNDED']);
+export const platformPaymentCategoryEnum = pgEnum('platform_payment_category', ['SUBSCRIPTION', 'SETUP', 'TRAINING', 'OTHER']);
+export const expenseCategoryEnum = pgEnum('expense_category', ['SERVER', 'SMS', 'SALARY', 'MARKETING', 'OFFICE', 'TRANSPORT', 'OTHER']);
+export const announcementKindEnum = pgEnum('announcement_kind', ['ANNOUNCEMENT', 'SYSTEM_UPDATE', 'EXPIRY_REMINDER', 'MARKETING']);
+export const deliveryStatusEnum = pgEnum('delivery_status', ['QUEUED', 'SENT', 'DELIVERED', 'FAILED', 'SKIPPED']);
+export const backupStatusEnum = pgEnum('backup_status', ['RUNNING', 'SUCCESS', 'FAILED']);
+export const restoreStatusEnum = pgEnum('restore_status', ['REQUESTED', 'APPROVED', 'REJECTED', 'COMPLETED']);
+
+export const subscriptionPlans = pgTable('subscription_plans', {
+  id: id(),
+  name: text().notNull(),
+  code: text().notNull().unique(),
+  description: text(),
+  monthlyPrice: money().notNull(),
+  annualPrice: money().notNull(),
+  currency: currencyEnum().notNull().default('TZS'),
+  trialDays: integer().notNull().default(14),
+  graceDays: integer().notNull().default(7),
+  maxMembers: integer(),
+  features: jsonb().$type<string[]>(),
+  isActive: boolean().notNull().default(true),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const subscriptions = pgTable('subscriptions', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  planId: uuid().notNull().references(() => subscriptionPlans.id),
+  cycle: billingCycleEnum().notNull(),
+  status: subscriptionStatusEnum().notNull(),
+  startDate: date().notNull(),
+  endDate: date().notNull(),          // imelipiwa / trial hadi tarehe hii
+  graceDays: integer().notNull(),
+  discountPercent: numeric({ precision: 5, scale: 2 }).notNull().default('0'),
+  price: money().notNull(),           // bei kwa kipindi kimoja baada ya punguzo
+  notes: text(),
+  createdById: uuid(),
+  cancelledAt: timestamp({ withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [
+  index().on(t.amcosId),
+  index().on(t.status, t.endDate),
+  uniqueIndex('subscriptions_one_current').on(t.amcosId).where(sql`status in ('TRIAL', 'ACTIVE', 'PAST_DUE')`),
+]);
+
+export const platformPayments = pgTable('platform_payments', {
+  id: id(),
+  invoiceNo: text().notNull().unique(),
+  amcosId: uuid().references(() => amcos.id),
+  subscriptionId: uuid().references(() => subscriptions.id),
+  category: platformPaymentCategoryEnum().notNull(),
+  amount: money().notNull(),
+  currency: currencyEnum().notNull().default('TZS'),
+  method: paymentMethodEnum().notNull(),
+  providerRef: text().unique(),       // namba ya muamala — huzuia malipo kurekodiwa mara mbili
+  periods: integer().notNull().default(1),
+  cycle: billingCycleEnum(),
+  status: platformPaymentStatusEnum().notNull().default('PENDING'),
+  paidAt: timestamp({ withTimezone: true }).notNull(),
+  verifiedById: uuid(),
+  verifiedAt: timestamp({ withTimezone: true }),
+  failureReason: text(),
+  refundedAt: timestamp({ withTimezone: true }),
+  refundReason: text(),
+  notes: text(),
+  createdById: uuid(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [index().on(t.amcosId), index().on(t.status, t.paidAt)]);
+
+export const platformExpenses = pgTable('platform_expenses', {
+  id: id(),
+  category: expenseCategoryEnum().notNull(),
+  amount: money().notNull(),
+  description: text().notNull(),
+  vendor: text(),
+  spentAt: date().notNull(),
+  createdById: uuid(),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.spentAt)]);
+
+export const businessTargets = pgTable('business_targets', {
+  id: id(),
+  period: text().notNull(),           // YYYY au YYYY-MM
+  metric: text().notNull(),           // REVENUE | NEW_AMCOS | ACTIVE_SUBSCRIPTIONS
+  targetValue: numeric({ precision: 18, scale: 2 }).notNull(),
+  notes: text(),
+  createdById: uuid(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex().on(t.period, t.metric)]);
+
+export const platformSettings = pgTable('platform_settings', {
+  key: text().primaryKey(),
+  value: jsonb().notNull(),
+  updatedById: uuid(),
+  updatedAt: updatedAt(),
+});
+
+export const announcements = pgTable('announcements', {
+  id: id(),
+  kind: announcementKindEnum().notNull(),
+  title: text().notNull(),
+  body: text().notNull(),
+  audience: text().notNull(),         // ALL | SELECTED
+  amcosIds: uuid().array(),
+  channels: text().array().notNull(), // IN_APP, SMS, EMAIL
+  sentAt: timestamp({ withTimezone: true }),
+  createdById: uuid(),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.createdAt)]);
+
+export const announcementDeliveries = pgTable('announcement_deliveries', {
+  id: id(),
+  announcementId: uuid().notNull().references(() => announcements.id),
+  amcosId: uuid().references(() => amcos.id),
+  channel: text().notNull(),
+  recipient: text(),
+  status: deliveryStatusEnum().notNull().default('QUEUED'),
+  providerRef: text(),
+  error: text(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [index().on(t.announcementId), index().on(t.amcosId)]);
+
+export const loginEvents = pgTable('login_events', {
+  id: id(),
+  userId: uuid(),
+  phone: text(),
+  success: boolean().notNull(),
+  reason: text(),                     // OK, UNKNOWN_PHONE, BAD_PASSWORD, INACTIVE, AMCOS_SUSPENDED, BAD_2FA, 2FA_REQUIRED
+  suspicious: boolean().notNull().default(false),
+  ip: text(),
+  userAgent: text(),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.userId, t.createdAt), index().on(t.createdAt), index().on(t.phone, t.createdAt)]);
+
+export const userSessions = pgTable('user_sessions', {
+  id: id(),
+  userId: uuid().notNull().references(() => users.id),
+  ip: text(),
+  userAgent: text(),
+  createdAt: createdAt(),
+  lastSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp({ withTimezone: true }).notNull(),
+  revokedAt: timestamp({ withTimezone: true }),
+  revokedById: uuid(),
+}, (t) => [index().on(t.userId, t.revokedAt)]);
+
+export const systemErrors = pgTable('system_errors', {
+  id: id(),
+  method: text(),
+  path: text(),
+  status: integer(),
+  message: text(),
+  stack: text(),
+  userId: uuid(),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.createdAt)]);
+
+export const jobRuns = pgTable('job_runs', {
+  id: id(),
+  name: text().notNull(),
+  status: text().notNull(),           // RUNNING | SUCCESS | FAILED | SKIPPED
+  details: jsonb(),
+  startedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp({ withTimezone: true }),
+}, (t) => [index().on(t.name, t.startedAt)]);
+
+export const backupRecords = pgTable('backup_records', {
+  id: id(),
+  kind: text().notNull(),             // RAILWAY | EXPORT | OTHER
+  status: backupStatusEnum().notNull(),
+  sizeBytes: integer(),
+  location: text(),
+  notes: text(),
+  takenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  createdById: uuid(),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.takenAt)]);
+
+export const restoreRequests = pgTable('restore_requests', {
+  id: id(),
+  backupId: uuid().references(() => backupRecords.id),
+  reason: text().notNull(),
+  status: restoreStatusEnum().notNull().default('REQUESTED'),
+  requestedById: uuid(),
+  decidedById: uuid(),
+  decidedAt: timestamp({ withTimezone: true }),
+  decisionNotes: text(),
+  createdAt: createdAt(),
+});
 
 // ---------------------------------------------------------------------
 //  RELATIONS (kwa db.query.*)

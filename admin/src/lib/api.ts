@@ -60,6 +60,7 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
       window.dispatchEvent(new Event('cl:logout'));
     }
     if (e.code === 'PASSWORD_CHANGE_REQUIRED') window.dispatchEvent(new Event('cl:password-change'));
+    if (e.code === 'MAINTENANCE') window.dispatchEvent(new CustomEvent('cl:maintenance', { detail: e.message }));
     let message: string = e.message ?? `Hitilafu (${res.status})`;
     if (e.code === 'VALIDATION_ERROR' && Array.isArray(e.details) && e.details.length) {
       message = e.details.map((d: { field: string; message: string }) => (d.field ? `${d.field}: ${d.message}` : d.message)).join(' · ');
@@ -72,4 +73,30 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
 export interface Paged<T> {
   data: T[];
   meta: { page: number; pageSize: number; total: number; pages: number };
+}
+
+/** Kupakua faili (CSV, JSON export) kwa token; inarudisha faili kwa mtumiaji. */
+export async function apiDownload(path: string, opts: { method?: string; body?: unknown; query?: Query; filename: string }) {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(opts.query ?? {})) if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (token) headers.authorization = `Bearer ${token}`;
+  const res = await fetch(`${BASE}/api/v1${path}${qs.toString() ? `?${qs}` : ''}`, {
+    method: opts.method ?? 'GET', headers, body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, data?.error?.code ?? 'ERROR', data?.error?.message ?? `Hitilafu (${res.status})`);
+  }
+  const cd = res.headers.get('content-disposition') ?? '';
+  const name = /filename="([^"]+)"/.exec(cd)?.[1] ?? opts.filename;
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }

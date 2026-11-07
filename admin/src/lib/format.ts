@@ -22,7 +22,12 @@ export const ROLE_LABEL: Record<string, string> = {
   ACCOUNTANT: 'Mhasibu',
   CLERK: 'Karani',
   AMCOS_VIEWER: 'Mjumbe / Mkaguzi',
+  FINANCE_MANAGER: 'Meneja wa Fedha',
+  TECH_SUPPORT: 'Msaada wa Kiufundi',
+  CUSTOMER_SUPPORT: 'Huduma kwa Wateja',
+  MARKETING_MANAGER: 'Meneja wa Masoko',
 };
+export const OWNER_ROLE_LABEL = 'Owner Super Admin';
 
 export const STATUS_LABEL: Record<string, string> = {
   ACTIVE: 'Hai', SUSPENDED: 'Amesimamishwa', EXITED: 'Ametoka', DECEASED: 'Marehemu',

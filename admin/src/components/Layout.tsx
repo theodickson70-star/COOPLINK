@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth, ROLE_GROUPS, type Role } from '../lib/auth';
 import { api, getSelectedAmcos, setSelectedAmcos, type Paged } from '../lib/api';
 import { ROLE_LABEL } from '../lib/format';
 import { LogoMark, Wordmark } from './Logo';
 import { Button } from './ui';
+import { AnnouncementBar, MaintenanceOverlay, SystemBanner } from './Notices';
 
 const I = {
   home: <path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />,
@@ -105,16 +106,20 @@ export function Layout() {
           <Button variant="secondary" size="sm" className="menu-btn" onClick={() => setOpen(true)} aria-label="Fungua menyu"><Icon d={I.menu} /></Button>
           {multi ? <AmcosSwitcher /> : <strong style={{ fontFamily: 'var(--font-head)', color: 'var(--forest)' }}>{amcos?.name}</strong>}
           <div className="grow" />
+          {user.role === 'SUPER_ADMIN' && <Link className="btn btn-primary btn-sm hide-sm" to="/owner">Owner Panel</Link>}
           <div className="user-chip">
             <span className="avatar" aria-hidden="true">{user.fullName.charAt(0)}</span>
             <span className="who">{user.fullName}<small>{ROLE_LABEL[user.role]}</small></span>
           </div>
           <Button variant="ghost" size="sm" onClick={logout}>Toka</Button>
         </header>
+        <SystemBanner />
         <main className="content">
+          {user.amcosId && <AnnouncementBar />}
           <Outlet />
         </main>
       </div>
+      <MaintenanceOverlay />
     </div>
   );
 }
