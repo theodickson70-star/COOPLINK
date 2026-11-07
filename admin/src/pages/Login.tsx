@@ -1,17 +1,71 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { playTone, setSoundEnabled, soundEnabled } from '../lib/tone';
 import { LogoMark, Wordmark } from '../components/Logo';
 import { Alert, Button, TextField } from '../components/ui';
 
+// Picha za mzunguko wa tumbaku: shamba -> kukausha -> ghala -> chama
+const SLIDES = [
+  { src: '/login/shambani.webp', title: 'Shambani', text: 'Makisio sahihi tangu kitalu', pos: '35% center' },
+  { src: '/login/kukausha.webp', title: 'Kukausha', text: 'Ubora unaoonekana kwenye kila jani', pos: '55% center' },
+  { src: '/login/ghalani.webp', title: 'Ghalani', text: 'Kila belo linarekodiwa kwa uwazi', pos: '30% center' },
+  { src: '/login/chamani.webp', title: 'Chamani', text: 'Kila mwanachama anaona fedha zake', pos: '60% center' },
+];
+
+function useReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    if (!mq) return;
+    setReduced(mq.matches);
+    const on = () => setReduced(mq.matches);
+    mq.addEventListener?.('change', on);
+    return () => mq.removeEventListener?.('change', on);
+  }, []);
+  return reduced;
+}
+
 function AuthHero() {
+  const [idx, setIdx] = useState(0);
+  const reduced = useReducedMotion();
+
+  useEffect(() => {
+    SLIDES.forEach((s) => { const img = new Image(); img.src = s.src; }); // pakia mapema
+  }, []);
+  useEffect(() => {
+    if (reduced) return;
+    const t = setInterval(() => setIdx((i) => (i + 1) % SLIDES.length), 6000);
+    return () => clearInterval(t);
+  }, [reduced, idx]);
+
+  const s = SLIDES[idx];
   return (
     <section className="auth-hero">
-      <LogoMark size={200} animate />
-      <Wordmark size={72} animate />
-      <div className="tagline">Uwazi · Haki · Maendeleo</div>
-      <p className="sub">Mfumo wa kisasa wa kusimamia Vyama vya Msingi: wanachama, pembejeo, masoko na malipo, kila shilingi ikiwa wazi.</p>
+      <div className="hero-slides" aria-hidden="true">
+        {SLIDES.map((sl, i) => (
+          <div key={sl.src} className={`hero-slide ${i === idx ? 'on' : ''}`}
+            style={{ backgroundImage: `url(${sl.src})`, backgroundPosition: sl.pos }} />
+        ))}
+      </div>
+      <div className="hero-scrim" aria-hidden="true" />
+
+      <div className="hero-content">
+        <LogoMark size={190} animate />
+        <div className="hero-word"><Wordmark size={72} animate /></div>
+        <div className="tagline">Uwazi · Haki · Maendeleo</div>
+        <p className="sub">Mfumo wa kisasa wa kusimamia Vyama vya Msingi: wanachama, pembejeo, masoko na malipo, kila shilingi ikiwa wazi.</p>
+      </div>
+
+      <div className="hero-caption">
+        <p aria-live="polite"><strong>{s.title}</strong><span> · {s.text}</span></p>
+        <div className="hero-dots" role="group" aria-label="Chagua picha">
+          {SLIDES.map((sl, i) => (
+            <button key={sl.src} type="button" aria-label={`Picha ${i + 1}: ${sl.title}`} aria-pressed={i === idx}
+              className={i === idx ? 'on' : ''} onClick={() => setIdx(i)} />
+          ))}
+        </div>
+      </div>
     </section>
   );
 }
