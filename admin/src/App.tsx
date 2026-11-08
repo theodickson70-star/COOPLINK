@@ -18,6 +18,7 @@ import { Payables, Periods } from './pages/Periods';
 import { FarmerDebtDetail, FarmerDebts } from './pages/FarmerDebts';
 import { GroupDetail, Groups } from './pages/Groups';
 import { Kuni, KuniBatch } from './pages/Kuni';
+import { Billing, BillingReceipt } from './pages/Billing';
 import { Members, MemberNew } from './pages/Members';
 import { MemberDetail } from './pages/MemberDetail';
 import { Estimates } from './pages/Estimates';
@@ -104,6 +105,7 @@ export default function App() {
             <Route path="amcos" element={<Perm p="amcos.read"><OwnerAmcos /></Perm>} />
             <Route path="amcos/:id" element={<Perm p="amcos.read"><OwnerAmcosDetail /></Perm>} />
             <Route path="subscriptions" element={<Perm p="subscriptions.read"><OwnerSubscriptions /></Perm>} />
+            <Route path="fees/receipts/:id" element={<Perm p="subscriptions.read"><BillingReceipt base="/owner/fees" /></Perm>} />
             <Route path="finance" element={<Perm p="finance.read"><OwnerFinance /></Perm>} />
             <Route path="staff" element={<Perm p="staff.manage"><OwnerStaff /></Perm>} />
             <Route path="system" element={<Perm p="system.read"><OwnerSystem /></Perm>} />
@@ -149,6 +151,8 @@ export default function App() {
             <Route path="input-issues/new" element={<Need p={['issues.request']}><InputIssueNew /></Need>} />
             <Route path="input-issues/:id" element={<InputIssueDetail />} />
             <Route path="balances" element={<Need p={['ledger.read']}><Balances /></Need>} />
+            <Route path="billing" element={<Protected roles={['AMCOS_ADMIN']}><Billing /></Protected>} />
+            <Route path="billing/receipts/:id" element={<Protected roles={['AMCOS_ADMIN']}><BillingReceipt /></Protected>} />
             <Route path="users" element={<Protected roles={['SUPER_ADMIN', 'UNION_ADMIN', 'AMCOS_ADMIN']}><Users /></Protected>} />
             <Route path="organizations" element={<Protected roles={ROLE_GROUPS.ORGS}><Organizations /></Protected>} />
             <Route path="audit" element={<Need p={['audit.read']}><Audit /></Need>} />

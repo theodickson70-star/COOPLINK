@@ -30,6 +30,7 @@ import { payrollRouter } from './modules/payroll.routes';
 import { assetsRouter } from './modules/assets.routes';
 import { groupsRouter } from './modules/groups.routes';
 import { kuniRouter } from './modules/kuni.routes';
+import { billingRouter, feeGuard } from './modules/billing.routes';
 import { startupState } from './lib/startup';
 import { superAdminStatus } from './lib/super-admin';
 
@@ -49,7 +50,8 @@ export function createApp() {
   // img-src: blob: inahitajika kuonyesha picha za wakulima (zinapakuliwa kwa token) na kupunguza picha kwenye kifaa
   app.use(helmet({ contentSecurityPolicy: { directives: { upgradeInsecureRequests: null, imgSrc: ["'self'", 'data:', 'blob:'] } } }));
   app.use(cors({ origin: env.CORS_ORIGINS === '*' ? true : env.CORS_ORIGINS.split(',').map((s) => s.trim()) }));
-  app.use(express.json({ limit: '1mb' }));
+  // rawBody inahitajika kuhakiki saini za webhook (TeePay)
+  app.use(express.json({ limit: '1mb', verify: (req, _res, buf) => { (req as { rawBody?: Buffer }).rawBody = buf; } }));
   if (env.NODE_ENV !== 'test') app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
   app.get('/health', async (_req, res) => {
@@ -74,6 +76,8 @@ export function createApp() {
   api.use('/owner', ownerRouter);              // Owner Control Panel (wasimamizi wa jukwaa tu)
   api.use('/announcements', announcementsRouter);
   api.use(blockPlatformStaff);                 // wafanyakazi wa jukwaa hawaingii data za vyama
+  api.use('/billing', billingRouter);           // Ada ya CoopLink (Meneja) — inapatikana hata chama kikiwa kimefungwa
+  api.use(feeGuard);                            // ada iliyopita tarehe bila kulipwa -> chama kimefungwa
   api.use('/users', usersRouter);
   api.use('/unions', unionsRouter);
   api.use('/amcos', amcosRouter);

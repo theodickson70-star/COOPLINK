@@ -13,6 +13,7 @@ import { audit } from '../lib/audit';
 import { effectivePermissions, isPlatformRole } from '../lib/permissions';
 import { getSetting } from '../lib/settings';
 import { decryptSecret, encryptSecret, newTotpSecret, otpauthUri, verifyTotp } from '../lib/totp';
+import { feeLock } from '../lib/fees';
 import { sendSms } from '../lib/notify';
 
 export const authRouter = Router();
@@ -98,6 +99,14 @@ authRouter.post(
       if (!a?.isActive) {
         await logLogin(req, { userId: user.id, phone: user.phone, success: false, reason: 'AMCOS_SUSPENDED' });
         throw new AppError(403, 'AMCOS_SUSPENDED', 'Chama chako kimesitishwa kwenye mfumo. Wasiliana na CoopLink.');
+      }
+      // Chama kimefungwa kwa ada ya CoopLink: Meneja pekee anaingia (kulipa); wengine wanasubiri
+      if (user.role !== 'AMCOS_ADMIN') {
+        const lock = await feeLock(user.amcosId, { fresh: true });
+        if (lock) {
+          await logLogin(req, { userId: user.id, phone: user.phone, success: false, reason: 'FEES_LOCKED' });
+          throw new AppError(403, 'FEES_LOCKED', `Chama chako kimefungwa kwa muda kwa sababu ${lock.label.toLowerCase()} ya CoopLink haijalipwa. Meneja aingie alipie — kitafunguka papo hapo.`);
+        }
       }
     }
     if (!isPlatformRole(user.role)) {

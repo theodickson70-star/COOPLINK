@@ -70,6 +70,12 @@ const MARKERS: Record<string, string[]> = {
     "select to_regclass('public.kuni_settings') is not null",
     "select to_regclass('public.kuni_loans') is not null",
   ],
+  '0010_cooplink_fees': [
+    "select to_regclass('public.platform_fees') is not null",
+    "select to_regclass('public.platform_control_numbers') is not null",
+    "select to_regclass('public.teepay_events') is not null",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'platform_payments' and column_name = 'fee_id')",
+  ],
 };
 
 interface JournalEntry { tag: string; when: number }

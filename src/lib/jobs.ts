@@ -3,6 +3,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { db, pool, schema } from '../db';
 import { runSubscriptionSweep } from './subscriptions';
+import { runFeesSweep } from './fees';
 
 const LOCK_KEY = 815_204; // nambari yoyote ya kipekee
 
@@ -50,13 +51,16 @@ async function runJobInner(name: string, fn: () => Promise<unknown>) {
   }
 }
 
-export const JOBS = { subscriptions: () => runJob('subscriptions.sweep', () => runSubscriptionSweep()) };
+export const JOBS = {
+  subscriptions: () => runJob('subscriptions.sweep', () => runSubscriptionSweep()),
+  fees: () => runJob('fees.sweep', () => runFeesSweep()),
+};
 
 export function startJobs() {
   if (process.env.DISABLE_JOBS === 'true') return;
   const first = Number(process.env.JOBS_FIRST_RUN_MS ?? 20_000);
-  setTimeout(() => void JOBS.subscriptions(), first).unref();
-  setInterval(() => void JOBS.subscriptions(), 60 * 60 * 1000).unref();
+  setTimeout(() => { void JOBS.subscriptions().then(() => JOBS.fees()); }, first).unref();
+  setInterval(() => { void JOBS.subscriptions().then(() => JOBS.fees()); }, 60 * 60 * 1000).unref();
 }
 
 export const latestJobRuns = () =>

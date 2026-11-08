@@ -8,6 +8,7 @@ import { ah, paged, paginationQuery, phoneSchema, uuidParam } from '../lib/http'
 import { badRequest, forbidden, notFound } from '../lib/errors';
 import { requireRole, ROLES } from '../middleware/auth';
 import { amcosScope, canAccessAmcos } from '../middleware/tenant';
+import { ensureEntranceFee } from '../lib/fees';
 import { audit } from '../lib/audit';
 
 export const unionsRouter = Router();
@@ -125,6 +126,7 @@ amcosRouter.post(
     }
     const row = await db.transaction(async (tx) => {
       const [a] = await tx.insert(schema.amcos).values({ ...body, code: body.code ?? (await generateAmcosCode(tx, body.name)) }).returning();
+      if (a.status === 'ACTIVE') await ensureEntranceFee(tx, a.id, req.auth!.userId);
       await audit(tx, req, { action: 'AMCOS_CREATE', entity: 'Amcos', entityId: a.id, amcosId: a.id, after: a });
       return a;
     });

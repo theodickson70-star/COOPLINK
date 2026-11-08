@@ -16,6 +16,7 @@ import { D, fmt2 } from '../lib/money';
 import { createApproval } from '../lib/approvals';
 import { stockBalance } from '../lib/stock';
 import { currentSeason } from './seasons.routes';
+import { today as darToday } from '../lib/subscriptions';  // tarehe ya Tanzania, si UTC
 import { toCsv } from './owner/common';
 
 export const storeRouter = Router();
@@ -190,7 +191,7 @@ storeRouter.get('/expiring', requireAmcosPerm('stock.read'), ah(async (req, res)
     .where(and(amcosScope(req, moves.amcosId), eq(moves.type, 'RECEIPT'), isNotNull(moves.expiryDate),
       lte(moves.expiryDate, sql`(current_date + ${days}::int)`), gte(moves.expiryDate, sql`(current_date - 365)`)))
     .orderBy(asc(moves.expiryDate)).limit(100);
-  res.json({ data: rows.map((r) => ({ ...r, expired: r.expiryDate! < new Date().toISOString().slice(0, 10) })) });
+  res.json({ data: rows.map((r) => ({ ...r, expired: r.expiryDate! < darToday() })) });
 }));
 
 storeRouter.get('/stock.csv', requireAmcosPerm('reports.stock'), ah(async (req, res) => {

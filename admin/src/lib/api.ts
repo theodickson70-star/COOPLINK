@@ -60,6 +60,8 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
       window.dispatchEvent(new Event('cl:logout'));
     }
     if (e.code === 'PASSWORD_CHANGE_REQUIRED') window.dispatchEvent(new Event('cl:password-change'));
+    // Chama kimefungwa kwa ada ya CoopLink (isipokuwa wakati wa kuingia — ukurasa wa kuingia unaonyesha ujumbe wenyewe)
+    if (e.code === 'FEES_LOCKED' && path !== '/auth/login') window.dispatchEvent(new CustomEvent('cl:fees-locked', { detail: e.message }));
     if (e.code === 'MAINTENANCE') window.dispatchEvent(new CustomEvent('cl:maintenance', { detail: e.message }));
     let message: string = e.message ?? `Hitilafu (${res.status})`;
     if (e.code === 'VALIDATION_ERROR' && Array.isArray(e.details) && e.details.length) {

@@ -21,6 +21,7 @@ import { onPayroll } from './payroll';
 import { onAssetDisposal } from './assets';
 import { onOpeningBalance, onPeriodClose, onYearEndClose } from './closing';
 import { onGroupChange, onGroupRegistration } from './groups';
+import { today as darToday } from './subscriptions';  // tarehe ya Tanzania, si UTC
 import { onKuniBatch, reverseKuniPayment } from './kuni';
 
 type ApprovalType = (typeof schema.approvalTypeEnum.enumValues)[number];
@@ -186,7 +187,7 @@ async function reverseOne(tx: Tx, req: Request, a: Approval, orig: typeof schema
   const [rev] = await tx.insert(T).values({
     amcosId: orig.amcosId, seasonId: orig.seasonId, txnNo: await nextTxnNo(tx, a.amcosId, amcos.code), kind: 'REVERSAL',
     direction: orig.direction === 'IN' ? 'OUT' : 'IN', category: orig.category, accountId: orig.accountId, amount: orig.amount,
-    txnDate: new Date().toISOString().slice(0, 10), description: `Kusahihisha ${orig.txnNo}: ${a.reason ?? ''}`.trim(),
+    txnDate: darToday(), description: `Kusahihisha ${orig.txnNo}: ${a.reason ?? ''}`.trim(),
     reference: orig.txnNo, payee: orig.payee, memberId: orig.memberId, supplierId: orig.supplierId, purchaseRequestId: orig.purchaseRequestId,
     contraGlAccountId: orig.contraGlAccountId, transferGroupId: orig.transferGroupId, marketId: orig.marketId,
     status: 'POSTED', approvalId: a.id, reversalOfId: orig.id, createdById: a.requestedById, postedById: req.auth!.userId, postedAt: new Date(),

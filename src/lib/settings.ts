@@ -9,6 +9,16 @@ export interface PlatformConfig {
   enforceSubscriptions: boolean; // kusitisha chama baada ya kuisha + grace
   currency: 'TZS' | 'USD';
 }
+/** Ada za CoopLink (zinabadilishwa na Owner). Kiasi ni TSh. */
+export interface FeeConfig {
+  enabled: boolean;            // vyama vipya vinadaiwa kingilio vikifunguliwa
+  entranceFee: number;         // ada ya kingilio (mara moja)
+  entranceDays: number;        // siku za kulipa kingilio baada ya kufunguliwa
+  seasonFee: number;           // ada ya msimu
+  seasonInstallments: number;  // awamu (sawa kwa sawa)
+  deadlineMonth: number;       // mwisho wa kulipa ada ya msimu: mwezi
+  deadlineDay: number;         //   na siku (15/10)
+}
 export interface Maintenance { enabled: boolean; message: string }
 export interface Banner { enabled: boolean; message: string; tone: 'info' | 'warn' }
 export interface BusinessProfile {
@@ -18,6 +28,7 @@ export interface BusinessProfile {
 
 export const DEFAULTS = {
   config: { defaultTrialDays: 14, defaultGraceDays: 7, expiringWindowDays: 14, enforceSubscriptions: true, currency: 'TZS' } as PlatformConfig,
+  fees: { enabled: true, entranceFee: 45000, entranceDays: 3, seasonFee: 700000, seasonInstallments: 2, deadlineMonth: 10, deadlineDay: 15 } as FeeConfig,
   maintenance: { enabled: false, message: 'Mfumo uko kwenye matengenezo. Tafadhali jaribu tena baadaye.' } as Maintenance,
   banner: { enabled: false, message: '', tone: 'info' } as Banner,
   'business.profile': {

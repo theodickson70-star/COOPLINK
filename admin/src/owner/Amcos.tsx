@@ -7,6 +7,7 @@ import { date, dateTime, phone, STAFF_DUTY } from '../lib/format';
 import { Alert, Button, Empty, Input, Loading, Modal, PageHead, Pager, Select, SelectField, TextField } from '../components/ui';
 import { ConfirmDialog, money, nfmt, Pill, Section } from '../components/owner-ui';
 import { AssignPlanModal, type Plan } from './Subscriptions';
+import { AmcosFeesSection } from './Fees';
 import { RecordPaymentModal } from './Finance';
 
 interface Row {
@@ -245,6 +246,10 @@ export function OwnerAmcosDetail() {
         </Section>
         <StaffSlots amcosId={a.id} disabled={a.status === 'REJECTED'} />
       </div>
+
+      {has('subscriptions.read') && a.status !== 'PENDING' && a.status !== 'REJECTED' && (
+        <div style={{ marginBottom: 16 }}><AmcosFeesSection amcosId={a.id} active={a.status === 'ACTIVE' || a.status === 'SUSPENDED'} /></div>
+      )}
 
       {has('subscriptions.read') && (
         <div style={{ marginBottom: 16 }}>

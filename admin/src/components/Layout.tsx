@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Link, Navigate, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth, ROLE_GROUPS, type AmcosPermission, type Role } from '../lib/auth';
 import { useFetch } from '../lib/hooks';
 import { NavIndicator, useNavIndicator } from './NavIndicator';
@@ -8,6 +8,8 @@ import { ROLE_LABEL } from '../lib/format';
 import { LogoMark, Wordmark } from './Logo';
 import { Button } from './ui';
 import { AnnouncementBar, MaintenanceOverlay, SystemBanner } from './Notices';
+import type { BillingData } from '../pages/Billing';
+import { date, tsh } from '../lib/format';
 
 const I = {
   home: <path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />,
@@ -82,6 +84,7 @@ const NAV: { section?: string; items: NavItem[] }[] = [
     section: 'Usimamizi',
     items: [
       { to: '/users', label: 'Watumishi', icon: I.users, roles: ['SUPER_ADMIN', 'UNION_ADMIN', 'AMCOS_ADMIN'] },
+      { to: '/billing', label: 'Ada ya CoopLink', icon: I.wallet, roles: ['AMCOS_ADMIN'] },
       { to: '/organizations', label: 'Vyama na Misimu', icon: I.org, roles: ROLE_GROUPS.ORGS },
       { to: '/audit', label: 'Kumbukumbu (Audit)', icon: I.audit, perm: ['audit.read'] },
     ],
@@ -116,8 +119,21 @@ export function Layout() {
   const [open, setOpen] = useState(false);
   const loc = useLocation();
   useEffect(() => setOpen(false), [loc.pathname]);
+  // Ada ya CoopLink: Meneja anaona hali yake; chama kikifungwa, Meneja anabaki kwenye ukurasa wa malipo tu
+  const isMgr = user?.role === 'AMCOS_ADMIN';
+  const fees = useFetch<BillingData>(isMgr ? '/billing' : null);
+  const [lockMsg, setLockMsg] = useState<string | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => { setLockMsg((e as CustomEvent<string>).detail); fees.reload(); };
+    window.addEventListener('cl:fees-locked', on);
+    return () => window.removeEventListener('cl:fees-locked', on);
+  }, [fees.reload]);
+  useEffect(() => { if (isMgr && loc.pathname.startsWith('/billing')) fees.reload(); }, [loc.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!user) return null;
   const multi = !user.amcosId;
+  const feeLocked = isMgr ? !!fees.data?.lock : !!lockMsg;
+  if (isMgr && feeLocked && !loc.pathname.startsWith('/billing')) return <Navigate to="/billing" replace />;
+  const due = isMgr && !feeLocked ? fees.data?.fees.find((f) => (f.status === 'UNPAID' || f.status === 'PARTIAL') && (Date.parse(f.dueDate) - Date.now()) / 86_400_000 <= 30) : undefined;
 
   return (
     <div className="shell">
@@ -132,7 +148,7 @@ export function Layout() {
         <nav className="nav nav-animated" ref={navRef}>
           <NavIndicator box={indicator} />
           {(() => { let n = 0; return NAV.map((g, i) => {
-            const items = g.items.filter((it) => (!it.roles || can(...it.roles)) && (!it.perm || may(...it.perm)));
+            const items = g.items.filter((it) => (!it.roles || can(...it.roles)) && (!it.perm || may(...it.perm)) && (!feeLocked || it.to === '/billing'));
             if (!items.length) return null;
             return (
               <div key={i} style={{ display: 'contents' }}>
@@ -166,7 +182,19 @@ export function Layout() {
         <SystemBanner />
         <main className="content">
           {user.amcosId && <AnnouncementBar />}
-          <Outlet />
+          {due && !loc.pathname.startsWith('/billing') && (
+            <div className="fee-banner">
+              <span><strong>{due.label}</strong>: salio {tsh(due.outstanding)}, mwisho wa kulipa {date(due.dueDate)}. Ada isipolipwa kufikia tarehe hiyo, chama kitafungwa.</span>
+              <Link className="btn btn-primary btn-sm" to="/billing">Lipa sasa</Link>
+            </div>
+          )}
+          {!isMgr && lockMsg ? (
+            <section className="card lock-screen">
+              <h2>Chama kimefungwa kwa muda</h2>
+              <p>{lockMsg}</p>
+              <Button onClick={logout}>Toka</Button>
+            </section>
+          ) : <Outlet />}
         </main>
       </div>
       <MaintenanceOverlay />

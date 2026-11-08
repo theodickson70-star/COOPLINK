@@ -779,10 +779,70 @@ export const platformPayments = pgTable('platform_payments', {
   refundedAt: timestamp({ withTimezone: true }),
   refundReason: text(),
   notes: text(),
+  feeId: uuid(),                      // ada ya CoopLink (kingilio/msimu) iliyolipiwa
+  controlNumberId: uuid(),            // control number ya TeePay iliyotumika
   createdById: uuid(),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
-}, (t) => [index().on(t.amcosId), index().on(t.status, t.paidAt)]);
+}, (t) => [index().on(t.amcosId), index().on(t.status, t.paidAt), index().on(t.feeId)]);
+
+// ---------------------------------------------------------------------
+//  ADA ZA COOPLINK: kingilio (mara moja) + ada ya msimu (kila mwaka, mwisho 15/10)
+//  Zinalipwa kwa control number ya TeePay TU. Chama kinafungwa ada ikipita tarehe bila kulipwa,
+//  na kinafunguka papo hapo malipo yakithibitishwa na TeePay.
+// ---------------------------------------------------------------------
+export const platformFeeKindEnum = pgEnum('platform_fee_kind', ['ENTRANCE', 'SEASON']);
+export const platformFeeStatusEnum = pgEnum('platform_fee_status', ['UNPAID', 'PARTIAL', 'PAID', 'WAIVED']);
+export const controlNumberStatusEnum = pgEnum('control_number_status', ['ISSUING', 'ISSUED', 'PAID', 'FAILED']);
+
+export const platformFees = pgTable('platform_fees', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  kind: platformFeeKindEnum().notNull(),
+  label: text().notNull(),            // mf. "Ada ya kingilio" / "Ada ya msimu 2026/2027"
+  amount: money().notNull(),
+  installments: integer().notNull().default(1),
+  paid: money().notNull().default('0'),
+  dueDate: date().notNull(),          // chama kinafungwa baada ya tarehe hii kama haijalipwa yote
+  status: platformFeeStatusEnum().notNull().default('UNPAID'),
+  paidAt: timestamp({ withTimezone: true }),
+  waivedById: uuid(),
+  waivedReason: text(),
+  createdById: uuid(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [
+  index().on(t.amcosId, t.status),
+  uniqueIndex('platform_fees_one_entrance').on(t.amcosId).where(sql`kind = 'ENTRANCE'`),
+  uniqueIndex('platform_fees_one_season').on(t.amcosId, t.dueDate).where(sql`kind = 'SEASON'`),
+]);
+
+export const platformControlNumbers = pgTable('platform_control_numbers', {
+  id: id(),
+  feeId: uuid().notNull().references(() => platformFees.id),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  amount: money().notNull(),
+  amountMinor: text().notNull(),
+  idempotencyKey: text().notNull().unique(),
+  request: jsonb().notNull(),         // ombi lililotumwa TeePay — linarudiwa NENO KWA NENO na Idempotency-Key ileile
+  teepayId: text().unique(),
+  number: text(),
+  status: controlNumberStatusEnum().notNull().default('ISSUING'),
+  collectedMinor: text().notNull().default('0'),
+  lastError: text(),
+  lastSyncedAt: timestamp({ withTimezone: true }),
+  paidAt: timestamp({ withTimezone: true }),
+  createdById: uuid(),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.feeId), index().on(t.status)]);
+
+// Kila tukio la webhook ya TeePay linaandikwa mara moja tu (X-TeePay-Event-ID)
+export const teepayEvents = pgTable('teepay_events', {
+  id: text().primaryKey(),
+  type: text().notNull(),
+  payload: jsonb().notNull(),
+  receivedAt: createdAt(),
+});
 
 export const platformExpenses = pgTable('platform_expenses', {
   id: id(),

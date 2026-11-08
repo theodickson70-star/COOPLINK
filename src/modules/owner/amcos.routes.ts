@@ -8,6 +8,7 @@ import { badRequest, conflict, forbidden, notFound } from '../../lib/errors';
 import { requirePermission, requireReauth } from '../../middleware/auth';
 import { audit } from '../../lib/audit';
 import { assignPlan, currentSubscription, today } from '../../lib/subscriptions';
+import { ensureEntranceFee } from '../../lib/fees';
 import { hashPassword, passwordSchemaRule, tempPassword } from '../../lib/security';
 import { generateAmcosCode } from '../../lib/amcos-code';
 import { AMCOS_STAFF_ROLES, STAFF_TITLE, type AmcosStaffRole } from '../../lib/amcos-permissions';
@@ -113,6 +114,7 @@ ownerAmcosRouter.post(
         approvedById: activate ? req.auth!.userId : null, approvedAt: activate ? new Date() : null,
       }).returning();
       if (plan) await assignPlan(tx, { amcosId: a.id, plan, cycle: 'TRIAL', startDate: today(), discountPercent: '0', userId: req.auth!.userId });
+      if (activate) await ensureEntranceFee(tx, a.id, req.auth!.userId); // ada ya kingilio inaanza kuhesabiwa chama kikifunguliwa
       await audit(tx, req, { action: 'AMCOS_REGISTER', entity: 'Amcos', entityId: a.id, amcosId: a.id, after: a });
       let mgr: { id: string; fullName: string; phone: string } | null = null;
       if (manager && managerHash) {
@@ -187,6 +189,7 @@ ownerAmcosRouter.post(
         .where(and(eq(A.id, id), eq(A.status, 'PENDING'))).returning();
       if (!a) throw conflict('Imebadilishwa na mtu mwingine, jaribu tena');
       if (plan) await assignPlan(tx, { amcosId: id, plan, cycle: 'TRIAL', startDate: today(), discountPercent: '0', userId: req.auth!.userId });
+      await ensureEntranceFee(tx, id, req.auth!.userId);
       await audit(tx, req, { action: 'AMCOS_APPROVE', entity: 'Amcos', entityId: id, amcosId: id, before: { status: before.status }, after: { status: 'ACTIVE', trialPlanId } });
       return a;
     });

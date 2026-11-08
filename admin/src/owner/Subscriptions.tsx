@@ -7,6 +7,7 @@ import { date } from '../lib/format';
 import { Alert, Button, Empty, Field, Input, Loading, Modal, PageHead, Pager, Select, SelectField, TextField, Textarea } from '../components/ui';
 import { ConfirmDialog, money, nfmt, Pill, Tabs } from '../components/owner-ui';
 import { RecordPaymentModal } from './Finance';
+import { OwnerFees } from './Fees';
 
 export interface Plan {
   id: string; name: string; code: string; description: string | null; monthlyPrice: string; annualPrice: string; currency: string;
@@ -19,12 +20,12 @@ interface SubRow {
 }
 
 export function OwnerSubscriptions() {
-  const [tab, setTab] = useState<'subs' | 'plans'>('subs');
+  const [tab, setTab] = useState<'subs' | 'plans' | 'fees'>(new URLSearchParams(window.location.search).get('tab') === 'fees' ? 'fees' : 'subs');
   return (
     <>
       <PageHead title="Subscriptions & Pricing" sub="Mipango ya bei inabadilishwa hapa — hakuna haja ya kubadilisha code" />
-      <Tabs value={tab} onChange={setTab} items={[['subs', 'Subscriptions'], ['plans', 'Mipango na bei']]} />
-      {tab === 'plans' ? <Plans /> : <Subs />}
+      <Tabs value={tab} onChange={setTab} items={[['fees', 'Ada (kingilio & msimu)'], ['subs', 'Subscriptions'], ['plans', 'Mipango na bei']]} />
+      {tab === 'fees' ? <OwnerFees /> : tab === 'plans' ? <Plans /> : <Subs />}
     </>
   );
 }

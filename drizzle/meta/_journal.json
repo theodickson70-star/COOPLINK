@@ -71,6 +71,13 @@
       "when": 1794164399733,
       "tag": "0009_pesa_ya_kuni",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794171944932,
+      "tag": "0010_cooplink_fees",
+      "breakpoints": true
     }
   ]
 }
