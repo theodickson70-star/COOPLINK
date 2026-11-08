@@ -19,6 +19,10 @@ import { membersRouter } from './modules/members.routes';
 import { estimatesRouter } from './modules/estimates.routes';
 import { inputsRouter, inputIssuesRouter } from './modules/inputs.routes';
 import { reportsRouter, auditRouter } from './modules/reports.routes';
+import { approvalsRouter } from './modules/approvals.routes';
+import { financeRouter } from './modules/finance.routes';
+import { storeRouter } from './modules/store.routes';
+import { workspaceRouter } from './modules/workspace.routes';
 import { superAdminStatus } from './lib/super-admin';
 
 // Toleo la mfumo (kutoka package.json) — linaonekana kwenye /health
@@ -70,6 +74,10 @@ export function createApp() {
   api.use('/input-issues', inputIssuesRouter);
   api.use('/reports', reportsRouter);
   api.use('/audit-logs', auditRouter);
+  api.use('/approvals', approvalsRouter);       // Idhini za Meneja
+  api.use('/finance', financeRouter);           // Fedha za chama (Mhasibu)
+  api.use('/store', storeRouter);               // Stoo, manunuzi, wazabuni (Stokipa)
+  api.use('/workspace', workspaceRouter);       // Dashibodi za watumishi
 
   app.use('/api/v1', api);
 
@@ -80,7 +88,8 @@ export function createApp() {
   if (fs.existsSync(path.join(adminDir, 'index.html'))) {
     app.use('/assets', express.static(path.join(adminDir, 'assets'), { maxAge: '1y', immutable: true }));
     app.use('/assets', (_req, res) => res.status(404).end()); // faili la zamani lisirudishe index.html
-    app.use(express.static(adminDir, { index: false, maxAge: '1h' }));
+    // redirect:false — /login isiende /login/ (kuna folda ya picha za login)
+    app.use(express.static(adminDir, { index: false, maxAge: '1h', redirect: false }));
     // Kurasa kama /members/123 zinarudisha index.html (React Router inashughulikia)
     app.get(/^\/(?!api\/|health$).*/, (_req, res) => {
       res.setHeader('Cache-Control', 'no-cache');

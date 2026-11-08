@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api, type Paged } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
 import { dateTime, fullName, num, tsh, UNIT_LABEL } from '../lib/format';
-import { useAuth, ROLE_GROUPS } from '../lib/auth';
+import { useAuth } from '../lib/auth';
 import { Alert, Badge, Button, clientRef, Empty, Loading, MemberPicker, Modal, PageHead, Pager, Select, TextField, type MemberLite } from '../components/ui';
 
 interface Issue {
@@ -13,20 +13,20 @@ interface Issue {
 }
 
 export function InputIssues() {
-  const { can } = useAuth();
+  const { may } = useAuth();
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
   const { data, loading, error } = useFetch<Paged<Issue>>('/input-issues', { status, page, pageSize: 25 });
   return (
     <>
       <PageHead title="Utoaji wa Pembejeo" sub="Pembejeo zilizotolewa kwa mkopo. Kila utoaji unaingia kwenye deni la mkulima.">
-        {can(...ROLE_GROUPS.STAFF) && <Link className="btn btn-gold" to="/input-issues/new">+ Toa pembejeo</Link>}
+        {may('issues.request') && <Link className="btn btn-gold" to="/input-issues/new">+ Andaa ugawaji</Link>}
       </PageHead>
       <Alert>{error}</Alert>
       <section className="card">
         <div className="toolbar">
           <Select aria-label="Hali" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
-            <option value="">Hali zote</option><option value="ISSUED">Imetolewa</option><option value="CANCELLED">Imefutwa</option>
+            <option value="">Hali zote</option><option value="PENDING_APPROVAL">Inasubiri idhini</option><option value="ISSUED">Imetolewa</option><option value="REJECTED">Imekataliwa</option><option value="CANCELLED">Imefutwa</option>
           </Select>
         </div>
         {loading && !data ? <Loading /> : data?.data.length === 0 ? <Empty>Bado hakuna utoaji wa pembejeo.</Empty> : (
@@ -133,7 +133,7 @@ export function InputIssueNew() {
           <TextField label="Maelezo" value={notes} onChange={setNotes} />
         </section>
         <div className="actions">
-          <Button variant="gold" busy={busy} disabled={!valid} onClick={save} style={{ minHeight: 48 }}>Thibitisha na toa pembejeo</Button>
+          <Button variant="gold" busy={busy} disabled={!valid} onClick={save} style={{ minHeight: 48 }}>Tuma kwa Meneja kwa idhini</Button>
           <Link className="btn btn-secondary" to="/input-issues">Ghairi</Link>
         </div>
       </div>
@@ -143,7 +143,7 @@ export function InputIssueNew() {
 
 export function InputIssueDetail() {
   const { id } = useParams();
-  const { can } = useAuth();
+  const { may } = useAuth();
   const { data, loading, error, reload } = useFetch<{ issue: Issue }>(`/input-issues/${id}`);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reason, setReason] = useState('');
@@ -162,8 +162,11 @@ export function InputIssueDetail() {
     <>
       <PageHead title={`Utoaji ${i.issueNo}`} sub={<><Badge status={i.status} /> · {dateTime(i.issuedAt)}</>}>
         <Button variant="secondary" className="no-print" onClick={() => window.print()}>Chapisha risiti</Button>
-        {i.status === 'ISSUED' && can(...ROLE_GROUPS.MANAGERS) && <Button variant="danger" className="no-print" onClick={() => setCancelOpen(true)}>Futa utoaji</Button>}
+        {i.status === 'ISSUED' && may('issues.cancel') && <Button variant="danger" className="no-print" onClick={() => setCancelOpen(true)}>Futa utoaji</Button>}
+        {i.status === 'PENDING_APPROVAL' && may('approvals.decide') && <Link className="btn btn-primary no-print" to="/approvals">Amua kwenye Idhini</Link>}
       </PageHead>
+      {i.status === 'PENDING_APPROVAL' && <div style={{ marginBottom: 16 }}><Alert kind="warn">Ugawaji huu unasubiri idhini ya Meneja. Stoo na deni la mkulima vitabadilika baada ya idhini.</Alert></div>}
+      {i.status === 'REJECTED' && <div style={{ marginBottom: 16 }}><Alert kind="warn">Ugawaji huu umekataliwa: {i.cancelReason}. Stoo haikubadilika.</Alert></div>}
       {i.status === 'CANCELLED' && <div style={{ marginBottom: 16 }}><Alert kind="warn">Utoaji huu umefutwa: {i.cancelReason}. Stoo ilirudishwa na deni likafutwa kwa REVERSAL.</Alert></div>}
       <section className="card">
         <div className="card-pad" style={{ paddingBottom: 0 }}>

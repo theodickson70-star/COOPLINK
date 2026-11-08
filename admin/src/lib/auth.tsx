@@ -9,7 +9,15 @@ export type Permission =
   | 'platform.dashboard' | 'amcos.read' | 'amcos.create' | 'amcos.approve' | 'amcos.suspend'
   | 'subscriptions.read' | 'subscriptions.manage' | 'finance.read' | 'finance.manage' | 'staff.manage'
   | 'system.read' | 'system.manage' | 'comms.read' | 'comms.send' | 'security.read' | 'security.manage'
-  | 'backup.read' | 'backup.manage' | 'business.read' | 'business.manage';
+  | 'backup.read' | 'backup.manage' | 'business.read' | 'business.manage' | 'amcos.staff';
+
+/** Ruhusa za watumishi wa AMCOS (zinatoka backend kwenye /auth/me; backend inazikagua tena kila ombi). */
+export type AmcosPermission =
+  | 'members.read' | 'members.write' | 'members.approve' | 'estimates.write' | 'estimates.approve' | 'ledger.read'
+  | 'stock.read' | 'products.manage' | 'prices.manage' | 'stock.receive' | 'stock.adjust.request' | 'issues.request' | 'issues.cancel'
+  | 'suppliers.manage' | 'purchases.request' | 'purchases.receive'
+  | 'finance.read' | 'finance.record' | 'finance.post' | 'finance.accounts'
+  | 'approvals.read' | 'approvals.decide' | 'staff.read' | 'audit.read' | 'reports.finance' | 'reports.stock';
 
 export interface User {
   id: string;
@@ -23,6 +31,7 @@ export interface User {
   mustChangePassword: boolean;
   totpEnabled: boolean;
   permissions: Permission[];
+  amcosPermissions: AmcosPermission[];
 }
 export interface Amcos { id: string; name: string; code: string; district?: string | null }
 
@@ -46,6 +55,8 @@ interface AuthState {
   refresh: () => Promise<void>;
   can: (...roles: Role[]) => boolean;
   has: (...perms: Permission[]) => boolean;
+  /** Ruhusa ya ndani ya chama (Meneja / Mhasibu / Stokipa). */
+  may: (...perms: AmcosPermission[]) => boolean;
 }
 
 const Ctx = createContext<AuthState | null>(null);
@@ -117,8 +128,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const can = (...roles: Role[]) => !!user && roles.flat().includes(user.role);
   const has = (...perms: Permission[]) => !!user && perms.some((p) => user.permissions?.includes(p));
+  const may = (...perms: AmcosPermission[]) => !!user && perms.some((p) => user.amcosPermissions?.includes(p));
 
-  return <Ctx.Provider value={{ user, amcos, loading, login, verify2fa, logout, changePassword, refresh, can, has }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ user, amcos, loading, login, verify2fa, logout, changePassword, refresh, can, has, may }}>{children}</Ctx.Provider>;
 }
 
 export function useAuth() {

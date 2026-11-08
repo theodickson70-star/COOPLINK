@@ -5,7 +5,7 @@ import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { db, schema } from '../db';
 import { ah, decimalSchema, paged, paginationQuery, uuidParam } from '../lib/http';
 import { badRequest, conflict, notFound } from '../lib/errors';
-import { requireRole, ROLES } from '../middleware/auth';
+import { requireAmcosPerm } from '../middleware/auth';
 import { amcosScope } from '../middleware/tenant';
 import { audit } from '../lib/audit';
 import { findMemberScoped } from './members.routes';
@@ -80,7 +80,7 @@ const estimateBody = z.object({
 
 estimatesRouter.post(
   '/',
-  requireRole(ROLES.AMCOS_STAFF),
+  requireAmcosPerm('estimates.write'),
   ah(async (req, res) => {
     const body = estimateBody.extend({ memberId: z.string().uuid(), seasonId: z.string().uuid().optional() }).parse(req.body);
     const member = await findMemberScoped(req, body.memberId);
@@ -108,7 +108,7 @@ estimatesRouter.post(
 
 estimatesRouter.patch(
   '/:id',
-  requireRole(ROLES.AMCOS_STAFF),
+  requireAmcosPerm('estimates.write'),
   ah(async (req, res) => {
     const { id } = uuidParam.parse(req.params);
     const body = estimateBody.partial().parse(req.body);
@@ -131,7 +131,7 @@ estimatesRouter.patch(
 for (const action of ['approve', 'reject'] as const) {
   estimatesRouter.post(
     `/:id/${action}`,
-    requireRole(ROLES.AMCOS_MANAGERS),
+    requireAmcosPerm('estimates.approve'),
     ah(async (req, res) => {
       const { id } = uuidParam.parse(req.params);
       const before = await findEstimateScoped(req, id);

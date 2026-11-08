@@ -62,8 +62,8 @@ export function Alert({ kind = 'error', children }: { kind?: 'error' | 'ok' | 'w
 }
 
 export function Badge({ status, label }: { status: string; label?: string }) {
-  const tone = ['ACTIVE', 'APPROVED', 'ISSUED'].includes(status) ? 'ok'
-    : ['DRAFT', 'PLANNING', 'MARKETING', 'SUSPENDED'].includes(status) ? 'warn'
+  const tone = ['ACTIVE', 'APPROVED', 'ISSUED', 'POSTED', 'RECEIVED'].includes(status) ? 'ok'
+    : ['DRAFT', 'PLANNING', 'MARKETING', 'SUSPENDED', 'PENDING', 'PENDING_APPROVAL', 'PARTIALLY_RECEIVED'].includes(status) ? 'warn'
     : ['REJECTED', 'CANCELLED', 'DECEASED'].includes(status) ? 'bad' : 'neutral';
   return <span className={`badge badge-${tone}`}>{label ?? STATUS_LABEL[status] ?? status}</span>;
 }

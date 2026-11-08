@@ -11,13 +11,15 @@ import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, schema, type DbOrTx } from '../db';
 import { ah, decimalSchema, paged, paginationQuery, uuidParam } from '../lib/http';
 import { AppError, badRequest, conflict, notFound } from '../lib/errors';
-import { requireRole, ROLES } from '../middleware/auth';
+import { requireAmcosPerm } from '../middleware/auth';
 import { amcosScope, resolveWriteAmcosId } from '../middleware/tenant';
 import { audit } from '../lib/audit';
 import { nextNumber, pad } from '../lib/counter';
 import * as ledger from '../lib/ledger';
 import { D, fmt2 } from '../lib/money';
 import { findMemberScoped } from './members.routes';
+import { lockItems, stockBalance } from '../lib/stock';
+import { createApproval } from '../lib/approvals';
 import { currentSeason } from './seasons.routes';
 
 export const inputsRouter = Router();
@@ -41,27 +43,12 @@ async function findItemScoped(req: Request, id: string) {
   return row;
 }
 
-/** Salio la stoo la bidhaa moja kwa msimu. */
-async function stockBalance(tx: DbOrTx, amcosId: string, seasonId: string, inputItemId: string) {
-  const [r] = await tx
-    .select({ qty: sql<string>`coalesce(sum(${moves.quantity}), 0)` })
-    .from(moves)
-    .where(and(eq(moves.amcosId, amcosId), eq(moves.seasonId, seasonId), eq(moves.inputItemId, inputItemId)));
-  return D(r.qty);
-}
-
-/** Funga bidhaa hizi kwa muda wa transaction — watu wawili wasitoe stoo ile ile kwa wakati mmoja. */
-async function lockItems(tx: DbOrTx, amcosId: string, itemIds: string[]) {
-  for (const id of [...new Set(itemIds)].sort()) {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${amcosId + ':' + id}))`);
-  }
-}
-
 // ------------------------------ AINA ZA PEMBEJEO ------------------------------
 const itemBody = z.object({
   name: z.string().trim().min(2),
   category: z.enum(schema.inputCategoryEnum.enumValues),
   unit: z.enum(schema.inputUnitEnum.enumValues),
+  reorderLevel: decimalSchema({ min: 0 }).nullable().optional(),
 });
 
 inputsRouter.get(
@@ -77,7 +64,7 @@ inputsRouter.get(
 
 inputsRouter.post(
   '/items',
-  requireRole(ROLES.AMCOS_MANAGERS),
+  requireAmcosPerm('products.manage'),
   ah(async (req, res) => {
     const body = itemBody.extend({ amcosId: z.string().uuid().optional() }).parse(req.body);
     const amcosId = await resolveWriteAmcosId(req, body.amcosId);
@@ -92,7 +79,7 @@ inputsRouter.post(
 
 inputsRouter.patch(
   '/items/:id',
-  requireRole(ROLES.AMCOS_MANAGERS),
+  requireAmcosPerm('products.manage'),
   ah(async (req, res) => {
     const { id } = uuidParam.parse(req.params);
     const body = itemBody.partial().extend({ isActive: z.boolean().optional() }).parse(req.body);
@@ -125,7 +112,7 @@ inputsRouter.get(
 // Weka au badilisha bei. Bei mpya haiathiri pembejeo zilizokwisha tolewa (kila issue inahifadhi bei yake).
 inputsRouter.put(
   '/prices',
-  requireRole(ROLES.AMCOS_MANAGERS),
+  requireAmcosPerm('prices.manage'),
   ah(async (req, res) => {
     const body = z.object({ seasonId: z.string().uuid().optional(), inputItemId: z.string().uuid(), unitPrice: decimalSchema({ min: 0.01 }) }).parse(req.body);
     const item = await findItemScoped(req, body.inputItemId);
@@ -162,11 +149,15 @@ inputsRouter.get(
         issued: sql<string>`abs(coalesce(sum(${moves.quantity}) filter (where ${moves.type} = 'ISSUE'), 0))`,
         returned: sumIf('RETURN'),
         adjusted: sumIf('ADJUSTMENT'),
+        damaged: sql<string>`abs(coalesce(sum(${moves.quantity}) filter (where ${moves.type} = 'DAMAGE'), 0))`,
+        expired: sql<string>`abs(coalesce(sum(${moves.quantity}) filter (where ${moves.type} = 'EXPIRY'), 0))`,
         balance: sql<string>`coalesce(sum(${moves.quantity}), 0)`,
+        reorderLevel: items.reorderLevel,
+        low: sql<boolean>`${items.reorderLevel} is not null and coalesce(sum(${moves.quantity}), 0) <= ${items.reorderLevel}`,
       })
       .from(moves).innerJoin(items, eq(items.id, moves.inputItemId))
       .where(and(amcosScope(req, moves.amcosId), eq(moves.seasonId, season.id)))
-      .groupBy(moves.inputItemId, items.name, items.unit)
+      .groupBy(moves.inputItemId, items.name, items.unit, items.reorderLevel)
       .orderBy(asc(items.name));
     res.json({ data: rows });
   }),
@@ -196,17 +187,25 @@ const stockBody = z.object({
   notes: z.string().trim().optional(),
 });
 
+// Mzigo usiotokana na manunuzi ya chama (mf. pembejeo kutoka Chama Kikuu / mnunuzi). Namba ya hati (delivery note) inahitajika.
 inputsRouter.post(
   '/stock/receipts',
-  requireRole(ROLES.AMCOS_STAFF),
+  requireAmcosPerm('stock.receive'),
   ah(async (req, res) => {
-    const body = stockBody.extend({ quantity: decimalSchema({ min: 0.01 }) }).parse(req.body);
+    const body = stockBody.extend({
+      quantity: decimalSchema({ min: 0.01 }),
+      reference: z.string().trim().min(2, 'Weka namba ya hati ya mzigo (delivery note)'),
+      batchNo: z.string().trim().nullable().optional(),
+      expiryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+      supplierId: z.string().uuid().nullable().optional(),
+    }).parse(req.body);
     const item = await findItemScoped(req, body.inputItemId);
     const season = await resolveOpenSeason(body.seasonId);
     const movement = await db.transaction(async (tx) => {
       const [row] = await tx.insert(moves).values({
         amcosId: item.amcosId, seasonId: season.id, inputItemId: item.id, type: 'RECEIPT',
         quantity: body.quantity, reference: body.reference, notes: body.notes, createdById: req.auth!.userId,
+        batchNo: body.batchNo ?? null, expiryDate: body.expiryDate ?? null, supplierId: body.supplierId ?? null,
       }).returning();
       await audit(tx, req, { action: 'STOCK_RECEIPT', entity: 'StockMovement', entityId: row.id, amcosId: item.amcosId, after: row });
       return row;
@@ -215,27 +214,32 @@ inputsRouter.post(
   }),
 );
 
-// Marekebisho ya stoo (mf. hesabu ya stoo imeonyesha upungufu). Sababu ni lazima.
+// Marekebisho ya stoo: Stokipa ANAOMBA, Meneja anaidhinisha. Stoo HAIBADILIKI kabla ya idhini.
+//   kind: ADJUSTMENT (hesabu), DAMAGE (zimeharibika), EXPIRY (muda umeisha)
+const ADJ_LABEL = { ADJUSTMENT: 'Marekebisho', DAMAGE: 'Zimeharibika', EXPIRY: 'Muda umeisha' } as const;
 inputsRouter.post(
   '/stock/adjustments',
-  requireRole(ROLES.AMCOS_MANAGERS),
+  requireAmcosPerm('stock.adjust.request'),
   ah(async (req, res) => {
-    const body = stockBody.extend({ quantity: decimalSchema({ allowNegative: true }), notes: z.string().trim().min(5, 'Eleza sababu ya marekebisho') }).parse(req.body);
+    const body = stockBody.extend({
+      quantity: decimalSchema({ allowNegative: true }),
+      kind: z.enum(['ADJUSTMENT', 'DAMAGE', 'EXPIRY']).default('ADJUSTMENT'),
+      batchNo: z.string().trim().nullable().optional(),
+      notes: z.string().trim().min(5, 'Eleza sababu ya marekebisho'),
+    }).parse(req.body);
     if (D(body.quantity).isZero()) throw badRequest('Kiasi hakiwezi kuwa sifuri');
+    if (body.kind !== 'ADJUSTMENT' && D(body.quantity).isPos()) throw badRequest('Bidhaa zilizoharibika/kuisha muda zinapunguza stoo (kiasi hasi)');
     const item = await findItemScoped(req, body.inputItemId);
     const season = await resolveOpenSeason(body.seasonId);
-    const movement = await db.transaction(async (tx) => {
-      await lockItems(tx, item.amcosId, [item.id]);
-      const bal = await stockBalance(tx, item.amcosId, season.id, item.id);
-      if (bal.plus(body.quantity).isNeg()) throw badRequest(`Stoo haitoshi. Salio ni ${fmt2(bal)}`);
-      const [row] = await tx.insert(moves).values({
-        amcosId: item.amcosId, seasonId: season.id, inputItemId: item.id, type: 'ADJUSTMENT',
-        quantity: body.quantity, reference: body.reference, notes: body.notes, createdById: req.auth!.userId,
-      }).returning();
-      await audit(tx, req, { action: 'STOCK_ADJUSTMENT', entity: 'StockMovement', entityId: row.id, amcosId: item.amcosId, after: row });
-      return row;
-    });
-    res.status(201).json({ movement });
+    const bal = await stockBalance(db, item.amcosId, season.id, item.id);
+    if (bal.plus(body.quantity).isNeg()) throw badRequest(`Stoo haitoshi. Salio ni ${fmt2(bal)}`);
+    const approval = await db.transaction((tx) => createApproval(tx, req, {
+      amcosId: item.amcosId, type: 'STOCK_ADJUSTMENT', entityType: 'InputItem', entityId: item.id,
+      title: `${ADJ_LABEL[body.kind]}: ${item.name} ${D(body.quantity).isPos() ? '+' : ''}${body.quantity}`,
+      reason: body.notes,
+      payload: { inputItemId: item.id, seasonId: season.id, quantity: body.quantity, kind: body.kind, batchNo: body.batchNo ?? null, reference: body.reference ?? null, balanceAtRequest: fmt2(bal) },
+    }));
+    res.status(202).json({ approval, message: 'Ombi limetumwa kwa Meneja. Stoo itabadilika baada ya idhini.' });
   }),
 );
 
@@ -285,9 +289,10 @@ inputIssuesRouter.get(
   }),
 );
 
+// Stokipa anaandaa ugawaji -> unasubiri idhini ya Meneja. Stoo na deni la mkulima vinabadilika BAADA ya idhini.
 inputIssuesRouter.post(
   '/',
-  requireRole(ROLES.AMCOS_STAFF),
+  requireAmcosPerm('issues.request'),
   ah(async (req, res) => {
     const body = z
       .object({
@@ -341,26 +346,26 @@ inputIssuesRouter.post(
           throw new AppError(400, 'INSUFFICIENT_STOCK', `Stoo haitoshi: ${nameOf.get(l.inputItemId)} (salio ${fmt2(bal)})`);
         }
       }
+      if (body.clientRef) {
+        const dup = await tx.query.inputIssues.findFirst({ where: and(eq(issues.amcosId, amcosId), eq(issues.clientRef, body.clientRef)) });
+        if (dup) return dup.id;
+      }
 
       const amcos = (await tx.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId) }))!;
       const n = await nextNumber(tx, amcosId, 'input_issue');
       const [issue] = await tx.insert(issues).values({
         amcosId, seasonId: season.id, memberId: member.id, issueNo: `${amcos.code}-P-${pad(n)}`,
-        totalAmount: total, notes: body.notes, clientRef: body.clientRef, issuedById: req.auth!.userId,
+        totalAmount: total, notes: body.notes, clientRef: body.clientRef, issuedById: req.auth!.userId, status: 'PENDING_APPROVAL',
       }).returning();
 
       await tx.insert(schema.inputIssueLines).values(lines.map((l) => ({ inputIssueId: issue.id, ...l })));
-      await tx.insert(moves).values(lines.map((l) => ({
-        amcosId, seasonId: season.id, inputItemId: l.inputItemId, type: 'ISSUE' as const,
-        quantity: fmt2(D(l.quantity).neg()), reference: issue.issueNo, inputIssueId: issue.id, createdById: req.auth!.userId,
-      })));
-
-      await ledger.post(tx, {
-        amcosId, memberId: member.id, seasonId: season.id, type: 'INPUT_LOAN', debit: total,
-        description: `Pembejeo ${issue.issueNo}: ${lines.map((l) => `${nameOf.get(l.inputItemId)} x${l.quantity}`).join(', ')}`,
-        referenceType: 'INPUT_ISSUE', referenceId: issue.id, createdById: req.auth!.userId,
+      await audit(tx, req, { action: 'INPUT_ISSUE_REQUEST', entity: 'InputIssue', entityId: issue.id, amcosId, after: { ...issue, lines } });
+      const approval = await createApproval(tx, req, {
+        amcosId, type: 'INPUT_ISSUE', entityType: 'InputIssue', entityId: issue.id, amount: total,
+        title: `Pembejeo kwa ${member.firstName} ${member.lastName} (${member.memberNo}): ${lines.map((l) => `${nameOf.get(l.inputItemId)} x${l.quantity}`).join(', ')}`,
+        reason: body.notes ?? null,
       });
-      await audit(tx, req, { action: 'INPUT_ISSUE_CREATE', entity: 'InputIssue', entityId: issue.id, amcosId, after: { ...issue, lines } });
+      await tx.update(issues).set({ approvalId: approval.id }).where(eq(issues.id, issue.id));
       return issue.id;
     });
 
@@ -371,13 +376,14 @@ inputIssuesRouter.post(
 // Kufuta utoaji: stoo inarudi + deni linafutwa kwa REVERSAL (historia inabaki)
 inputIssuesRouter.post(
   '/:id/cancel',
-  requireRole(ROLES.AMCOS_MANAGERS),
+  requireAmcosPerm('issues.cancel'),
   ah(async (req, res) => {
     const { id } = uuidParam.parse(req.params);
     const { reason } = z.object({ reason: z.string().trim().min(5, 'Eleza sababu ya kufuta') }).parse(req.body);
     const [issue] = await db.select().from(issues).where(and(eq(issues.id, id), amcosScope(req, issues.amcosId)));
     if (!issue) throw notFound('Utoaji wa pembejeo');
     if (issue.status === 'CANCELLED') throw conflict('Tayari imefutwa');
+    if (issue.status !== 'ISSUED') throw badRequest('Ugawaji huu haujakamilika. Ombi linalosubiri idhini linakataliwa/kuondolewa kupitia Idhini');
     const season = await db.query.seasons.findFirst({ where: eq(schema.seasons.id, issue.seasonId) });
     if (season?.status === 'CLOSED') throw badRequest('Msimu umefungwa');
 

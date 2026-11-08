@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
 import { date, dateTime, fullName, LEDGER_LABEL, num, phone, tsh } from '../lib/format';
-import { useAuth, ROLE_GROUPS } from '../lib/auth';
+import { useAuth } from '../lib/auth';
 import { Alert, Badge, Button, Loading, Modal, PageHead, SelectField, Stat, TextField } from '../components/ui';
 import { fromMember, MemberForm, type Member } from './Members';
 
@@ -13,9 +13,9 @@ interface Entry { id: string; type: string; debit: string; credit: string; descr
 
 export function MemberDetail() {
   const { id } = useParams();
-  const { can } = useAuth();
-  const { data, error, loading, reload } = useFetch<{ member: Member; farms: Farm[]; balance: Balance }>(`/members/${id}`);
-  const st = useFetch<{ entries: Entry[] }>(`/members/${id}/statement`);
+  const { data, error, loading, reload } = useFetch<{ member: Member; farms: Farm[]; balance: Balance | null }>(`/members/${id}`);
+  const { may } = useAuth();
+  const st = useFetch<{ entries: Entry[] }>(may('ledger.read') ? `/members/${id}/statement` : null);
   const [edit, setEdit] = useState(false);
   const [farmOpen, setFarmOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
@@ -24,22 +24,24 @@ export function MemberDetail() {
   if (error) return <Alert>{error}</Alert>;
   if (!data) return null;
   const { member: m, farms, balance } = data;
-  const staff = can(...ROLE_GROUPS.STAFF);
-  const owes = Number(balance.balance) < 0;
+  const staff = may('members.write');
+  const owes = Number(balance?.balance ?? 0) < 0;
 
   return (
     <>
       <PageHead title={fullName(m)} sub={<><span>{m.memberNo}</span> · <Badge status={m.status} /></>}>
         <Button variant="secondary" onClick={() => window.print()} className="no-print">Chapisha taarifa</Button>
         {staff && <Button variant="secondary" onClick={() => setEdit(true)} className="no-print">Hariri</Button>}
-        {can(...ROLE_GROUPS.MANAGERS) && <Button variant="secondary" onClick={() => setStatusOpen(true)} className="no-print">Badilisha hali</Button>}
-        {staff && m.status === 'ACTIVE' && <Link className="btn btn-gold no-print" to={`/input-issues/new?member=${m.id}`}>Toa pembejeo</Link>}
+        {may('members.approve') && m.status !== 'PENDING' && <Button variant="secondary" onClick={() => setStatusOpen(true)} className="no-print">Badilisha hali</Button>}
+        {may('issues.request') && m.status === 'ACTIVE' && <Link className="btn btn-gold no-print" to={`/input-issues/new?member=${m.id}`}>Toa pembejeo</Link>}
       </PageHead>
 
       <div className="grid grid-4" style={{ marginBottom: 16 }}>
-        <Stat accent label={owes ? 'Deni analodaiwa' : 'Salio lake'} value={tsh(Math.abs(Number(balance.balance)))} hint={owes ? 'Litakatwa kwenye mauzo ya tumbaku' : Number(balance.balance) > 0 ? 'Chama kinamdai' : 'Hana deni'} />
-        <Stat label="Jumla ya madeni (debit)" value={tsh(balance.totalDebit)} />
-        <Stat label="Jumla ya mapato (credit)" value={tsh(balance.totalCredit)} />
+        {balance && <>
+          <Stat accent label={owes ? 'Deni analodaiwa' : 'Salio lake'} value={tsh(Math.abs(Number(balance.balance)))} hint={owes ? 'Litakatwa kwenye mauzo ya tumbaku' : Number(balance.balance) > 0 ? 'Chama kinamdai' : 'Hana deni'} />
+          <Stat label="Jumla ya madeni (debit)" value={tsh(balance.totalDebit)} />
+          <Stat label="Jumla ya mapato (credit)" value={tsh(balance.totalCredit)} />
+        </>}
         <Stat label="Mashamba" value={num(farms.filter((f) => f.isActive).length)} hint={`Ekari ${num(farms.reduce((s, f) => s + Number(f.acres), 0))}`} />
       </div>
 
@@ -74,7 +76,8 @@ export function MemberDetail() {
         </section>
       </div>
 
-      <section className="card">
+      {m.status === 'PENDING' && <div style={{ marginBottom: 16 }}><Alert kind="warn">Mkulima huyu anasubiri uthibitisho wa Meneja. Hawezi kupewa pembejeo hadi athibitishwe.{may('approvals.decide') ? ' Fungua ukurasa wa Idhini kumthibitisha.' : ''}</Alert></div>}
+      {may('ledger.read') && <section className="card">
         <div className="card-pad" style={{ paddingBottom: 0 }}><h2>Taarifa ya fedha (statement)</h2></div>
         <div className="table-wrap">
           <table className="table">
@@ -94,7 +97,7 @@ export function MemberDetail() {
             </tbody>
           </table>
         </div>
-      </section>
+      </section>}
 
       <Modal open={edit} title="Hariri mwanachama" onClose={() => setEdit(false)}>
         <EditMember member={m} onDone={() => { setEdit(false); reload(); }} />

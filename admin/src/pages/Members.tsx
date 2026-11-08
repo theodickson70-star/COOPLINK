@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api, type Paged } from '../lib/api';
 import { useAction, useDebounced, useFetch } from '../lib/hooks';
 import { date, phone } from '../lib/format';
-import { useAuth, ROLE_GROUPS } from '../lib/auth';
+import { useAuth } from '../lib/auth';
 import { Alert, Badge, Button, Empty, Input, Loading, PageHead, Pager, Select, SelectField, TextField } from '../components/ui';
 
 export interface Member {
@@ -15,7 +15,7 @@ export interface Member {
 }
 
 export function Members() {
-  const { can } = useAuth();
+  const { may } = useAuth();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
@@ -25,7 +25,7 @@ export function Members() {
   return (
     <>
       <PageHead title="Wanachama" sub="Orodha ya wanachama wote wa chama">
-        {can(...ROLE_GROUPS.STAFF) && <Link className="btn btn-primary" to="/members/new">+ Sajili mwanachama</Link>}
+        {may('members.write') && <Link className="btn btn-primary" to="/members/new">+ Sajili mwanachama</Link>}
       </PageHead>
       <section className="card">
         <div className="toolbar">
@@ -33,6 +33,7 @@ export function Members() {
           <Select aria-label="Hali" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
             <option value="">Hali zote</option>
             <option value="ACTIVE">Hai</option>
+            <option value="PENDING">Wanasubiri uthibitisho</option>
             <option value="SUSPENDED">Amesimamishwa</option>
             <option value="EXITED">Ametoka</option>
             <option value="DECEASED">Marehemu</option>

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, type Paged } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
 import { date, num } from '../lib/format';
-import { useAuth, ROLE_GROUPS } from '../lib/auth';
+import { useAuth } from '../lib/auth';
 import { Alert, Badge, Button, Empty, Loading, MemberPicker, Modal, PageHead, Pager, Select, Stat, TextField, type MemberLite } from '../components/ui';
 
 interface Estimate {
@@ -13,7 +13,7 @@ interface Estimate {
 interface Summary { season: { name: string }; byStatus: { status: string; members: number; acres: string; kg: string }[] }
 
 export function Estimates() {
-  const { can } = useAuth();
+  const { may } = useAuth();
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState(false);
@@ -30,7 +30,7 @@ export function Estimates() {
   return (
     <>
       <PageHead title="Makisio ya uzalishaji" sub={sum.data ? `Msimu ${sum.data.season.name}` : undefined}>
-        {can(...ROLE_GROUPS.STAFF) && <Button onClick={() => setOpen(true)}>+ Ongeza makisio</Button>}
+        {may('estimates.write') && <Button onClick={() => setOpen(true)}>+ Ongeza makisio</Button>}
       </PageHead>
       <div className="grid grid-4" style={{ marginBottom: 16 }}>
         <Stat accent label="Kilo zilizoidhinishwa" value={`${num(by('APPROVED')?.kg)} kg`} hint={`Wakulima ${num(by('APPROVED')?.members)}`} />
@@ -57,7 +57,7 @@ export function Estimates() {
                     <td>{date(e.createdAt)}</td>
                     <td><Badge status={e.status} /></td>
                     <td className="num">
-                      {e.status === 'DRAFT' && can(...ROLE_GROUPS.MANAGERS) && (
+                      {e.status === 'DRAFT' && may('estimates.approve') && (
                         <span className="actions" style={{ justifyContent: 'flex-end' }}>
                           <Button size="sm" busy={act.busy} onClick={() => decide(e.id, 'approve')}>Idhinisha</Button>
                           <Button size="sm" variant="secondary" busy={act.busy} onClick={() => decide(e.id, 'reject')}>Kataa</Button>

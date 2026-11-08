@@ -9,11 +9,13 @@ import { requireRole, ROLES, type Role } from '../middleware/auth';
 import { canAccessAmcos } from '../middleware/tenant';
 import { audit } from '../lib/audit';
 import { isPlatformRole, isStaffRole } from '../lib/permissions';
+import { assertSlotFree } from '../lib/amcos-staff';
 
 export const usersRouter = Router();
 
 const UNION_ROLES: Role[] = ['UNION_ADMIN', 'UNION_VIEWER'];
 const AMCOS_ROLES: Role[] = ['AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK', 'AMCOS_VIEWER'];
+// Watumishi wa AMCOS (Meneja, Mhasibu, Stokipa) wanasimamiwa na Owner wa CoopLink tu — nafasi moja kwa kila cheo.
 
 const userCols = {
   id: schema.users.id, fullName: schema.users.fullName, phone: schema.users.phone, email: schema.users.email,
@@ -33,14 +35,10 @@ async function assertCanManage(req: Request, target: { role: Role; unionId?: str
       if (target.unionId !== me.unionId) throw forbidden();
       return;
     }
-    if (!target.amcosId || !(await canAccessAmcos(req, target.amcosId))) throw forbidden();
-    return;
+    throw forbidden('Watumishi wa AMCOS wanasimamiwa na Owner wa CoopLink');
   }
-  if (me.role === 'AMCOS_ADMIN') {
-    if (!['ACCOUNTANT', 'CLERK', 'AMCOS_VIEWER'].includes(target.role)) throw forbidden('Unaweza kuunda Mhasibu, Karani au Mtazamaji tu');
-    if (target.amcosId !== me.amcosId) throw forbidden();
-    return;
-  }
+  if (me.role === 'AMCOS_ADMIN') throw forbidden('Watumishi wa AMCOS wanasimamiwa na Owner wa CoopLink');
+  void canAccessAmcos;
   throw forbidden();
 }
 
@@ -107,6 +105,8 @@ usersRouter.post(
       body.amcosId = undefined;
     }
     await assertCanManage(req, body);
+    if (body.role === 'AMCOS_VIEWER') throw badRequest('AMCOS ina watumishi watatu tu: Meneja, Mhasibu na Stokipa');
+    if (body.amcosId) await assertSlotFree(db, body.amcosId, body.role);
 
     const password = tempPassword();
     const user = await db.transaction(async (tx) => {
@@ -152,7 +152,10 @@ usersRouter.patch(
         req.auth!.role === 'SUPER_ADMIN';
       if (!sameKind) throw badRequest('Role mpya hailingani na aina ya mtumiaji');
       await assertCanManage(req, { ...existing, role: body.role });
+      if (body.role === 'AMCOS_VIEWER') throw badRequest('AMCOS ina watumishi watatu tu: Meneja, Mhasibu na Stokipa');
     }
+    const willBeActive = body.isActive ?? existing.isActive;
+    if (existing.amcosId && willBeActive) await assertSlotFree(db, existing.amcosId, body.role ?? existing.role, existing.id);
 
     const updated = await db.transaction(async (tx) => {
       const [u] = await tx

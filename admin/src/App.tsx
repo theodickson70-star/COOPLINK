@@ -5,7 +5,10 @@ import { Layout } from './components/Layout';
 import { LogoMark } from './components/Logo';
 import { Empty } from './components/ui';
 import { Login, ChangePassword } from './pages/Login';
-import { Dashboard } from './pages/Dashboard';
+import { Workspace } from './pages/Workspace';
+import { Approvals } from './pages/Approvals';
+import { Finance } from './pages/Finance';
+import { Purchases, PurchaseDetail } from './pages/Purchases';
 import { Members, MemberNew } from './pages/Members';
 import { MemberDetail } from './pages/MemberDetail';
 import { Estimates } from './pages/Estimates';
@@ -24,7 +27,7 @@ import { OwnerSecurity } from './owner/Security';
 import { OwnerBackup } from './owner/Backup';
 import { OwnerBusiness } from './owner/Business';
 import { OwnerSettings } from './owner/Settings';
-import type { Permission } from './lib/auth';
+import type { AmcosPermission, Permission } from './lib/auth';
 
 function Splash() {
   return <div className="center" style={{ minHeight: '100%', background: 'var(--forest)' }}><LogoMark size={120} animate /></div>;
@@ -58,6 +61,12 @@ function OwnerHome() {
   if (has('platform.dashboard')) return <OwnerDashboard />;
   const first = OWNER_NAV.find((n) => n.to !== '/owner' && (!n.perm || has(n.perm)));
   return <Navigate to={first?.to ?? '/owner/settings'} replace />;
+}
+
+/** Ukurasa wa chama unaohitaji ruhusa ya cheo (backend inakagua tena kila ombi). */
+function Need({ p, children }: { p: AmcosPermission[]; children: ReactNode }) {
+  const { may } = useAuth();
+  return may(...p) ? <>{children}</> : <Empty>Cheo chako hakiruhusiwi kuona ukurasa huu.</Empty>;
 }
 
 function PublicOnly({ children }: { children: ReactNode }) {
@@ -97,19 +106,23 @@ export default function App() {
             <Route path="*" element={<Empty>Ukurasa haupo.</Empty>} />
           </Route>
           <Route element={<Protected><Layout /></Protected>}>
-            <Route index element={<Dashboard />} />
+            <Route index element={<Workspace />} />
+            <Route path="approvals" element={<Need p={['approvals.read']}><Approvals /></Need>} />
+            <Route path="finance" element={<Need p={['finance.read']}><Finance /></Need>} />
+            <Route path="purchases" element={<Need p={['stock.read', 'finance.read']}><Purchases /></Need>} />
+            <Route path="purchases/:id" element={<Need p={['stock.read', 'finance.read']}><PurchaseDetail /></Need>} />
             <Route path="members" element={<Members />} />
-            <Route path="members/new" element={<Protected roles={ROLE_GROUPS.STAFF}><MemberNew /></Protected>} />
+            <Route path="members/new" element={<Need p={['members.write']}><MemberNew /></Need>} />
             <Route path="members/:id" element={<MemberDetail />} />
             <Route path="estimates" element={<Estimates />} />
             <Route path="inputs" element={<Inputs />} />
             <Route path="input-issues" element={<InputIssues />} />
-            <Route path="input-issues/new" element={<Protected roles={ROLE_GROUPS.STAFF}><InputIssueNew /></Protected>} />
+            <Route path="input-issues/new" element={<Need p={['issues.request']}><InputIssueNew /></Need>} />
             <Route path="input-issues/:id" element={<InputIssueDetail />} />
-            <Route path="balances" element={<Balances />} />
-            <Route path="users" element={<Protected roles={ROLE_GROUPS.ADMINS}><Users /></Protected>} />
+            <Route path="balances" element={<Need p={['ledger.read']}><Balances /></Need>} />
+            <Route path="users" element={<Protected roles={['SUPER_ADMIN', 'UNION_ADMIN', 'AMCOS_ADMIN']}><Users /></Protected>} />
             <Route path="organizations" element={<Protected roles={ROLE_GROUPS.ORGS}><Organizations /></Protected>} />
-            <Route path="audit" element={<Protected roles={ROLE_GROUPS.AUDIT}><Audit /></Protected>} />
+            <Route path="audit" element={<Need p={['audit.read']}><Audit /></Need>} />
             <Route path="*" element={<Empty>Ukurasa haupo.</Empty>} />
           </Route>
         </Routes>

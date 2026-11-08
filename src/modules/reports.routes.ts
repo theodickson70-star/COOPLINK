@@ -4,7 +4,7 @@ import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
 import { db, schema } from '../db';
 import { ah, paged, paginationQuery } from '../lib/http';
 import { notFound } from '../lib/errors';
-import { requireRole } from '../middleware/auth';
+import { requireAmcosPerm } from '../middleware/auth';
 import { amcosScope } from '../middleware/tenant';
 import { currentSeason } from './seasons.routes';
 
@@ -56,6 +56,7 @@ reportsRouter.get(
 // Salio la kila mwanachama (deni / anachodai) — kwa ukusanyaji wa madeni na maandalizi ya malipo
 reportsRouter.get(
   '/member-balances',
+  requireAmcosPerm('ledger.read'),
   ah(async (req, res) => {
     const q = paginationQuery.extend({ seasonId: z.string().uuid().optional(), onlyOwing: z.enum(['true', 'false']).optional() }).parse(req.query);
     const l = schema.memberLedgerEntries, m = schema.members;
@@ -85,7 +86,7 @@ reportsRouter.get(
 // ------------------------------ AUDIT LOG ------------------------------
 auditRouter.get(
   '/',
-  requireRole(['SUPER_ADMIN', 'UNION_ADMIN', 'AMCOS_ADMIN', 'ACCOUNTANT', 'AMCOS_VIEWER']),
+  requireAmcosPerm('audit.read'),
   ah(async (req, res) => {
     const q = paginationQuery
       .extend({ entity: z.string().optional(), entityId: z.string().optional(), action: z.string().optional(), userId: z.string().uuid().optional() })

@@ -1,0 +1,414 @@
+// =====================================================================
+//  FEDHA ZA CHAMA (Mhasibu) — mapato, matumizi, malipo, akaunti, bajeti, ripoti
+//   Mapato             -> yanarekodiwa moja kwa moja (POSTED)
+//   Matumizi / malipo  -> Mhasibu anaandaa -> Meneja anaidhinisha -> Mhasibu anakamilisha (POSTED)
+//   Muamala uliokamilika haufutwi wala kubadilishwa: unasahihishwa kwa REVERSAL (nayo inaidhinishwa)
+// =====================================================================
+import { Router, type Request } from 'express';
+import { z } from 'zod';
+import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm';
+import { db, schema } from '../db';
+import { ah, decimalSchema, paged, paginationQuery, uuidParam } from '../lib/http';
+import { badRequest, conflict, notFound } from '../lib/errors';
+import { requireAmcosPerm } from '../middleware/auth';
+import { amcosScope, resolveWriteAmcosId } from '../middleware/tenant';
+import { audit } from '../lib/audit';
+import { D, fmt2, tshText } from '../lib/money';
+import * as ledger from '../lib/ledger';
+import { createApproval } from '../lib/approvals';
+import {
+  accountBalance, EXPENSE_CATEGORIES, FARMER_PAYMENT_CATEGORIES, INCOME_CATEGORIES, lockAccount, nextTxnNo, SUPPLIER_PAYMENT_CATEGORIES,
+} from '../lib/finance';
+import { findMemberScoped } from './members.routes';
+import { currentSeason } from './seasons.routes';
+import { toCsv } from './owner/common';
+
+export const financeRouter = Router();
+const T = schema.financeTransactions;
+const ACC = schema.financeAccounts;
+const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Tarehe iwe YYYY-MM-DD');
+const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Dar_es_Salaam' });
+
+financeRouter.get('/categories', requireAmcosPerm('finance.read'), (_req, res) => {
+  res.json({ income: INCOME_CATEGORIES, expense: EXPENSE_CATEGORIES, farmerPayment: FARMER_PAYMENT_CATEGORIES, supplierPayment: SUPPLIER_PAYMENT_CATEGORIES });
+});
+
+// ------------------------------ AKAUNTI ------------------------------
+async function findAccount(req: Request, id: string) {
+  const [a] = await db.select().from(ACC).where(and(eq(ACC.id, id), amcosScope(req, ACC.amcosId)));
+  if (!a) throw notFound('Akaunti');
+  return a;
+}
+
+financeRouter.get('/accounts', requireAmcosPerm('finance.read'), ah(async (req, res) => {
+  const rows = await db.select({
+    account: ACC,
+    net: sql<string>`coalesce((select sum(case when t.direction = 'IN' then t.amount else -t.amount end) from finance_transactions t
+      where t.account_id = "finance_accounts"."id" and t.status = 'POSTED'), 0)`,
+  }).from(ACC).where(amcosScope(req, ACC.amcosId)).orderBy(asc(ACC.name));
+  res.json({ data: rows.map((r) => ({ ...r.account, balance: fmt2(D(r.account.openingBalance).plus(r.net)) })) });
+}));
+
+const accountBody = z.object({
+  name: z.string().trim().min(2),
+  kind: z.enum(schema.financeAccountKindEnum.enumValues),
+  bankName: z.string().trim().nullable().optional(),
+  accountNumber: z.string().trim().nullable().optional(),
+  openingBalance: decimalSchema({ min: 0 }).optional(),
+});
+
+financeRouter.post('/accounts', requireAmcosPerm('finance.accounts'), ah(async (req, res) => {
+  const body = accountBody.parse(req.body);
+  const amcosId = await resolveWriteAmcosId(req);
+  const account = await db.transaction(async (tx) => {
+    const [a] = await tx.insert(ACC).values({ ...body, amcosId }).returning();
+    await audit(tx, req, { action: 'FINANCE_ACCOUNT_CREATE', entity: 'FinanceAccount', entityId: a.id, amcosId, after: a });
+    return a;
+  });
+  res.status(201).json({ account });
+}));
+
+financeRouter.patch('/accounts/:id', requireAmcosPerm('finance.accounts'), ah(async (req, res) => {
+  const { id } = uuidParam.parse(req.params);
+  const body = accountBody.partial().extend({ isActive: z.boolean().optional() }).parse(req.body);
+  const before = await findAccount(req, id);
+  if (body.openingBalance !== undefined && body.openingBalance !== before.openingBalance) {
+    const [{ n }] = await db.select({ n: count() }).from(T).where(eq(T.accountId, id));
+    if (n > 0) throw badRequest('Salio la kuanzia haliwezi kubadilishwa baada ya akaunti kuwa na miamala');
+  }
+  const account = await db.transaction(async (tx) => {
+    const [a] = await tx.update(ACC).set(body).where(eq(ACC.id, id)).returning();
+    await audit(tx, req, { action: 'FINANCE_ACCOUNT_UPDATE', entity: 'FinanceAccount', entityId: id, amcosId: before.amcosId, before, after: a });
+    return a;
+  });
+  res.json({ account });
+}));
+
+// ------------------------------ MIAMALA ------------------------------
+const listQuery = paginationQuery.extend({
+  kind: z.enum(schema.financeTxnKindEnum.enumValues).optional(),
+  status: z.enum(schema.financeTxnStatusEnum.enumValues).optional(),
+  accountId: z.string().uuid().optional(),
+  from: dateStr.optional(),
+  to: dateStr.optional(),
+  search: z.string().trim().optional(),
+});
+
+function txnWhere(req: Request, q: z.infer<typeof listQuery>) {
+  const s = q.search ? `%${q.search}%` : null;
+  return and(
+    amcosScope(req, T.amcosId),
+    q.kind ? eq(T.kind, q.kind) : undefined,
+    q.status ? eq(T.status, q.status) : undefined,
+    q.accountId ? eq(T.accountId, q.accountId) : undefined,
+    q.from ? gte(T.txnDate, q.from) : undefined,
+    q.to ? lte(T.txnDate, q.to) : undefined,
+    s ? or(ilike(T.txnNo, s), ilike(T.description, s), ilike(T.payee, s), ilike(T.reference, s)) : undefined,
+  );
+}
+
+const txnCols = {
+  txn: T,
+  account: ACC.name,
+  member: sql<string | null>`(select m.first_name || ' ' || m.last_name || ' (' || m.member_no || ')' from members m where m.id = "finance_transactions"."member_id")`,
+  supplier: sql<string | null>`(select s.name from suppliers s where s.id = "finance_transactions"."supplier_id")`,
+  createdBy: sql<string | null>`(select u.full_name from users u where u.id = "finance_transactions"."created_by_id")`,
+  reversed: sql<boolean>`exists (select 1 from finance_transactions r where r.reversal_of_id = "finance_transactions"."id")`,
+  reversalPending: sql<boolean>`exists (select 1 from approval_requests ar where ar.type = 'REVERSAL' and ar.status = 'PENDING' and ar.entity_id = "finance_transactions"."id")`,
+};
+const shape = (r: { txn: typeof T.$inferSelect; account: string | null; member: string | null; supplier: string | null; createdBy: string | null; reversed: boolean; reversalPending: boolean }) =>
+  ({ ...r.txn, accountName: r.account, memberName: r.member, supplierName: r.supplier, createdBy: r.createdBy, reversed: r.reversed, reversalPending: r.reversalPending });
+
+financeRouter.get('/transactions', requireAmcosPerm('finance.read'), ah(async (req, res) => {
+  const q = listQuery.parse(req.query);
+  const where = txnWhere(req, q);
+  const [rows, [{ total }]] = await Promise.all([
+    db.select(txnCols).from(T).leftJoin(ACC, eq(ACC.id, T.accountId)).where(where)
+      .orderBy(desc(T.txnDate), desc(T.createdAt)).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
+    db.select({ total: count() }).from(T).where(where),
+  ]);
+  res.json(paged(rows.map(shape), total, q.page, q.pageSize));
+}));
+
+financeRouter.get('/transactions/:id', requireAmcosPerm('finance.read'), ah(async (req, res) => {
+  const { id } = uuidParam.parse(req.params);
+  const [row] = await db.select(txnCols).from(T).leftJoin(ACC, eq(ACC.id, T.accountId)).where(and(eq(T.id, id), amcosScope(req, T.amcosId)));
+  if (!row) throw notFound('Muamala');
+  const approvals = await db.select().from(schema.approvalRequests)
+    .where(or(eq(schema.approvalRequests.entityId, id), row.txn.approvalId ? eq(schema.approvalRequests.id, row.txn.approvalId) : undefined))
+    .orderBy(asc(schema.approvalRequests.createdAt));
+  res.json({ transaction: shape(row), approvals });
+}));
+
+async function scopedTxn(req: Request, id: string) {
+  const [t] = await db.select().from(T).where(and(eq(T.id, id), amcosScope(req, T.amcosId)));
+  if (!t) throw notFound('Muamala');
+  return t;
+}
+
+const baseTxn = z.object({
+  amount: decimalSchema({ min: 0.01 }),
+  txnDate: dateStr.optional(),
+  description: z.string().trim().min(3, 'Eleza muamala huu'),
+  reference: z.string().trim().nullable().optional(),
+  payee: z.string().trim().nullable().optional(),
+  accountId: z.string().uuid().nullable().optional(),
+});
+
+async function activeAccount(req: Request, id: string | null | undefined, required: boolean) {
+  if (!id) {
+    if (required) throw badRequest('Chagua akaunti ya fedha');
+    return null;
+  }
+  const a = await findAccount(req, id);
+  if (!a.isActive) throw badRequest('Akaunti hii imefungwa');
+  return a;
+}
+
+/** MAPATO — yanarekodiwa moja kwa moja. Marejesho ya deni la mkulima yanaingia kwenye ledger yake. */
+financeRouter.post('/income', requireAmcosPerm('finance.record'), ah(async (req, res) => {
+  const body = baseTxn.extend({ category: z.string(), memberId: z.string().uuid().nullable().optional() }).parse(req.body);
+  if (!(body.category in INCOME_CATEGORIES)) throw badRequest('Aina ya mapato si sahihi');
+  const amcosId = await resolveWriteAmcosId(req);
+  const account = (await activeAccount(req, body.accountId, true))!;
+  const member = body.memberId ? await findMemberScoped(req, body.memberId) : null;
+  if (body.category === 'FARMER_REPAYMENT' && !member) throw badRequest('Chagua mkulima anayerejesha deni');
+  const amcos = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId) }))!;
+  const season = await currentSeason();
+  const txn = await db.transaction(async (tx) => {
+    const [t] = await tx.insert(T).values({
+      amcosId, seasonId: season?.id ?? null, txnNo: await nextTxnNo(tx, amcosId, amcos.code), kind: 'INCOME', direction: 'IN',
+      category: body.category, accountId: account.id, amount: body.amount, txnDate: body.txnDate ?? todayStr(),
+      description: body.description, reference: body.reference ?? null, payee: body.payee ?? (member ? `${member.firstName} ${member.lastName}` : null),
+      memberId: member?.id ?? null, status: 'POSTED', createdById: req.auth!.userId, postedById: req.auth!.userId, postedAt: new Date(),
+    }).returning();
+    if (member && body.category === 'FARMER_REPAYMENT') {
+      await ledger.post(tx, {
+        amcosId, memberId: member.id, seasonId: season?.id ?? null, type: 'REPAYMENT', credit: body.amount,
+        description: `Marejesho ya deni ${t.txnNo}`, referenceType: 'FINANCE_TXN', referenceId: t.id, createdById: req.auth!.userId,
+      });
+    }
+    await audit(tx, req, { action: 'FINANCE_INCOME_RECORD', entity: 'FinanceTransaction', entityId: t.id, amcosId, after: t });
+    return t;
+  });
+  res.status(201).json({ transaction: txn });
+}));
+
+/** Matumizi / malipo yanayohitaji idhini ya Meneja. */
+async function prepare(req: Request, kind: 'EXPENSE' | 'FARMER_PAYMENT' | 'SUPPLIER_PAYMENT', body: z.infer<typeof baseTxn> & { category: string; memberId?: string | null; supplierId?: string | null; purchaseRequestId?: string | null }, title: string, preApprovedBy?: string | null) {
+  const amcosId = await resolveWriteAmcosId(req);
+  if (body.accountId) await activeAccount(req, body.accountId, false);
+  const amcos = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId) }))!;
+  const season = await currentSeason();
+  return db.transaction(async (tx) => {
+    const [t] = await tx.insert(T).values({
+      amcosId, seasonId: season?.id ?? null, txnNo: await nextTxnNo(tx, amcosId, amcos.code), kind, direction: 'OUT',
+      category: body.category, accountId: body.accountId ?? null, amount: body.amount, txnDate: body.txnDate ?? todayStr(),
+      description: body.description, reference: body.reference ?? null, payee: body.payee ?? null,
+      memberId: body.memberId ?? null, supplierId: body.supplierId ?? null, purchaseRequestId: body.purchaseRequestId ?? null,
+      status: preApprovedBy ? 'APPROVED' : 'PENDING_APPROVAL', approvalId: preApprovedBy ?? null, createdById: req.auth!.userId,
+    }).returning();
+    await audit(tx, req, { action: `FINANCE_${kind}_PREPARE`, entity: 'FinanceTransaction', entityId: t.id, amcosId, after: t });
+    if (preApprovedBy) return { transaction: t, approval: null };
+    const approval = await createApproval(tx, req, {
+      amcosId, type: kind, entityType: 'FinanceTransaction', entityId: t.id, amount: body.amount, title: `${title} · ${t.txnNo}`, reason: body.description,
+    });
+    const [upd] = await tx.update(T).set({ approvalId: approval.id }).where(eq(T.id, t.id)).returning();
+    return { transaction: upd, approval };
+  });
+}
+
+financeRouter.post('/expenses', requireAmcosPerm('finance.record'), ah(async (req, res) => {
+  const body = baseTxn.extend({ category: z.string() }).parse(req.body);
+  if (!(body.category in EXPENSE_CATEGORIES)) throw badRequest('Aina ya matumizi si sahihi');
+  res.status(201).json(await prepare(req, 'EXPENSE', body, `${EXPENSE_CATEGORIES[body.category]}: ${tshText(body.amount)}${body.payee ? ` kwa ${body.payee}` : ''}`));
+}));
+
+financeRouter.post('/farmer-payments', requireAmcosPerm('finance.record'), ah(async (req, res) => {
+  const body = baseTxn.extend({ category: z.enum(['PAYMENT', 'CASH_LOAN']).default('PAYMENT'), memberId: z.string().uuid() }).parse(req.body);
+  const member = await findMemberScoped(req, body.memberId);
+  if (member.status !== 'ACTIVE') throw badRequest('Mkulima hayuko hai (ACTIVE)');
+  const payee = `${member.firstName} ${member.lastName} (${member.memberNo})`;
+  res.status(201).json(await prepare(req, 'FARMER_PAYMENT', { ...body, payee }, `${FARMER_PAYMENT_CATEGORIES[body.category]}: ${tshText(body.amount)} kwa ${payee}`));
+}));
+
+/** Malipo kwa mzabuni. Yakihusishwa na ombi la manunuzi LILILOIDHINISHWA, idhini hiyo inatosha (hakuna idhini mara mbili). */
+financeRouter.post('/supplier-payments', requireAmcosPerm('finance.record'), ah(async (req, res) => {
+  const body = baseTxn.extend({ supplierId: z.string().uuid(), purchaseRequestId: z.string().uuid().nullable().optional() }).parse(req.body);
+  const [supplier] = await db.select().from(schema.suppliers).where(and(eq(schema.suppliers.id, body.supplierId), amcosScope(req, schema.suppliers.amcosId)));
+  if (!supplier) throw notFound('Mzabuni');
+  let preApproved: string | null = null;
+  if (body.purchaseRequestId) {
+    const [pr] = await db.select().from(schema.purchaseRequests).where(and(eq(schema.purchaseRequests.id, body.purchaseRequestId), amcosScope(req, schema.purchaseRequests.amcosId)));
+    if (!pr) throw notFound('Ombi la manunuzi');
+    if (!['APPROVED', 'PARTIALLY_RECEIVED', 'RECEIVED'].includes(pr.status)) throw badRequest('Ombi hili la manunuzi halijaidhinishwa');
+    if (pr.supplierId && pr.supplierId !== supplier.id) throw badRequest('Mzabuni hailingani na ombi la manunuzi');
+    const [{ committed }] = await db.select({ committed: sql<string>`coalesce(sum(${T.amount}), 0)` }).from(T)
+      .where(and(eq(T.purchaseRequestId, pr.id), eq(T.kind, 'SUPPLIER_PAYMENT'), inArray(T.status, ['PENDING_APPROVAL', 'APPROVED', 'POSTED'])));
+    const reversed = await db.select({ v: sql<string>`coalesce(sum(${T.amount}), 0)` }).from(T)
+      .where(and(eq(T.purchaseRequestId, pr.id), eq(T.kind, 'REVERSAL')));
+    const remaining = D(pr.totalAmount).minus(committed).plus(reversed[0].v);
+    if (D(body.amount).greaterThan(remaining)) throw badRequest(`Kiasi kinazidi deni la ombi hili. Kilichobaki: TSh ${fmt2(remaining)}`);
+    preApproved = pr.approvalId;
+  }
+  res.status(201).json(await prepare(req, 'SUPPLIER_PAYMENT', { ...body, category: 'SUPPLIER', payee: supplier.name }, `Malipo kwa ${supplier.name}: ${tshText(body.amount)}`, preApproved));
+}));
+
+/** Mhasibu anakamilisha malipo yaliyoidhinishwa (fedha zimetoka kweli). */
+financeRouter.post('/transactions/:id/post', requireAmcosPerm('finance.post'), ah(async (req, res) => {
+  const { id } = uuidParam.parse(req.params);
+  const body = z.object({ accountId: z.string().uuid().optional(), txnDate: dateStr.optional(), reference: z.string().trim().optional() }).parse(req.body);
+  const t = await scopedTxn(req, id);
+  if (t.status !== 'APPROVED') throw badRequest(t.status === 'PENDING_APPROVAL' ? 'Muamala huu bado unasubiri idhini ya Meneja' : 'Muamala huu hauwezi kukamilishwa');
+  const account = (await activeAccount(req, body.accountId ?? t.accountId, true))!;
+  const txn = await db.transaction(async (tx) => {
+    await lockAccount(tx, account.id);
+    const bal = await accountBalance(tx, account.id);
+    if (bal.lessThan(t.amount)) throw badRequest(`Salio la ${account.name} halitoshi (TSh ${fmt2(bal)})`);
+    const [p] = await tx.update(T).set({
+      status: 'POSTED', accountId: account.id, txnDate: body.txnDate ?? t.txnDate, reference: body.reference ?? t.reference,
+      postedById: req.auth!.userId, postedAt: new Date(),
+    }).where(and(eq(T.id, id), eq(T.status, 'APPROVED'))).returning();
+    if (!p) throw conflict('Muamala umebadilishwa na mtu mwingine');
+    if (p.kind === 'FARMER_PAYMENT' && p.memberId) {
+      await ledger.post(tx, {
+        amcosId: p.amcosId, memberId: p.memberId, seasonId: p.seasonId, type: p.category === 'CASH_LOAN' ? 'CASH_LOAN' : 'PAYMENT', debit: p.amount,
+        description: `${FARMER_PAYMENT_CATEGORIES[p.category] ?? 'Malipo'} ${p.txnNo}`, referenceType: 'FINANCE_TXN', referenceId: p.id, createdById: req.auth!.userId,
+      });
+    }
+    await audit(tx, req, { action: 'FINANCE_TXN_POST', entity: 'FinanceTransaction', entityId: id, amcosId: t.amcosId, before: { status: t.status }, after: p });
+    return p;
+  });
+  res.json({ transaction: txn });
+}));
+
+/** Kusahihisha muamala uliokamilika: ombi la REVERSAL kwa Meneja. */
+financeRouter.post('/transactions/:id/reverse', requireAmcosPerm('finance.record'), ah(async (req, res) => {
+  const { id } = uuidParam.parse(req.params);
+  const { reason } = z.object({ reason: z.string().trim().min(5, 'Eleza sababu ya kusahihisha') }).parse(req.body);
+  const t = await scopedTxn(req, id);
+  if (t.status !== 'POSTED' || t.kind === 'REVERSAL') throw badRequest('Ni muamala uliokamilika tu unaoweza kusahihishwa');
+  if (await db.query.financeTransactions.findFirst({ where: eq(T.reversalOfId, id) })) throw conflict('Muamala huu tayari umesahihishwa');
+  const pending = await db.query.approvalRequests.findFirst({ where: and(eq(schema.approvalRequests.type, 'REVERSAL'), eq(schema.approvalRequests.entityId, id), eq(schema.approvalRequests.status, 'PENDING')) });
+  if (pending) throw conflict('Tayari kuna ombi la kusahihisha muamala huu');
+  const approval = await db.transaction((tx) => createApproval(tx, req, {
+    amcosId: t.amcosId, type: 'REVERSAL', entityType: 'FinanceTransaction', entityId: id, amount: t.amount,
+    title: `Kusahihisha ${t.txnNo} (${tshText(t.amount)})`, reason,
+  }));
+  res.status(202).json({ approval });
+}));
+
+// ------------------------------ BAJETI ------------------------------
+financeRouter.get('/budgets', requireAmcosPerm('finance.read'), ah(async (req, res) => {
+  const { seasonId } = z.object({ seasonId: z.string().uuid().optional() }).parse(req.query);
+  const season = seasonId ? { id: seasonId } : await currentSeason();
+  if (!season) return res.json({ data: [] });
+  const B = schema.financeBudgets;
+  const budgets = await db.select().from(B).where(and(amcosScope(req, B.amcosId), eq(B.seasonId, season.id)));
+  const actual = await db.select({ category: T.category, v: sql<string>`coalesce(sum(case when ${T.kind} = 'REVERSAL' then -${T.amount} else ${T.amount} end), 0)` })
+    .from(T).where(and(amcosScope(req, T.amcosId), eq(T.seasonId, season.id), eq(T.status, 'POSTED'),
+      inArray(T.kind, ['EXPENSE', 'REVERSAL']), inArray(T.category, Object.keys(EXPENSE_CATEGORIES))))
+    .groupBy(T.category);
+  const act = new Map(actual.map((a) => [a.category, a.v]));
+  const cats = new Set([...budgets.map((b) => b.category), ...act.keys()]);
+  const data = [...cats].map((c) => {
+    const b = budgets.find((x) => x.category === c);
+    const spent = act.get(c) ?? '0';
+    return { category: c, label: EXPENSE_CATEGORIES[c] ?? c, budget: b?.amount ?? null, notes: b?.notes ?? null, actual: fmt2(spent),
+      percent: b && D(b.amount).gt(0) ? Number(D(spent).div(b.amount).times(100).toFixed(1)) : null };
+  });
+  res.json({ data, seasonId: season.id });
+}));
+
+financeRouter.put('/budgets', requireAmcosPerm('finance.accounts'), ah(async (req, res) => {
+  const body = z.object({ category: z.string(), amount: decimalSchema({ min: 0 }), notes: z.string().trim().nullable().optional() }).parse(req.body);
+  if (!(body.category in EXPENSE_CATEGORIES)) throw badRequest('Aina ya matumizi si sahihi');
+  const amcosId = await resolveWriteAmcosId(req);
+  const season = await currentSeason();
+  if (!season) throw badRequest('Hakuna msimu unaoendelea');
+  const B = schema.financeBudgets;
+  const row = await db.transaction(async (tx) => {
+    const [b] = await tx.insert(B).values({ amcosId, seasonId: season.id, category: body.category, amount: body.amount, notes: body.notes ?? null, createdById: req.auth!.userId })
+      .onConflictDoUpdate({ target: [B.amcosId, B.seasonId, B.category], set: { amount: body.amount, notes: body.notes ?? null, updatedAt: new Date() } }).returning();
+    await audit(tx, req, { action: 'FINANCE_BUDGET_SET', entity: 'FinanceBudget', entityId: b.id, amcosId, after: b });
+    return b;
+  });
+  res.json({ budget: row });
+}));
+
+// ------------------------------ RIPOTI ------------------------------
+const range = z.object({ from: dateStr.optional(), to: dateStr.optional() });
+const defaultRange = (q: { from?: string; to?: string }) => {
+  const to = q.to ?? todayStr();
+  const from = q.from ?? `${to.slice(0, 4)}-01-01`;
+  return { from, to };
+};
+/** Kiasi halisi: REVERSAL inapunguza aina yake ya asili. */
+const signed = sql<string>`case when ${T.kind} = 'REVERSAL' then -${T.amount} else ${T.amount} end`;
+
+financeRouter.get('/reports/summary', requireAmcosPerm('reports.finance'), ah(async (req, res) => {
+  const { from, to } = defaultRange(range.parse(req.query));
+  const posted = and(amcosScope(req, T.amcosId), eq(T.status, 'POSTED'), gte(T.txnDate, from), lte(T.txnDate, to));
+  // Reversal inahesabiwa upande wa muamala wake wa asili (mapato yakisahihishwa yanapungua mapato)
+  const origKind = sql<string>`coalesce((select o.kind::text from finance_transactions o where o.id = "finance_transactions"."reversal_of_id"), "finance_transactions"."kind"::text)`;
+  const rows = await db.select({ kind: origKind, category: T.category, total: sql<string>`sum(${signed})` })
+    .from(T).where(posted).groupBy(origKind, T.category);
+  const sum = (k: string) => rows.filter((r) => r.kind === k).reduce((s, r) => s.plus(r.total), D(0));
+  const income = sum('INCOME'), expense = sum('EXPENSE'), farmer = sum('FARMER_PAYMENT'), supplier = sum('SUPPLIER_PAYMENT');
+  const label = (k: string, c: string) => (k === 'INCOME' ? INCOME_CATEGORIES : k === 'EXPENSE' ? EXPENSE_CATEGORIES : k === 'FARMER_PAYMENT' ? FARMER_PAYMENT_CATEGORIES : SUPPLIER_PAYMENT_CATEGORIES)[c] ?? c;
+  const [pending] = await db.select({
+    n: count(), v: sql<string>`coalesce(sum(${T.amount}), 0)`,
+  }).from(T).where(and(amcosScope(req, T.amcosId), inArray(T.status, ['PENDING_APPROVAL', 'APPROVED'])));
+  res.json({
+    from, to,
+    totals: { income: fmt2(income), expense: fmt2(expense), farmerPayments: fmt2(farmer), supplierPayments: fmt2(supplier), totalOut: fmt2(expense.plus(farmer).plus(supplier)), net: fmt2(income.minus(expense).minus(farmer).minus(supplier)) },
+    breakdown: rows.map((r) => ({ kind: r.kind, category: r.category, label: label(r.kind, r.category), total: fmt2(r.total) })).sort((a, b) => a.kind.localeCompare(b.kind) || Number(b.total) - Number(a.total)),
+    pending: { count: pending.n, amount: fmt2(pending.v) },
+  });
+}));
+
+/** Cashbook ya akaunti moja: salio la mwanzo, miamala na salio linalofuatana. */
+financeRouter.get('/reports/cashbook', requireAmcosPerm('reports.finance'), ah(async (req, res) => {
+  const q = range.extend({ accountId: z.string().uuid() }).parse(req.query);
+  const { from, to } = defaultRange(q);
+  const acc = await findAccount(req, q.accountId);
+  const [before] = await db.select({ net: sql<string>`coalesce(sum(case when ${T.direction} = 'IN' then ${T.amount} else -${T.amount} end), 0)` })
+    .from(T).where(and(eq(T.accountId, acc.id), eq(T.status, 'POSTED'), sql`${T.txnDate} < ${from}`));
+  const lines = await db.select().from(T).where(and(eq(T.accountId, acc.id), eq(T.status, 'POSTED'), gte(T.txnDate, from), lte(T.txnDate, to)))
+    .orderBy(asc(T.txnDate), asc(T.postedAt));
+  let run = D(acc.openingBalance).plus(before.net);
+  const opening = fmt2(run);
+  const out = lines.map((l) => {
+    run = l.direction === 'IN' ? run.plus(l.amount) : run.minus(l.amount);
+    return { id: l.id, txnNo: l.txnNo, txnDate: l.txnDate, kind: l.kind, category: l.category, description: l.description, reference: l.reference, payee: l.payee,
+      moneyIn: l.direction === 'IN' ? l.amount : null, moneyOut: l.direction === 'OUT' ? l.amount : null, balance: fmt2(run) };
+  });
+  res.json({ account: acc, from, to, opening, closing: fmt2(run), lines: out });
+}));
+
+/** Madeni ya wazabuni (accounts payable): thamani ya mzigo uliopokelewa - malipo yaliyokamilika. */
+financeRouter.get('/reports/payables', requireAmcosPerm('reports.finance'), ah(async (req, res) => {
+  const P = schema.purchaseRequests;
+  const rows = await db.select({
+    id: P.id, prNo: P.prNo, status: P.status, totalAmount: P.totalAmount,
+    supplier: sql<string | null>`(select s.name from suppliers s where s.id = "purchase_requests"."supplier_id")`,
+    received: sql<string>`(select coalesce(sum(l.received_qty * l.unit_cost), 0) from purchase_request_lines l where l.purchase_request_id = "purchase_requests"."id")`,
+    paid: sql<string>`(select coalesce(sum(case when t.kind = 'REVERSAL' then -t.amount else t.amount end), 0) from finance_transactions t
+      where t.purchase_request_id = "purchase_requests"."id" and t.status = 'POSTED' and (t.kind = 'SUPPLIER_PAYMENT' or t.kind = 'REVERSAL'))`,
+  }).from(P).where(and(amcosScope(req, P.amcosId), inArray(P.status, ['APPROVED', 'PARTIALLY_RECEIVED', 'RECEIVED']))).orderBy(desc(P.createdAt));
+  const data = rows.map((r) => ({ ...r, received: fmt2(r.received), paid: fmt2(r.paid), owing: fmt2(D(r.received).minus(r.paid)) }));
+  res.json({ data, totalOwing: fmt2(data.reduce((s, r) => s.plus(D(r.owing).gt(0) ? r.owing : 0), D(0))) });
+}));
+
+financeRouter.get('/reports/transactions.csv', requireAmcosPerm('reports.finance'), ah(async (req, res) => {
+  const { from, to } = defaultRange(range.parse(req.query));
+  const rows = await db.select(txnCols).from(T).leftJoin(ACC, eq(ACC.id, T.accountId))
+    .where(and(amcosScope(req, T.amcosId), gte(T.txnDate, from), lte(T.txnDate, to))).orderBy(asc(T.txnDate), asc(T.createdAt));
+  const csv = toCsv([
+    ['Namba', 'Tarehe', 'Aina', 'Kundi', 'Ndani/Nje', 'Kiasi', 'Akaunti', 'Mlipwaji/Mlipaji', 'Maelezo', 'Kumbukumbu', 'Hali', 'Aliandaa'],
+    ...rows.map((r) => [r.txn.txnNo, r.txn.txnDate, r.txn.kind, r.txn.category, r.txn.direction, r.txn.amount, r.account, r.txn.payee, r.txn.description, r.txn.reference, r.txn.status, r.createdBy]),
+  ]);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="miamala-${from}-${to}.csv"`);
+  res.send(csv);
+}));

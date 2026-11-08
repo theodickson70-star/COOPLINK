@@ -38,14 +38,14 @@ export const roleEnum = pgEnum('role', [
 ]);
 export const amcosStatusEnum = pgEnum('amcos_status', ['PENDING', 'ACTIVE', 'SUSPENDED', 'REJECTED']);
 export const genderEnum = pgEnum('gender', ['MALE', 'FEMALE']);
-export const memberStatusEnum = pgEnum('member_status', ['ACTIVE', 'SUSPENDED', 'EXITED', 'DECEASED']);
+export const memberStatusEnum = pgEnum('member_status', ['ACTIVE', 'SUSPENDED', 'EXITED', 'DECEASED', 'PENDING']); // PENDING = anasubiri uthibitisho wa Meneja
 export const mobileMoneyProviderEnum = pgEnum('mobile_money_provider', ['MPESA', 'AIRTEL_MONEY', 'MIXX_BY_YAS', 'HALOPESA', 'TPESA']);
 export const seasonStatusEnum = pgEnum('season_status', ['PLANNING', 'ACTIVE', 'MARKETING', 'CLOSED']);
 export const estimateStatusEnum = pgEnum('estimate_status', ['DRAFT', 'APPROVED', 'REJECTED']);
 export const inputCategoryEnum = pgEnum('input_category', ['FERTILIZER', 'SEED', 'CHEMICAL', 'PACKAGING', 'EQUIPMENT', 'OTHER']);
 export const inputUnitEnum = pgEnum('input_unit', ['BAG', 'KG', 'LITRE', 'ROLL', 'PIECE', 'PACKET']);
-export const stockMovementTypeEnum = pgEnum('stock_movement_type', ['RECEIPT', 'ISSUE', 'RETURN', 'ADJUSTMENT']);
-export const inputIssueStatusEnum = pgEnum('input_issue_status', ['ISSUED', 'CANCELLED']);
+export const stockMovementTypeEnum = pgEnum('stock_movement_type', ['RECEIPT', 'ISSUE', 'RETURN', 'ADJUSTMENT', 'DAMAGE', 'EXPIRY']);
+export const inputIssueStatusEnum = pgEnum('input_issue_status', ['ISSUED', 'CANCELLED', 'PENDING_APPROVAL', 'REJECTED']);
 export const ledgerEntryTypeEnum = pgEnum('ledger_entry_type', [
   'INPUT_LOAN',      // Deni la pembejeo (debit)
   'CASH_LOAN',       // Mkopo wa fedha (debit)
@@ -55,6 +55,7 @@ export const ledgerEntryTypeEnum = pgEnum('ledger_entry_type', [
   'ADJUSTMENT',
   'REVERSAL',
   'OPENING_BALANCE',
+  'REPAYMENT',       // Mkulima amerejesha deni kwa fedha taslimu (credit)
 ]);
 export const marketStatusEnum = pgEnum('market_status', ['SCHEDULED', 'OPEN', 'CLOSED', 'CANCELLED']);
 export const baleStatusEnum = pgEnum('bale_status', ['REGISTERED', 'GRADED', 'SOLD', 'REJECTED']);
@@ -135,7 +136,12 @@ export const users = pgTable('users', {
   totpEnabled: boolean().notNull().default(false),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
-}, (t) => [index().on(t.amcosId), index().on(t.unionId), index().on(t.role)]);
+}, (t) => [
+  index().on(t.amcosId), index().on(t.unionId), index().on(t.role),
+  // Kila AMCOS: Meneja mmoja, Mhasibu mmoja, Stokipa mmoja (walio hai)
+  uniqueIndex('users_one_staff_per_role').on(t.amcosId, t.role)
+    .where(sql`is_active and role in ('AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK')`),
+]);
 
 // ---------------------------------------------------------------------
 //  MISIMU NA WANUNUZI (vya mfumo mzima)
@@ -248,6 +254,7 @@ export const inputItems = pgTable('input_items', {
   name: text().notNull(), // mf. NPK 10:18:24 (50kg)
   category: inputCategoryEnum().notNull(),
   unit: inputUnitEnum().notNull(),
+  reorderLevel: numeric({ precision: 14, scale: 2 }), // stoo ikishuka chini ya hapa = "stock ndogo"
   isActive: boolean().notNull().default(true),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -278,6 +285,9 @@ export const inputIssues = pgTable('input_issues', {
   cancelledAt: timestamp({ withTimezone: true }),
   cancelReason: text(),
   clientRef: text(), // kitambulisho kutoka app ya offline (kuzuia nakala mbili)
+  approvalId: uuid(),
+  approvedById: uuid(),
+  approvedAt: timestamp({ withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (t) => [
@@ -306,9 +316,15 @@ export const stockMovements = pgTable('stock_movements', {
   reference: text(),
   inputIssueId: uuid().references(() => inputIssues.id),
   notes: text(),
+  approvalId: uuid(),                 // idhini ya Meneja (marekebisho / ugawaji)
+  purchaseRequestId: uuid(),          // mzigo uliopokelewa dhidi ya ombi la manunuzi
+  supplierId: uuid(),
+  batchNo: text(),
+  expiryDate: date(),
+  unitCost: money(),
   createdById: uuid(),
   createdAt: createdAt(),
-}, (t) => [index().on(t.amcosId, t.seasonId, t.inputItemId)]);
+}, (t) => [index().on(t.amcosId, t.seasonId, t.inputItemId), index().on(t.amcosId, t.expiryDate)]);
 
 // ---------------------------------------------------------------------
 //  LEDGER YA MWANACHAMA — moyo wa uwazi
@@ -505,6 +521,145 @@ export const auditLogs = pgTable('audit_logs', {
   index().on(t.entity, t.entityId),
   index().on(t.userId, t.createdAt),
 ]);
+
+
+// =====================================================================
+//  WATUMISHI WA AMCOS: Meneja (AMCOS_ADMIN), Mhasibu (ACCOUNTANT), Stokipa (CLERK)
+//  Idhini, fedha za chama na manunuzi. Fedha za chama HAZICHANGANYWI na za CoopLink.
+// =====================================================================
+export const approvalTypeEnum = pgEnum('approval_type', [
+  'MEMBER_REGISTRATION', 'EXPENSE', 'FARMER_PAYMENT', 'SUPPLIER_PAYMENT', 'PURCHASE', 'STOCK_ADJUSTMENT', 'INPUT_ISSUE', 'REVERSAL',
+]);
+export const approvalStatusEnum = pgEnum('approval_status', ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']);
+export const financeAccountKindEnum = pgEnum('finance_account_kind', ['CASH', 'BANK', 'MOBILE_MONEY']);
+export const financeTxnKindEnum = pgEnum('finance_txn_kind', ['INCOME', 'EXPENSE', 'FARMER_PAYMENT', 'SUPPLIER_PAYMENT', 'REVERSAL']);
+export const financeDirectionEnum = pgEnum('finance_direction', ['IN', 'OUT']);
+export const financeTxnStatusEnum = pgEnum('finance_txn_status', ['PENDING_APPROVAL', 'APPROVED', 'POSTED', 'REJECTED', 'CANCELLED']);
+export const purchaseStatusEnum = pgEnum('purchase_status', ['PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED']);
+
+/** Kila ombi linalohitaji idhini ya Meneja. Uamuzi ukishafanyika haubadilishwi (trigger). */
+export const approvalRequests = pgTable('approval_requests', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  requestNo: text().notNull(),
+  type: approvalTypeEnum().notNull(),
+  status: approvalStatusEnum().notNull().default('PENDING'),
+  title: text().notNull(),
+  amount: money(),
+  entityType: text(),
+  entityId: uuid(),
+  payload: jsonb(),
+  reason: text(),
+  requestedById: uuid().notNull(),
+  requestedRole: text().notNull(),
+  decidedById: uuid(),
+  decidedRole: text(),
+  decidedAt: timestamp({ withTimezone: true }),
+  decisionNote: text(),
+  createdAt: createdAt(),
+}, (t) => [
+  uniqueIndex().on(t.amcosId, t.requestNo),
+  index().on(t.amcosId, t.status, t.createdAt),
+  index().on(t.entityType, t.entityId),
+]);
+
+export const financeAccounts = pgTable('finance_accounts', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  name: text().notNull(),
+  kind: financeAccountKindEnum().notNull(),
+  bankName: text(),
+  accountNumber: text(),
+  openingBalance: money().notNull().default('0'),
+  isActive: boolean().notNull().default(true),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex().on(t.amcosId, t.name)]);
+
+/** Miamala ya fedha ya chama. POSTED = imekamilika: haibadilishwi wala kufutwa; inasahihishwa kwa REVERSAL. */
+export const financeTransactions = pgTable('finance_transactions', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  seasonId: uuid().references(() => seasons.id),
+  txnNo: text().notNull(),
+  kind: financeTxnKindEnum().notNull(),
+  direction: financeDirectionEnum().notNull(),
+  category: text().notNull(),
+  accountId: uuid().references(() => financeAccounts.id),
+  amount: money().notNull(),
+  txnDate: date().notNull(),
+  description: text().notNull(),
+  reference: text(),
+  payee: text(),
+  memberId: uuid().references(() => members.id),
+  supplierId: uuid(),
+  purchaseRequestId: uuid(),
+  status: financeTxnStatusEnum().notNull(),
+  approvalId: uuid(),
+  reversalOfId: uuid().unique().references((): AnyPgColumn => financeTransactions.id),
+  createdById: uuid().notNull(),
+  postedById: uuid(),
+  postedAt: timestamp({ withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [
+  uniqueIndex().on(t.amcosId, t.txnNo),
+  index().on(t.amcosId, t.status, t.txnDate),
+  index().on(t.amcosId, t.accountId),
+  index().on(t.purchaseRequestId),
+]);
+
+export const financeBudgets = pgTable('finance_budgets', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  seasonId: uuid().notNull().references(() => seasons.id),
+  category: text().notNull(),
+  amount: money().notNull(),
+  notes: text(),
+  createdById: uuid(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex().on(t.amcosId, t.seasonId, t.category)]);
+
+export const suppliers = pgTable('suppliers', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  name: text().notNull(),
+  phone: text(),
+  email: text(),
+  tin: text(),
+  address: text(),
+  notes: text(),
+  isActive: boolean().notNull().default(true),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex().on(t.amcosId, t.name)]);
+
+export const purchaseRequests = pgTable('purchase_requests', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  seasonId: uuid().notNull().references(() => seasons.id),
+  prNo: text().notNull(),
+  supplierId: uuid().references(() => suppliers.id),
+  status: purchaseStatusEnum().notNull().default('PENDING_APPROVAL'),
+  totalAmount: money().notNull(),
+  neededBy: date(),
+  notes: text(),
+  approvalId: uuid(),
+  requestedById: uuid().notNull(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex().on(t.amcosId, t.prNo), index().on(t.amcosId, t.status)]);
+
+export const purchaseRequestLines = pgTable('purchase_request_lines', {
+  id: id(),
+  purchaseRequestId: uuid().notNull().references(() => purchaseRequests.id),
+  inputItemId: uuid().notNull().references(() => inputItems.id),
+  quantity: numeric({ precision: 14, scale: 2 }).notNull(),
+  unitCost: money().notNull(),
+  amount: money().notNull(),
+  receivedQty: numeric({ precision: 14, scale: 2 }).notNull().default('0'),
+}, (t) => [index().on(t.purchaseRequestId)]);
 
 
 // =====================================================================
@@ -724,6 +879,14 @@ export const farmsRelations = relations(farms, ({ one }) => ({
 export const inputIssuesRelations = relations(inputIssues, ({ one, many }) => ({
   member: one(members, { fields: [inputIssues.memberId], references: [members.id] }),
   lines: many(inputIssueLines),
+}));
+export const purchaseRequestsRelations = relations(purchaseRequests, ({ one, many }) => ({
+  supplier: one(suppliers, { fields: [purchaseRequests.supplierId], references: [suppliers.id] }),
+  lines: many(purchaseRequestLines),
+}));
+export const purchaseRequestLinesRelations = relations(purchaseRequestLines, ({ one }) => ({
+  purchaseRequest: one(purchaseRequests, { fields: [purchaseRequestLines.purchaseRequestId], references: [purchaseRequests.id] }),
+  inputItem: one(inputItems, { fields: [purchaseRequestLines.inputItemId], references: [inputItems.id] }),
 }));
 export const inputIssueLinesRelations = relations(inputIssueLines, ({ one }) => ({
   inputIssue: one(inputIssues, { fields: [inputIssueLines.inputIssueId], references: [inputIssues.id] }),

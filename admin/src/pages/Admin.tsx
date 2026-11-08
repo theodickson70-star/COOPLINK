@@ -53,14 +53,15 @@ export function Balances() {
 // ------------------------------ WATUMIAJI ------------------------------
 interface UserRow { id: string; fullName: string; phone: string; email: string | null; role: Role; amcosId: string | null; unionId: string | null; isActive: boolean; mustChangePassword: boolean; lastLoginAt: string | null }
 
+// Watumishi wa AMCOS (Meneja, Mhasibu, Stokipa) wanaundwa na Owner kwenye AMCOS Management — mmoja kwa kila cheo.
 const CREATABLE: Record<string, Role[]> = {
-  SUPER_ADMIN: ['SUPER_ADMIN', 'UNION_ADMIN', 'UNION_VIEWER', 'AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK', 'AMCOS_VIEWER'],
-  UNION_ADMIN: ['UNION_ADMIN', 'UNION_VIEWER', 'AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK', 'AMCOS_VIEWER'],
-  AMCOS_ADMIN: ['ACCOUNTANT', 'CLERK', 'AMCOS_VIEWER'],
+  SUPER_ADMIN: ['UNION_ADMIN', 'UNION_VIEWER'],
+  UNION_ADMIN: ['UNION_ADMIN', 'UNION_VIEWER'],
 };
 
 export function Users() {
   const { user } = useAuth();
+  const manage = (CREATABLE[user?.role ?? ''] ?? []).length > 0;
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const q = useDebounced(search);
@@ -80,8 +81,8 @@ export function Users() {
 
   return (
     <>
-      <PageHead title="Watumiaji" sub="Wafanyakazi wanaoingia kwenye CoopLink">
-        <Button onClick={() => setOpen(true)}>+ Mtumiaji mpya</Button>
+      <PageHead title={manage ? 'Watumiaji' : 'Watumishi wa chama'} sub={manage ? 'Watumiaji wa Chama Kikuu' : 'Meneja, Mhasibu na Stokipa. Akaunti zinasimamiwa na CoopLink (Owner) — wasiliana nao kubadilisha mtumishi au nenosiri.'}>
+        {manage && <Button onClick={() => setOpen(true)}>+ Mtumiaji mpya</Button>}
       </PageHead>
       <Alert>{error ?? act.error}</Alert>
       <section className="card">
@@ -99,7 +100,7 @@ export function Users() {
                     <td>{u.lastLoginAt ? dateTime(u.lastLoginAt) : '—'}</td>
                     <td><Badge status={u.isActive ? 'ACTIVE' : 'CANCELLED'} label={u.isActive ? 'Hai' : 'Amezimwa'} /></td>
                     <td className="num">
-                      {u.id !== user?.id && (
+                      {manage && u.id !== user?.id && (CREATABLE[user?.role ?? ''] ?? []).includes(u.role) && (
                         <span className="actions" style={{ justifyContent: 'flex-end' }}>
                           <Button size="sm" variant="secondary" busy={act.busy} onClick={() => reset(u)}>Nenosiri jipya</Button>
                           <Button size="sm" variant="ghost" busy={act.busy} onClick={() => toggle(u)}>{u.isActive ? 'Zima' : 'Washa'}</Button>
@@ -129,7 +130,7 @@ function NewUser({ open, onClose, onCreated }: { open: boolean; onClose: () => v
   const roles = CREATABLE[user?.role ?? ''] ?? [];
   const [fullName, setFullName] = useState('');
   const [ph, setPh] = useState('');
-  const [role, setRole] = useState<Role>(roles.includes('CLERK') ? 'CLERK' : roles[0]);
+  const [role, setRole] = useState<Role>(roles[0]);
   const [amcosId, setAmcosId] = useState('');
   const [unionId, setUnionId] = useState(user?.unionId ?? '');
   const needsAmcos = ['AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK', 'AMCOS_VIEWER'].includes(role) && !user?.amcosId;

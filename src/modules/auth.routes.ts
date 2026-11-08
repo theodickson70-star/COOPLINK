@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { amcosPermissions } from '../lib/amcos-permissions';
 import { Router, type Request } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
@@ -31,7 +32,7 @@ type User = typeof schema.users.$inferSelect;
 
 function publicUser(u: User) {
   const { passwordHash, tokenVersion, totpSecret, permissions, ...rest } = u;
-  return { ...rest, permissions: effectivePermissions(u.role, permissions) };
+  return { ...rest, permissions: effectivePermissions(u.role, permissions), amcosPermissions: amcosPermissions(u.role) };
 }
 
 const ua = (req: Request) => req.headers['user-agent']?.slice(0, 300) ?? null;

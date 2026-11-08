@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
-import { useAuth, ROLE_GROUPS, type Role } from '../lib/auth';
+import { useAuth, ROLE_GROUPS, type AmcosPermission, type Role } from '../lib/auth';
+import { useFetch } from '../lib/hooks';
 import { api, getSelectedAmcos, setSelectedAmcos, type Paged } from '../lib/api';
 import { ROLE_LABEL } from '../lib/format';
 import { LogoMark, Wordmark } from './Logo';
@@ -18,31 +19,48 @@ const I = {
   org: <><path d="M3 21h18M5 21V9l7-5 7 5v12" /><path d="M9 21v-6h6v6" /></>,
   audit: <><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.5-4.5M8 11h6M11 8v6" /></>,
   menu: <path d="M3 6h18M3 12h18M3 18h18" />,
+  check: <><path d="M9 11l3 3 8-8" /><path d="M20 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></>,
+  cart: <><circle cx="9" cy="20" r="1.5" /><circle cx="18" cy="20" r="1.5" /><path d="M2 3h3l2.7 12.2a1 1 0 0 0 1 .8h9.6a1 1 0 0 0 1-.8L21 7H6.2" /></>,
+  wallet: <><path d="M3 7a2 2 0 0 1 2-2h13v4" /><rect x="3" y="7" width="18" height="13" rx="2" /><circle cx="16" cy="13.5" r="1.3" /></>,
 };
 
 function Icon({ d }: { d: ReactNode }) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>;
 }
 
-interface NavItem { to: string; label: string; icon: ReactNode; roles?: Role[] }
+// Menu inaonyesha moduli za cheo husika tu. Usalama halisi uko kwenye backend (kila endpoint inakagua ruhusa).
+interface NavItem { to: string; label: string; icon: ReactNode; roles?: Role[]; perm?: AmcosPermission[] }
 const NAV: { section?: string; items: NavItem[] }[] = [
-  { items: [{ to: '/', label: 'Dashibodi', icon: I.home }] },
+  { items: [
+    { to: '/', label: 'Dashibodi', icon: I.home },
+    { to: '/approvals', label: 'Idhini', icon: I.check, perm: ['approvals.read'] },
+  ] },
   {
-    section: 'Chama',
+    section: 'Wakulima',
     items: [
-      { to: '/members', label: 'Wanachama', icon: I.members },
-      { to: '/estimates', label: 'Makisio', icon: I.estimate },
-      { to: '/inputs', label: 'Pembejeo na Stoo', icon: I.inputs },
-      { to: '/input-issues', label: 'Utoaji wa Pembejeo', icon: I.issue },
-      { to: '/balances', label: 'Madeni na Salio', icon: I.money },
+      { to: '/members', label: 'Wakulima (wanachama)', icon: I.members, perm: ['members.read'] },
+      { to: '/estimates', label: 'Makisio', icon: I.estimate, perm: ['members.read'] },
+      { to: '/balances', label: 'Madeni na Salio', icon: I.money, perm: ['ledger.read'] },
     ],
+  },
+  {
+    section: 'Stoo',
+    items: [
+      { to: '/inputs', label: 'Bidhaa na Stoo', icon: I.inputs, perm: ['stock.read'] },
+      { to: '/input-issues', label: 'Ugawaji wa Pembejeo', icon: I.issue, perm: ['stock.read'] },
+      { to: '/purchases', label: 'Manunuzi na Wazabuni', icon: I.cart, perm: ['purchases.request', 'purchases.receive', 'finance.read'] },
+    ],
+  },
+  {
+    section: 'Fedha',
+    items: [{ to: '/finance', label: 'Fedha za Chama', icon: I.wallet, perm: ['finance.read'] }],
   },
   {
     section: 'Usimamizi',
     items: [
-      { to: '/users', label: 'Watumiaji', icon: I.users, roles: ROLE_GROUPS.ADMINS },
+      { to: '/users', label: 'Watumishi', icon: I.users, roles: ['SUPER_ADMIN', 'UNION_ADMIN', 'AMCOS_ADMIN'] },
       { to: '/organizations', label: 'Vyama na Misimu', icon: I.org, roles: ROLE_GROUPS.ORGS },
-      { to: '/audit', label: 'Kumbukumbu (Audit)', icon: I.audit, roles: ROLE_GROUPS.AUDIT },
+      { to: '/audit', label: 'Kumbukumbu (Audit)', icon: I.audit, perm: ['audit.read'] },
     ],
   },
 ];
@@ -67,7 +85,9 @@ function AmcosSwitcher() {
 }
 
 export function Layout() {
-  const { user, amcos, logout, can } = useAuth();
+  const { user, amcos, logout, can, may } = useAuth();
+  const decider = may('approvals.decide');
+  const pending = useFetch<{ total: number }>(user?.amcosId && may('approvals.read') ? '/approvals/summary' : null);
   const [open, setOpen] = useState(false);
   const loc = useLocation();
   useEffect(() => setOpen(false), [loc.pathname]);
@@ -86,13 +106,16 @@ export function Layout() {
         </div>
         <nav className="nav">
           {NAV.map((g, i) => {
-            const items = g.items.filter((it) => !it.roles || can(...it.roles));
+            const items = g.items.filter((it) => (!it.roles || can(...it.roles)) && (!it.perm || may(...it.perm)));
             if (!items.length) return null;
             return (
               <div key={i} style={{ display: 'contents' }}>
                 {g.section && <div className="nav-section">{g.section}</div>}
                 {items.map((it) => (
-                  <NavLink key={it.to} to={it.to} end={it.to === '/'}><Icon d={it.icon} />{it.label}</NavLink>
+                  <NavLink key={it.to} to={it.to} end={it.to === '/'}>
+                    <Icon d={it.icon} />{it.to === '/approvals' && !decider ? 'Maombi yangu' : it.label}
+                    {it.to === '/approvals' && decider && !!pending.data?.total && <span className="nav-count">{pending.data.total}</span>}
+                  </NavLink>
                 ))}
               </div>
             );
@@ -109,7 +132,7 @@ export function Layout() {
           {user.role === 'SUPER_ADMIN' && <Link className="btn btn-primary btn-sm hide-sm" to="/owner">Owner Panel</Link>}
           <div className="user-chip">
             <span className="avatar" aria-hidden="true">{user.fullName.charAt(0)}</span>
-            <span className="who">{user.fullName}<small>{ROLE_LABEL[user.role]}</small></span>
+            <span className="who">{user.fullName}<small>{ROLE_LABEL[user.role]}{amcos && user.amcosId ? ` · ${amcos.code}` : ''}</small></span>
           </div>
           <Button variant="ghost" size="sm" onClick={logout}>Toka</Button>
         </header>

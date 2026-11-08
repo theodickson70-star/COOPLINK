@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api, type Paged } from '../lib/api';
 import { useAction, useDebounced, useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
-import { date, dateTime, phone } from '../lib/format';
+import { date, dateTime, phone, STAFF_DUTY } from '../lib/format';
 import { Alert, Button, Empty, Input, Loading, Modal, PageHead, Pager, Select, SelectField, TextField } from '../components/ui';
 import { ConfirmDialog, money, nfmt, Pill, Section } from '../components/owner-ui';
 import { AssignPlanModal, type Plan } from './Subscriptions';
@@ -194,14 +194,7 @@ export function OwnerAmcosDetail() {
             <dt>Iliidhinishwa</dt><dd>{a.approvedAt ? dateTime(a.approvedAt) : '—'}</dd>
           </dl>
         </Section>
-        <Section title="Viongozi (AMCOS Admin)">
-          {data.admins.length === 0 ? <p className="muted">Bado hakuna Katibu/Meneja aliyesajiliwa.</p> : (
-            <table className="table"><tbody>
-              {data.admins.map((x) => <tr key={x.phone}><td><strong>{x.fullName}</strong></td><td>{phone(x.phone)}</td><td>{x.isActive ? <Pill value="ACTIVE" /> : <Pill value="CANCELLED" label="Amezimwa" />}</td></tr>)}
-            </tbody></table>
-          )}
-          <p className="muted" style={{ fontSize: 13 }}>Shughuli za kila siku za chama (wanachama, pembejeo, ledger) zinasimamiwa na viongozi wa chama wenyewe.</p>
-        </Section>
+        <StaffSlots amcosId={a.id} disabled={a.status === 'REJECTED'} />
       </div>
 
       {has('subscriptions.read') && (
@@ -262,5 +255,100 @@ export function OwnerAmcosDetail() {
       {modal === 'assign' && <AssignPlanModal amcosId={a.id} amcosName={a.name} onClose={close} onDone={done} />}
       {modal === 'pay' && current && <RecordPaymentModal subscription={{ id: current.id, cycle: current.cycle, price: current.price, amcosName: a.name }} onClose={close} onDone={done} />}
     </>
+  );
+}
+
+
+// ------------------------------ WATUMISHI WATATU WA AMCOS ------------------------------
+interface StaffUser { id: string; fullName: string; phone: string; email: string | null; role: string; isActive: boolean; mustChangePassword: boolean; lastLoginAt: string | null; updatedAt: string }
+interface Slot { role: 'AMCOS_ADMIN' | 'ACCOUNTANT' | 'CLERK'; title: string; holder: StaffUser | null }
+
+function StaffSlots({ amcosId, disabled }: { amcosId: string; disabled: boolean }) {
+  const { has } = useAuth();
+  const { data, loading, reload } = useFetch<{ slots: Slot[]; history: StaffUser[] }>(`/owner/amcos/${amcosId}/staff`);
+  const [assign, setAssign] = useState<Slot | null>(null);
+  const [off, setOff] = useState<StaffUser | null>(null);
+  const [secret, setSecret] = useState<{ name: string; phone: string; password: string } | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const act = useAction();
+  const manage = has('amcos.staff') && !disabled;
+  return (
+    <Section title="Watumishi (3)" actions={data && data.history.length > 0 ? <Button size="sm" variant="ghost" onClick={() => setShowHistory(!showHistory)}>{showHistory ? 'Ficha historia' : `Historia (${data.history.length})`}</Button> : null}>
+      <Alert>{act.error}</Alert>
+      {loading && !data ? <Loading /> : (
+        <div className="staff-slots">
+          {data?.slots.map((s) => (
+            <div key={s.role} className={`staff-slot ${s.holder ? '' : 'empty'}`}>
+              <div className="staff-slot-head"><strong>{s.title}</strong>{s.holder ? <Pill value="ACTIVE" /> : <Pill value="PENDING" label="Nafasi wazi" />}</div>
+              <small className="muted">{STAFF_DUTY[s.role]}</small>
+              {s.holder ? (
+                <div className="staff-slot-body">
+                  <div><strong>{s.holder.fullName}</strong> · {phone(s.holder.phone)}</div>
+                  <small className="muted">{s.holder.mustChangePassword ? 'Bado hajaingia (nenosiri la muda)' : s.holder.lastLoginAt ? `Aliingia ${dateTime(s.holder.lastLoginAt)}` : ''}</small>
+                  {manage && (
+                    <div className="actions">
+                      <Button size="sm" variant="secondary" busy={act.busy} onClick={async () => {
+                        const r = await act.run(() => api<{ temporaryPassword: string }>(`/owner/amcos/${amcosId}/staff/${s.holder!.id}/reset-password`, { method: 'POST' }));
+                        if (r) setSecret({ name: s.holder!.fullName, phone: s.holder!.phone, password: r.temporaryPassword });
+                      }}>Nenosiri jipya</Button>
+                      <Button size="sm" variant="secondary" onClick={() => setAssign(s)}>Badilisha mtumishi</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setOff(s.holder)}>Zima</Button>
+                    </div>
+                  )}
+                </div>
+              ) : manage && <div className="actions"><Button size="sm" onClick={() => setAssign(s)}>+ Weka {s.title}</Button></div>}
+            </div>
+          ))}
+        </div>
+      )}
+      {showHistory && data && (
+        <table className="table" style={{ marginTop: 12 }}><tbody>
+          {data.history.map((h) => <tr key={h.id}><td>{h.fullName}</td><td>{STAFF_TITLE_OF(h.role)}</td><td>{phone(h.phone)}</td><td className="muted">Amezimwa {date(h.updatedAt)}</td></tr>)}
+        </tbody></table>
+      )}
+      <p className="muted" style={{ fontSize: 13, marginBottom: 0 }}>Kila AMCOS ina mtumishi mmoja kwa kila cheo. Mtumishi akibadilishwa, akaunti ya zamani inazimwa (haifutwi) na historia yake yote inabaki.</p>
+      {assign && <AssignStaff amcosId={amcosId} slot={assign} onClose={() => setAssign(null)} onDone={(sec) => { setAssign(null); setSecret(sec); reload(); }} />}
+      <ConfirmDialog open={!!off} danger title={`Zima ${off?.fullName ?? ''}`} confirmLabel="Zima akaunti" onClose={() => setOff(null)}
+        message="Mtumishi atatolewa kwenye mfumo mara moja. Rekodi zake zote zinabaki. Nafasi itakuwa wazi hadi uweke mtu mwingine."
+        onConfirm={async (c) => { await api(`/owner/amcos/${amcosId}/staff/${off!.id}/active`, { method: 'POST', body: { isActive: false, ...c } }); setOff(null); reload(); }} />
+      <Modal open={!!secret} title="Nenosiri la muda" onClose={() => setSecret(null)} footer={<Button onClick={() => setSecret(null)}>Nimelinakili</Button>}>
+        <p style={{ margin: 0 }}>Mpe <strong>{secret?.name}</strong> ({phone(secret?.phone)}) nenosiri hili. Ataombwa kulibadilisha akiingia mara ya kwanza.</p>
+        <div className="secret">{secret?.password}</div>
+        <Alert kind="warn">Linaonyeshwa mara moja tu.</Alert>
+      </Modal>
+    </Section>
+  );
+}
+
+const STAFF_TITLE_OF = (r: string) => ({ AMCOS_ADMIN: 'Meneja', ACCOUNTANT: 'Mhasibu', CLERK: 'Stokipa', AMCOS_VIEWER: 'Mtazamaji' } as Record<string, string>)[r] ?? r;
+
+function AssignStaff({ amcosId, slot, onClose, onDone }: { amcosId: string; slot: Slot; onClose: () => void; onDone: (s: { name: string; phone: string; password: string }) => void }) {
+  const [fullName, setFullName] = useState('');
+  const [ph, setPh] = useState('');
+  const [email, setEmail] = useState('');
+  const [pw, setPw] = useState('');
+  const [code, setCode] = useState('');
+  const { busy, error, run } = useAction();
+  const replace = !!slot.holder;
+  return (
+    <Modal open title={replace ? `Badilisha ${slot.title}` : `Weka ${slot.title}`} onClose={onClose}
+      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button variant={replace ? 'danger' : 'primary'} busy={busy} disabled={fullName.trim().length < 3 || !ph || (replace && !pw)} onClick={async () => {
+        const r = await run(() => api<{ user: StaffUser; temporaryPassword: string }>(`/owner/amcos/${amcosId}/staff`, { method: 'POST', body: {
+          role: slot.role, fullName, phone: ph, email: email || null, ...(replace ? { replace: true, confirmPassword: pw, confirmCode: code || undefined } : {}),
+        } }));
+        if (r) onDone({ name: r.user.fullName, phone: r.user.phone, password: r.temporaryPassword });
+      }}>{replace ? 'Badilisha' : 'Unda akaunti'}</Button></>}>
+      {replace && <Alert kind="warn"><strong>{slot.holder!.fullName}</strong> atazimwa (hafutwi) na kutolewa kwenye mfumo mara moja. Rekodi na audit zake zinabaki.</Alert>}
+      <Alert>{error}</Alert>
+      <div className="form-grid">
+        <TextField label="Jina kamili *" value={fullName} onChange={setFullName} />
+        <TextField label="Simu (ya kuingia) *" type="tel" value={ph} onChange={setPh} />
+        <TextField label="Email" type="email" value={email} onChange={setEmail} />
+      </div>
+      {replace && <div className="form-grid">
+        <TextField label="Thibitisha kwa nenosiri lako *" type="password" autoComplete="current-password" value={pw} onChange={setPw} />
+        <TextField label="Msimbo wa 2FA (kama umewashwa)" inputMode="numeric" value={code} onChange={setCode} />
+      </div>}
+    </Modal>
   );
 }

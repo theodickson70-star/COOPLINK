@@ -18,10 +18,10 @@ export const ROLE_LABEL: Record<string, string> = {
   SUPER_ADMIN: 'Msimamizi wa Mfumo',
   UNION_ADMIN: 'Msimamizi wa Union',
   UNION_VIEWER: 'Mtazamaji wa Union',
-  AMCOS_ADMIN: 'Katibu / Meneja',
+  AMCOS_ADMIN: 'Meneja',
   ACCOUNTANT: 'Mhasibu',
-  CLERK: 'Karani',
-  AMCOS_VIEWER: 'Mjumbe / Mkaguzi',
+  CLERK: 'Stokipa',
+  AMCOS_VIEWER: 'Mtazamaji (amezimwa)',
   FINANCE_MANAGER: 'Meneja wa Fedha',
   TECH_SUPPORT: 'Msaada wa Kiufundi',
   CUSTOMER_SUPPORT: 'Huduma kwa Wateja',
@@ -32,13 +32,15 @@ export const OWNER_ROLE_LABEL = 'Owner Super Admin';
 export const STATUS_LABEL: Record<string, string> = {
   ACTIVE: 'Hai', SUSPENDED: 'Amesimamishwa', EXITED: 'Ametoka', DECEASED: 'Marehemu',
   DRAFT: 'Rasimu', APPROVED: 'Imeidhinishwa', REJECTED: 'Imekataliwa',
-  ISSUED: 'Imetolewa', CANCELLED: 'Imefutwa',
+  ISSUED: 'Imetolewa', CANCELLED: 'Imefutwa', PENDING: 'Inasubiri uthibitisho', PENDING_APPROVAL: 'Inasubiri idhini',
+  POSTED: 'Imekamilika', PARTIALLY_RECEIVED: 'Imepokelewa sehemu', RECEIVED: 'Imepokelewa',
   PLANNING: 'Maandalizi', MARKETING: 'Masoko', CLOSED: 'Umefungwa',
 };
 
 export const LEDGER_LABEL: Record<string, string> = {
   INPUT_LOAN: 'Mkopo wa pembejeo', CASH_LOAN: 'Mkopo wa fedha', TOBACCO_SALE: 'Mauzo ya tumbaku',
   DEDUCTION: 'Makato', PAYMENT: 'Malipo', ADJUSTMENT: 'Marekebisho', REVERSAL: 'Kufutwa (reversal)', OPENING_BALANCE: 'Salio la kuanzia',
+  REPAYMENT: 'Marejesho ya deni',
 };
 
 export const CATEGORY_LABEL: Record<string, string> = {
@@ -48,5 +50,20 @@ export const UNIT_LABEL: Record<string, string> = {
   BAG: 'Mfuko', KG: 'Kilo', LITRE: 'Lita', ROLL: 'Roli', PIECE: 'Kipande', PACKET: 'Pakiti',
 };
 export const MOVE_LABEL: Record<string, string> = {
-  RECEIPT: 'Kupokea', ISSUE: 'Kutoa', RETURN: 'Kurudishwa', ADJUSTMENT: 'Marekebisho',
+  RECEIPT: 'Kupokea', ISSUE: 'Kutoa', RETURN: 'Kurudishwa', ADJUSTMENT: 'Marekebisho', DAMAGE: 'Zimeharibika', EXPIRY: 'Muda umeisha',
 };
+
+export const STAFF_TITLE: Record<string, string> = { AMCOS_ADMIN: 'Meneja', ACCOUNTANT: 'Mhasibu', CLERK: 'Stokipa' };
+export const STAFF_DUTY: Record<string, string> = {
+  AMCOS_ADMIN: 'Anaidhinisha matumizi, malipo, manunuzi, marekebisho ya stoo na ugawaji wa pembejeo',
+  ACCOUNTANT: 'Anasimamia mapato, matumizi, malipo, akaunti na ripoti za fedha',
+  CLERK: 'Anasimamia bidhaa, kupokea mzigo, ugawaji wa pembejeo na manunuzi',
+};
+export const APPROVAL_TYPE_LABEL: Record<string, string> = {
+  MEMBER_REGISTRATION: 'Usajili wa mkulima', EXPENSE: 'Matumizi', FARMER_PAYMENT: 'Malipo kwa mkulima', SUPPLIER_PAYMENT: 'Malipo kwa mzabuni',
+  PURCHASE: 'Manunuzi', STOCK_ADJUSTMENT: 'Marekebisho ya stoo', INPUT_ISSUE: 'Ugawaji wa pembejeo', REVERSAL: 'Kusahihisha muamala',
+};
+export const TXN_KIND_LABEL: Record<string, string> = {
+  INCOME: 'Mapato', EXPENSE: 'Matumizi', FARMER_PAYMENT: 'Malipo kwa mkulima', SUPPLIER_PAYMENT: 'Malipo kwa mzabuni', REVERSAL: 'Kusahihisha',
+};
+export const ACCOUNT_KIND_LABEL: Record<string, string> = { CASH: 'Fedha taslimu', BANK: 'Benki', MOBILE_MONEY: 'Simu (M-Pesa n.k.)' };

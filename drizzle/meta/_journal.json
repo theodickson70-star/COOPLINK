@@ -22,6 +22,13 @@
       "when": 1794087236068,
       "tag": "0002_owner_control_panel",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794090669914,
+      "tag": "0003_amcos_staff_roles",
+      "breakpoints": true
     }
   ]
 }

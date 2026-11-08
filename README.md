@@ -86,6 +86,22 @@ Kila mara utakapo-push GitHub, Railway itadeploy yenyewe.
 4. **Kila kitendo kinaandikwa kwenye audit log.**
 5. **Mwanachama hafutwi.** Hali yake inabadilishwa tu.
 
+## Watumishi wa AMCOS (v0.3.0)
+
+Kila AMCOS ina watumishi **watatu tu**, mmoja kwa kila cheo (database inazuia wa pili — `users_one_staff_per_role`):
+
+| Cheo | Role ya database | Kazi |
+|---|---|---|
+| **Meneja** | `AMCOS_ADMIN` | Anaidhinisha: usajili wa wakulima, matumizi, malipo, manunuzi, marekebisho ya stoo, ugawaji wa pembejeo, reversal |
+| **Mhasibu** | `ACCOUNTANT` | Mapato, kuandaa matumizi/malipo, kukamilisha malipo yaliyoidhinishwa, akaunti, cashbook, bajeti, ripoti |
+| **Stokipa** | `CLERK` | Bidhaa, kupokea mzigo, maombi ya marekebisho, ugawaji wa pembejeo, wazabuni, maombi ya manunuzi, hesabu ya stoo |
+
+- Owner anaweka/kubadilisha/kuzima watumishi kwenye **Owner → AMCOS Management → (chama) → Watumishi (3)**. Akaunti ya zamani inazimwa, haifutwi.
+- Ruhusa ziko `src/lib/amcos-permissions.ts` na zinakaguliwa kwenye kila endpoint (`requireAmcosPerm`).
+- Idhini: `src/lib/approvals.ts`. Hakuna anayeidhinisha ombi alilolianzisha. Uamuzi hauwezi kubadilishwa (trigger).
+- Miamala ya fedha iliyokamilika haifutwi wala kubadilishwa (trigger) — inasahihishwa kwa REVERSAL yenye idhini.
+- Awamu inayofuata: double-entry (Trial Balance, Balance Sheet, Cash Flow), payroll, bank reconciliation, stock transfers.
+
 ## Owner Control Panel (v0.2.0)
 
 SUPER_ADMIN (Owner) akiingia anapelekwa `/owner`. Sehemu 11: Owner Dashboard, AMCOS Management, Subscriptions & Pricing,

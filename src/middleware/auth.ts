@@ -5,6 +5,7 @@ import { verifyPassword, verifyToken } from '../lib/security';
 import { AppError, forbidden, unauthorized } from '../lib/errors';
 import { effectivePermissions, isPlatformRole, isStaffRole, type Permission } from '../lib/permissions';
 import { getSetting } from '../lib/settings';
+import { hasAmcosPerm, type AmcosPermission } from '../lib/amcos-permissions';
 import { decryptSecret, verifyTotp } from '../lib/totp';
 
 export type Role = (typeof schema.roleEnum.enumValues)[number];
@@ -93,6 +94,15 @@ export const requireRole =
     const roles = allowed.flat();
     if (!req.auth) return next(unauthorized());
     if (!roles.includes(req.auth.role)) return next(forbidden());
+    next();
+  };
+
+/** Ruhusa ya ndani ya chama (Meneja/Mhasibu/Stokipa). Inahitaji angalau moja kati ya hizi. */
+export const requireAmcosPerm =
+  (...perms: AmcosPermission[]) =>
+  (req: Request, _res: Response, next: NextFunction) => {
+    if (!req.auth) return next(unauthorized());
+    if (!perms.some((p) => hasAmcosPerm(req.auth!.role, p))) return next(forbidden('Cheo chako hakiruhusiwi kufanya hivi'));
     next();
   };
 

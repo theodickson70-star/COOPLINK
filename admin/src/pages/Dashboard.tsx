@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useFetch } from '../lib/hooks';
 import { num, tsh } from '../lib/format';
-import { useAuth, ROLE_GROUPS } from '../lib/auth';
+import { useAuth } from '../lib/auth';
 import type { Paged } from '../lib/api';
 import { Alert, Loading, PageHead, Stat } from '../components/ui';
 
@@ -15,7 +15,7 @@ interface Summary {
 interface Owing { memberId: string; memberNo: string; firstName: string; lastName: string; village: string | null; balance: string }
 
 export function Dashboard() {
-  const { user, can } = useAuth();
+  const { user, may } = useAuth();
   const { data, error, loading } = useFetch<Summary>('/reports/season-summary');
   const owing = useFetch<Paged<Owing>>('/reports/member-balances', { onlyOwing: true, pageSize: 6 });
 
@@ -28,8 +28,8 @@ export function Dashboard() {
   return (
     <>
       <PageHead title={`Habari, ${user?.fullName.split(' ')[0]}`} sub={<>Msimu <strong>{s.season.name}</strong> · muhtasari wa leo</>}>
-        {can(...ROLE_GROUPS.STAFF) && <Link className="btn btn-gold" to="/input-issues/new">Toa pembejeo</Link>}
-        {can(...ROLE_GROUPS.STAFF) && <Link className="btn btn-primary" to="/members/new">Sajili mwanachama</Link>}
+        {may('issues.request') && <Link className="btn btn-gold" to="/input-issues/new">Toa pembejeo</Link>}
+        {may('members.write') && <Link className="btn btn-primary" to="/members/new">Sajili mwanachama</Link>}
       </PageHead>
 
       <div className="grid grid-4" style={{ marginBottom: 16 }}>

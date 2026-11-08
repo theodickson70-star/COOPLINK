@@ -35,11 +35,17 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
   }
 
   const pg = pgErrorOf(err);
+  if (pg?.code === '23505' && pg.constraint === 'users_one_staff_per_role') {
+    return res.status(409).json({ error: { code: 'STAFF_SLOT_TAKEN', message: 'AMCOS hii tayari ina mtumishi hai mwenye cheo hiki' } });
+  }
   if (pg?.code === '23505') {
     return res.status(409).json({ error: { code: 'DUPLICATE', message: 'Rekodi hii tayari ipo', details: pg.detail } });
   }
   if (pg?.code === '23503') {
     return res.status(400).json({ error: { code: 'INVALID_REFERENCE', message: 'Rekodi inayohusishwa haipo', details: pg.detail } });
+  }
+  if (pg?.code === 'P0001' && /^(approval_requests|finance_transactions):/.test(pg.message ?? '')) {
+    return res.status(409).json({ error: { code: 'IMMUTABLE_RECORD', message: pg.message!.split(': ').slice(1).join(': ') } });
   }
   if (pg?.code === 'P0001' && pg.message?.startsWith('IMMUTABLE_RECORD')) {
     return res.status(409).json({ error: { code: 'IMMUTABLE_RECORD', message: 'Rekodi hii haiwezi kubadilishwa wala kufutwa' } });

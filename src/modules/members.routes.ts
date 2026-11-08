@@ -4,7 +4,9 @@ import { and, asc, count, desc, eq, ilike, or } from 'drizzle-orm';
 import { db, schema } from '../db';
 import { ah, decimalSchema, paged, paginationQuery, phoneSchema, uuidParam } from '../lib/http';
 import { badRequest, notFound } from '../lib/errors';
-import { requireRole, ROLES } from '../middleware/auth';
+import { requireAmcosPerm } from '../middleware/auth';
+import { hasAmcosPerm } from '../lib/amcos-permissions';
+import { createApproval } from '../lib/approvals';
 import { amcosScope, resolveWriteAmcosId } from '../middleware/tenant';
 import { nextNumber, pad } from '../lib/counter';
 import { audit } from '../lib/audit';
@@ -75,9 +77,10 @@ membersRouter.get(
   }),
 );
 
+// Mtumishi anasajili -> mkulima "anasubiri uthibitisho" hadi Meneja athibitishe. Meneja akisajili mwenyewe, anakuwa hai moja kwa moja.
 membersRouter.post(
   '/',
-  requireRole(ROLES.AMCOS_STAFF),
+  requireAmcosPerm('members.write'),
   ah(async (req, res) => {
     const body = memberBody.extend({ amcosId: z.string().uuid().optional() }).parse(req.body);
     const amcosId = await resolveWriteAmcosId(req, body.amcosId);
@@ -85,11 +88,18 @@ membersRouter.post(
 
     const member = await db.transaction(async (tx) => {
       const n = await nextNumber(tx, amcosId, 'member');
+      const confirmer = hasAmcosPerm(req.auth!.role, 'members.approve');
       const [row] = await tx
         .insert(m)
-        .values({ ...body, amcosId, memberNo: `${amcos.code}-${pad(n)}`, createdById: req.auth!.userId })
+        .values({ ...body, amcosId, memberNo: `${amcos.code}-${pad(n)}`, createdById: req.auth!.userId, status: confirmer ? 'ACTIVE' : 'PENDING' })
         .returning();
       await audit(tx, req, { action: 'MEMBER_CREATE', entity: 'Member', entityId: row.id, amcosId, after: row });
+      if (!confirmer) {
+        await createApproval(tx, req, {
+          amcosId, type: 'MEMBER_REGISTRATION', entityType: 'Member', entityId: row.id,
+          title: `Usajili: ${row.firstName} ${row.lastName} (${row.memberNo})${row.village ? ` · ${row.village}` : ''}`,
+        });
+      }
       return row;
     });
     res.status(201).json({ member });
@@ -102,14 +112,15 @@ membersRouter.get(
     const { id } = uuidParam.parse(req.params);
     const member = await findMemberScoped(req, id);
     const farms = await db.select().from(schema.farms).where(eq(schema.farms.memberId, id)).orderBy(asc(schema.farms.createdAt));
-    const balance = await memberBalance(db, member.amcosId, id);
+    // Stokipa haoni taarifa za fedha za mkulima
+    const balance = hasAmcosPerm(req.auth!.role, 'ledger.read') ? await memberBalance(db, member.amcosId, id) : null;
     res.json({ member, farms, balance });
   }),
 );
 
 membersRouter.patch(
   '/:id',
-  requireRole(ROLES.AMCOS_STAFF),
+  requireAmcosPerm('members.write'),
   ah(async (req, res) => {
     const { id } = uuidParam.parse(req.params);
     const body = memberBody.partial().parse(req.body);
@@ -126,11 +137,12 @@ membersRouter.patch(
 // Hali ya uanachama (hakuna kufuta mwanachama — historia ya fedha lazima ibaki)
 membersRouter.patch(
   '/:id/status',
-  requireRole(ROLES.AMCOS_MANAGERS),
+  requireAmcosPerm('members.approve'),
   ah(async (req, res) => {
     const { id } = uuidParam.parse(req.params);
-    const body = z.object({ status: z.enum(schema.memberStatusEnum.enumValues), reason: z.string().trim().min(3) }).parse(req.body);
+    const body = z.object({ status: z.enum(['ACTIVE', 'SUSPENDED', 'EXITED', 'DECEASED']), reason: z.string().trim().min(3) }).parse(req.body);
     const before = await findMemberScoped(req, id);
+    if (before.status === 'PENDING') throw badRequest('Mkulima huyu anasubiri uthibitisho — tumia ukurasa wa Idhini');
     if (before.status === body.status) throw badRequest('Hali tayari ni hiyo');
     const member = await db.transaction(async (tx) => {
       const [row] = await tx.update(m).set({ status: body.status }).where(eq(m.id, id)).returning();
@@ -155,7 +167,7 @@ const farmBody = z.object({
 
 membersRouter.post(
   '/:id/farms',
-  requireRole(ROLES.AMCOS_STAFF),
+  requireAmcosPerm('members.write'),
   ah(async (req, res) => {
     const { id } = uuidParam.parse(req.params);
     const member = await findMemberScoped(req, id);
@@ -171,7 +183,7 @@ membersRouter.post(
 
 membersRouter.patch(
   '/:id/farms/:farmId',
-  requireRole(ROLES.AMCOS_STAFF),
+  requireAmcosPerm('members.write'),
   ah(async (req, res) => {
     const { id, farmId } = z.object({ id: z.string().uuid(), farmId: z.string().uuid() }).parse(req.params);
     const member = await findMemberScoped(req, id);
@@ -190,6 +202,7 @@ membersRouter.patch(
 // ------------------------------ TAARIFA YA FEDHA (STATEMENT) ------------------------------
 membersRouter.get(
   '/:id/statement',
+  requireAmcosPerm('ledger.read'),
   ah(async (req, res) => {
     const { id } = uuidParam.parse(req.params);
     const { seasonId } = z.object({ seasonId: z.string().uuid().optional() }).parse(req.query);
