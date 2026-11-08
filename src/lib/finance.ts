@@ -27,6 +27,7 @@ export const EXPENSE_CATEGORIES: Record<string, string> = {
   BANK_CHARGES: 'Gharama za benki',
   INPUT_HANDLING: 'Upakiaji na usafirishaji wa pembejeo',
   TRAINING: 'Mafunzo',
+  REMITTANCE: 'Kulipa madeni (Chama Kikuu, ushuru, kodi, NSSF)',
   OTHER_EXPENSE: 'Matumizi mengine',
 };
 export const FARMER_PAYMENT_CATEGORIES: Record<string, string> = {

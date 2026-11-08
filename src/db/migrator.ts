@@ -53,6 +53,11 @@ const MARKERS: Record<string, string[]> = {
     "select to_regclass('public.payroll_runs') is not null",
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'finance_transactions' and column_name = 'contra_gl_account_id')",
   ],
+  '0006_closing_and_openings': [
+    "select to_regclass('public.period_locks') is not null",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'finance_transactions' and column_name = 'market_id')",
+    "select exists (select 1 from pg_proc where proname = 'journal_period_guard')",
+  ],
 };
 
 interface JournalEntry { tag: string; when: number }

@@ -64,7 +64,7 @@ export const APPROVAL_TYPE_LABEL: Record<string, string> = {
   MEMBER_REGISTRATION: 'Usajili wa mkulima', EXPENSE: 'Matumizi', FARMER_PAYMENT: 'Malipo kwa mkulima', SUPPLIER_PAYMENT: 'Malipo kwa mzabuni',
   PURCHASE: 'Manunuzi', STOCK_ADJUSTMENT: 'Marekebisho ya stoo', INPUT_ISSUE: 'Ugawaji wa pembejeo', REVERSAL: 'Kusahihisha muamala',
   JOURNAL: 'Journal ya daftari kuu', TOBACCO_SALE: 'Mauzo ya tumbaku', PAYMENT_BATCH: 'Orodha ya malipo ya wakulima', TRANSFER: 'Uhamisho kati ya akaunti',
-  PAYROLL: 'Mishahara', ASSET_DISPOSAL: 'Kuondoa mali ya chama',
+  PAYROLL: 'Mishahara', ASSET_DISPOSAL: 'Kuondoa mali ya chama', OPENING_BALANCE: 'Salio la kuanzia', PERIOD_CLOSE: 'Kufunga kipindi', YEAR_END_CLOSE: 'Kufunga mwaka',
 };
 export const TXN_KIND_LABEL: Record<string, string> = {
   INCOME: 'Mapato', EXPENSE: 'Matumizi', FARMER_PAYMENT: 'Malipo kwa mkulima', SUPPLIER_PAYMENT: 'Malipo kwa mzabuni', REVERSAL: 'Kusahihisha',

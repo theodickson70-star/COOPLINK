@@ -16,6 +16,8 @@ import { D, fmt2, tshText } from '../lib/money';
 import { createApproval } from '../lib/approvals';
 import { assertManualAllowed, balances, glMap, isDebitNormal, sumBal, syncLedger, type Bal } from '../lib/gl';
 import { toCsv } from './owner/common';
+import { lockedThrough, nextDay } from '../lib/periods';
+import { currentSeason } from './seasons.routes';
 
 export const accountingRouter = Router();
 const GA = schema.glAccounts;
@@ -30,6 +32,7 @@ export const SOURCE_LABEL: Record<string, string> = {
   FINANCE_TXN: 'Muamala wa fedha', ACCOUNT_OPENING: 'Salio la kuanzia', STOCK_MOVEMENT: 'Stoo', INPUT_ISSUE: 'Pembejeo kwa mkopo',
   INPUT_ISSUE_CANCEL: 'Kufutwa kwa pembejeo', TOBACCO_SALE: 'Mauzo ya tumbaku', PAYROLL: 'Mishahara', DEPRECIATION: 'Uchakavu',
   ASSET_OPENING: 'Mali iliyokuwepo', ASSET_DISPOSAL: 'Kuondoa mali', MANUAL: 'Journal ya mkono',
+  OPENING_BALANCE: 'Salio la kuanzia', YEAR_END_CLOSE: 'Kufunga mwaka',
 };
 
 /** Soma chama + ingiza matukio mapya kwenye daftari kuu kabla ya kusoma. */
@@ -168,6 +171,8 @@ accountingRouter.post('/journals', requireAmcosPerm('accounting.manage'), ah(asy
   const amcosId = await resolveWriteAmcosId(req);
   await syncLedger(amcosId);
   if (body.date > todayStr()) throw badRequest('Tarehe ya journal haiwezi kuwa ya baadaye');
+  const lk = await lockedThrough(db, amcosId);
+  if (lk && body.date <= lk) throw badRequest(`Kipindi kimefungwa hadi ${lk}. Tumia tarehe ya ${nextDay(lk)} au baadaye.`);
   const m = await glMap(db, amcosId);
   let dr = D(0), cr = D(0);
   for (const l of body.lines) {
@@ -255,15 +260,18 @@ accountingRouter.get('/reports/income-statement', requireAmcosPerm('accounting.r
   const amcosId = await ready(req);
   const to = q.to ?? todayStr();
   const from = q.from ?? `${to.slice(0, 4)}-01-01`;
-  res.json({ from, to, ...incomeStatement(await balances(db, amcosId, { from, to })) });
+  res.json({ from, to, ...incomeStatement(await balances(db, amcosId, { from, to, excludeClosing: true })) });
 }));
 
 accountingRouter.get('/reports/balance-sheet', requireAmcosPerm('accounting.read'), ah(async (req, res) => {
   const { asOf } = z.object({ asOf: dateStr.optional() }).parse(req.query);
   const amcosId = await ready(req);
   const date = asOf ?? todayStr();
-  const yearStart = `${date.slice(0, 4)}-01-01`;
   const all = await balances(db, amcosId, { to: date });
+  // Baada ya kufunga mwaka, ziada imeshahamia 3200 — "ya sasa" inaanza siku baada ya kufunga
+  const [lc] = (await db.execute<{ d: string | null }>(sql`select max(locked_through)::text as d from period_locks where amcos_id = ${amcosId} and kind = 'YEAR_END' and locked_through <= ${date}`)).rows;
+  const lastClose = lc?.d ?? null;
+  const yearStart = lastClose ? nextDay(lastClose) : `${date.slice(0, 4)}-01-01`;
   const prior = incomeStatement(await balances(db, amcosId, { to: prevDay(yearStart) }));
   const current = incomeStatement(await balances(db, amcosId, { from: yearStart, to: date }));
   const group = (t: string) => all.filter((r) => r.type === t && !D(r.balance).isZero()).map((r) => ({ id: r.id, code: r.code, name: r.name, subtype: r.subtype, amount: r.balance }));
@@ -272,7 +280,7 @@ accountingRouter.get('/reports/balance-sheet', requireAmcosPerm('accounting.read
   const tl = liabilities.reduce((s, r) => s.plus(r.amount), D(0));
   const te = equity.reduce((s, r) => s.plus(r.amount), D(0)).plus(prior.surplus).plus(current.surplus);
   res.json({
-    asOf: date, assets, liabilities, equity,
+    asOf: date, assets, liabilities, equity, currentFrom: yearStart, lastClose,
     retainedPrior: prior.surplus, currentSurplus: current.surplus,
     totalAssets: fmt2(ta), totalLiabilities: fmt2(tl), totalEquity: fmt2(te), totalLiabilitiesEquity: fmt2(tl.plus(te)),
     balanced: ta.eq(tl.plus(te)),
@@ -321,9 +329,11 @@ accountingRouter.get('/reports/cash-flow', requireAmcosPerm('accounting.read'), 
 accountingRouter.get('/dashboard', requireAmcosPerm('accounting.read'), ah(async (req, res) => {
   const amcosId = await ready(req);
   const today = todayStr();
-  const yearStart = `${today.slice(0, 4)}-01-01`;
+  // Kipindi cha dashibodi: msimu unaoendelea (tumbaku inavuka mwaka), vinginevyo mwaka huu
+  const season = await currentSeason();
+  const yearStart = season && season.startDate <= today ? season.startDate : `${today.slice(0, 4)}-01-01`;
   const all = await balances(db, amcosId);
-  const ytd = incomeStatement(await balances(db, amcosId, { from: yearStart, to: today }));
+  const ytd = incomeStatement(await balances(db, amcosId, { from: yearStart, to: today, excludeClosing: true }));
   const code = (c: string) => D(all.find((r) => r.code === c)?.balance ?? 0);
   const cashAccounts = all.filter((r) => r.subtype === 'CASH').map((r) => ({ id: r.id, code: r.code, name: r.name, balance: r.balance, financeAccountId: r.financeAccountId }));
 
@@ -336,7 +346,7 @@ accountingRouter.get('/dashboard', requireAmcosPerm('accounting.read'), ah(async
       coalesce(sum(case when a.type = 'INCOME' then l.credit - l.debit end), 0) as income,
       coalesce(sum(case when a.type = 'EXPENSE' then l.debit - l.credit end), 0) as expense
     from journal_lines l join journal_entries e on e.id = l.journal_entry_id join gl_accounts a on a.id = l.gl_account_id
-    where e.amcos_id = ${amcosId} and e.entry_date > (current_date - interval '12 months') and a.type in ('INCOME', 'EXPENSE')
+    where e.amcos_id = ${amcosId} and e.entry_date > (current_date - interval '12 months') and a.type in ('INCOME', 'EXPENSE') and e.source <> 'YEAR_END_CLOSE'
     group by 1 order by 1`);
 
   const A = schema.approvalRequests;
@@ -360,7 +370,8 @@ accountingRouter.get('/dashboard', requireAmcosPerm('accounting.read'), ah(async
     },
     inventory: fmt2(code('1300')),
     fixedAssets: fmt2(code('1500').minus(code('1590'))),
-    ytd: { from: yearStart, income: ytd.totalIncome, expense: ytd.totalExpense, surplus: ytd.surplus },
+    lockedThrough: await lockedThrough(db, amcosId),
+    ytd: { from: yearStart, season: season && season.startDate <= today ? season.name : null, income: ytd.totalIncome, expense: ytd.totalExpense, surplus: ytd.surplus },
     monthly: monthly.rows.map((r) => ({ month: r.m, income: fmt2(r.income), expense: fmt2(r.expense) })),
     pending: Object.fromEntries(pending.map((p) => [p.type, { count: p.n, amount: fmt2(p.v) }])),
     toPost: { count: toPost.n, amount: fmt2(toPost.v) },
@@ -375,4 +386,133 @@ accountingRouter.post('/sync', requireAmcosPerm('accounting.manage'), ah(async (
   res.json(await syncLedger(amcosId));
 }));
 
+
+
+// ------------------------------ SALIO LA KUANZIA NA KUFUNGA VIPINDI ------------------------------
+
+accountingRouter.get('/periods', requireAmcosPerm('accounting.read'), ah(async (req, res) => {
+  const amcosId = await readAmcosId(req);
+  const L = schema.periodLocks;
+  const locks = await db.select({ l: L, by: sql<string | null>`(select u.full_name from users u where u.id = "period_locks"."created_by_id")`,
+    entryNo: sql<string | null>`(select j.entry_no from journal_entries j where j.id = "period_locks"."journal_entry_id")` })
+    .from(L).where(eq(L.amcosId, amcosId)).orderBy(desc(L.lockedThrough));
+  const A = schema.approvalRequests;
+  const requests = await db.select().from(A).where(and(eq(A.amcosId, amcosId), sql`${A.type} in ('OPENING_BALANCE', 'PERIOD_CLOSE', 'YEAR_END_CLOSE')`)).orderBy(desc(A.createdAt)).limit(30);
+  const openings = await db.select({ id: JE.id, entryNo: JE.entryNo, entryDate: JE.entryDate, description: JE.description,
+    amount: sql<string>`(select sum(l.debit) from journal_lines l where l.journal_entry_id = "journal_entries"."id")` })
+    .from(JE).where(and(eq(JE.amcosId, amcosId), eq(JE.source, 'OPENING_BALANCE'))).orderBy(desc(JE.createdAt));
+  res.json({
+    lockedThrough: await lockedThrough(db, amcosId),
+    locks: locks.map((x) => ({ ...x.l, createdBy: x.by, entryNo: x.entryNo })),
+    requests: requests.map((r) => ({ id: r.id, requestNo: r.requestNo, type: r.type, status: r.status, title: r.title, amount: r.amount, createdAt: r.createdAt, decidedAt: r.decidedAt, decisionNote: r.decisionNote })),
+    openings: openings.map((o) => ({ ...o, amount: fmt2(o.amount ?? 0) })),
+  });
+}));
+
+async function noPendingClosing(amcosId: string) {
+  const A = schema.approvalRequests;
+  const [p] = await db.select({ n: count() }).from(A).where(and(eq(A.amcosId, amcosId), eq(A.status, 'PENDING'), sql`${A.type} in ('PERIOD_CLOSE', 'YEAR_END_CLOSE')`));
+  if (p.n > 0) throw conflict('Tayari kuna ombi la kufunga kipindi linalosubiri Meneja');
+}
+
+const openingBody = z.object({
+  date: dateStr,
+  description: z.string().trim().min(3),
+  farmers: z.array(z.object({ memberNo: z.string().trim().min(1), debt: decimalSchema({ min: 0 }).nullable().optional(), credit: decimalSchema({ min: 0 }).nullable().optional() })).max(5000).default([]),
+  lines: z.array(z.object({ glAccountId: z.string().uuid(), debit: decimalSchema({ min: 0 }).nullable().optional(), credit: decimalSchema({ min: 0 }).nullable().optional() })).max(200).default([]),
+});
+
+/** Salio la kuanzia (chama kinapoanza kutumia CoopLink): madeni ya wakulima + akaunti nyingine. Linaingia baada ya idhini ya Meneja. */
+accountingRouter.post('/opening-balances', requireAmcosPerm('accounting.manage'), ah(async (req, res) => {
+  const body = openingBody.parse(req.body);
+  const amcosId = await resolveWriteAmcosId(req);
+  if (body.date > todayStr()) throw badRequest('Tarehe ya salio la kuanzia haiwezi kuwa ya baadaye');
+  const lock = await lockedThrough(db, amcosId);
+  if (lock && body.date <= lock) throw badRequest(`Kipindi kimefungwa hadi ${lock}`);
+  if (!body.farmers.length && !body.lines.length) throw badRequest('Weka angalau deni moja la mkulima au akaunti moja');
+  await syncLedger(amcosId);
+  const nos = [...new Set(body.farmers.map((f) => f.memberNo.toUpperCase()))];
+  if (nos.length !== body.farmers.length) throw badRequest('Namba ya mkulima inajirudia — weka mstari mmoja kwa kila mkulima');
+  const M = schema.members;
+  const mems = nos.length ? await db.select().from(M).where(and(eq(M.amcosId, amcosId), sql`upper(${M.memberNo}) in (${sql.join(nos.map((n) => sql`${n}`), sql`, `)})`)) : [];
+  const byNo = new Map(mems.map((m) => [m.memberNo.toUpperCase(), m]));
+  const missing = nos.filter((n) => !byNo.has(n));
+  if (missing.length) throw badRequest(`Wakulima hawa hawajasajiliwa: ${missing.slice(0, 10).join(', ')}${missing.length > 10 ? ` na wengine ${missing.length - 10}` : ''}`);
+  const farmers = body.farmers.map((f) => {
+    const m = byNo.get(f.memberNo.toUpperCase())!;
+    if (D(f.debt).gt(0) && D(f.credit).gt(0)) throw badRequest(`${m.memberNo}: weka deni AU kinachodaiwa na chama, si vyote`);
+    return { memberId: m.id, memberNo: m.memberNo, name: `${m.firstName} ${m.lastName}`, debt: f.debt ?? null, credit: f.credit ?? null };
+  }).filter((f) => D(f.debt).gt(0) || D(f.credit).gt(0));
+  const g = await glMap(db, amcosId);
+  const lines = body.lines.filter((l) => D(l.debit).gt(0) || D(l.credit).gt(0)).map((l) => {
+    const acc = g.byId.get(l.glAccountId);
+    if (!acc) throw badRequest('Akaunti si sahihi');
+    assertManualAllowed(acc);
+    if (['1200', '2200', '3900'].includes(acc.code)) throw badRequest(`${acc.code}: madeni ya wakulima yanawekwa kwa kila mkulima; 3900 inajazwa yenyewe`);
+    if (D(l.debit).gt(0) && D(l.credit).gt(0)) throw badRequest(`${acc.code}: debit AU credit`);
+    return { glAccountId: acc.id, code: acc.code, name: acc.name, debit: l.debit ?? null, credit: l.credit ?? null };
+  });
+  const dr = farmers.reduce((s, f) => s.plus(D(f.debt)), D(0)).plus(lines.reduce((s, l) => s.plus(D(l.debit)), D(0)));
+  const cr = farmers.reduce((s, f) => s.plus(D(f.credit)), D(0)).plus(lines.reduce((s, l) => s.plus(D(l.credit)), D(0)));
+  const approval = await db.transaction((tx) => createApproval(tx, req, {
+    amcosId, type: 'OPENING_BALANCE', amount: fmt2(dr.gt(cr) ? dr : cr),
+    title: `Salio la kuanzia ${body.date}: wakulima ${farmers.length}, akaunti ${lines.length} (debit ${tshText(dr)}, credit ${tshText(cr)})`,
+    reason: body.description, payload: { date: body.date, description: body.description, farmers, lines, totals: { debit: fmt2(dr), credit: fmt2(cr), equity: fmt2(dr.minus(cr)) } },
+  }));
+  res.status(202).json({ approval, totals: { debit: fmt2(dr), credit: fmt2(cr), equity: fmt2(dr.minus(cr)) } });
+}));
+
+accountingRouter.post('/period-close', requireAmcosPerm('accounting.manage'), ah(async (req, res) => {
+  const body = z.object({ lockedThrough: dateStr, note: z.string().trim().nullable().optional() }).parse(req.body);
+  const amcosId = await resolveWriteAmcosId(req);
+  if (body.lockedThrough >= todayStr()) throw badRequest('Funga kipindi kilichokwisha pita tu (kabla ya leo)');
+  const lock = await lockedThrough(db, amcosId);
+  if (lock && body.lockedThrough <= lock) throw badRequest(`Tayari kimefungwa hadi ${lock}`);
+  await noPendingClosing(amcosId);
+  const T = schema.financeTransactions;
+  const [open] = await db.select({ n: count() }).from(T).where(and(eq(T.amcosId, amcosId), sql`${T.status} in ('PENDING_APPROVAL', 'APPROVED')`, lte(T.txnDate, body.lockedThrough)));
+  const approval = await db.transaction((tx) => createApproval(tx, req, {
+    amcosId, type: 'PERIOD_CLOSE', title: `Kufunga kipindi hadi ${body.lockedThrough}`, reason: body.note ?? 'Kipindi kimekaguliwa',
+    payload: { lockedThrough: body.lockedThrough, note: body.note ?? null, openTransactions: open.n },
+  }));
+  res.status(202).json({ approval, openTransactions: open.n });
+}));
+
+accountingRouter.get('/year-end-preview', requireAmcosPerm('accounting.read'), ah(async (req, res) => {
+  const { closeDate } = z.object({ closeDate: dateStr }).parse(req.query);
+  const amcosId = await ready(req);
+  res.json({ closeDate, lockedThrough: await lockedThrough(db, amcosId), ...incomeStatement(await balances(db, amcosId, { to: closeDate })) });
+}));
+
+accountingRouter.post('/year-end-close', requireAmcosPerm('accounting.manage'), ah(async (req, res) => {
+  const body = z.object({ closeDate: dateStr, note: z.string().trim().nullable().optional() }).parse(req.body);
+  const amcosId = await resolveWriteAmcosId(req);
+  if (body.closeDate >= todayStr()) throw badRequest('Mwaka unafungwa baada ya tarehe yake ya mwisho kupita');
+  const lock = await lockedThrough(db, amcosId);
+  if (lock && body.closeDate <= lock) throw badRequest(`Tayari kimefungwa hadi ${lock}`);
+  await noPendingClosing(amcosId);
+  await syncLedger(amcosId);
+  const is = incomeStatement(await balances(db, amcosId, { to: body.closeDate }));
+  const approval = await db.transaction((tx) => createApproval(tx, req, {
+    amcosId, type: 'YEAR_END_CLOSE', amount: is.surplus.startsWith('-') ? is.surplus.slice(1) : is.surplus,
+    title: `Kufunga mwaka hadi ${body.closeDate}: mapato ${tshText(is.totalIncome)}, matumizi ${tshText(is.totalExpense)}, ${Number(is.surplus) >= 0 ? 'ziada' : 'upungufu'} ${tshText(is.surplus.replace('-', ''))}`,
+    reason: body.note ?? 'Mwaka wa fedha umekamilika', payload: { closeDate: body.closeDate, note: body.note ?? null, totals: { income: is.totalIncome, expense: is.totalExpense, surplus: is.surplus } },
+  }));
+  res.status(202).json({ approval });
+}));
+
+// ------------------------------ MADENI YA CHAMA (Chama Kikuu, ushuru, kodi) ------------------------------
+accountingRouter.get('/payables', requireAmcosPerm('accounting.read'), ah(async (req, res) => {
+  const amcosId = await ready(req);
+  const all = await balances(db, amcosId);
+  const rows = all.filter((r) => r.type === 'LIABILITY' && r.isActive && r.code !== '2200' && r.code !== '2400');
+  const T = schema.financeTransactions;
+  const pending = await db.select({ contra: T.contraGlAccountId, n: count(), v: sql<string>`coalesce(sum(${T.amount}), 0)` }).from(T)
+    .where(and(eq(T.amcosId, amcosId), sql`${T.status} in ('PENDING_APPROVAL', 'APPROVED')`, sql`${T.contraGlAccountId} is not null`)).groupBy(T.contraGlAccountId);
+  const pend = new Map(pending.map((p) => [p.contra, p]));
+  const [lastPaid] = [await db.execute<{ contra: string; d: string }>(sql`select contra_gl_account_id as contra, max(txn_date)::text as d from finance_transactions where amcos_id = ${amcosId} and status = 'POSTED' and contra_gl_account_id is not null group by 1`)];
+  const paid = new Map(lastPaid.rows.map((r) => [r.contra, r.d]));
+  res.json({ data: rows.map((r) => ({ id: r.id, code: r.code, name: r.name, subtype: r.subtype, balance: r.balance, credited: r.credit, debited: r.debit,
+    pendingCount: pend.get(r.id)?.n ?? 0, pendingAmount: fmt2(pend.get(r.id)?.v ?? 0), lastPaid: paid.get(r.id) ?? null })) });
+}));
 

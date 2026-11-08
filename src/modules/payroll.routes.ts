@@ -18,6 +18,7 @@ import { accountBalance, lockAccount, nextTxnNo } from '../lib/finance';
 import { computeLine, PAYROLL_RATES } from '../lib/payroll';
 import { ensureChart, glMap } from '../lib/gl';
 import { todayStr } from './accounting.routes';
+import { assertOpen } from '../lib/periods';
 
 export const payrollRouter = Router();
 const E = schema.employees;
@@ -153,6 +154,7 @@ payrollRouter.post('/runs/:id/pay', requireAmcosPerm('payroll.manage'), ah(async
   const body = z.object({ accountId: z.string().uuid(), txnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), reference: z.string().trim().nullable().optional() }).parse(req.body);
   const run = await findRun(req, id);
   if (run.status !== 'APPROVED') throw badRequest(run.status === 'PENDING_APPROVAL' ? 'Mishahara hii bado inasubiri idhini ya Meneja' : 'Mishahara hii haiwezi kulipwa');
+  await assertOpen(db, run.amcosId, body.txnDate ?? todayStr());
   const [acc] = await db.select().from(schema.financeAccounts).where(and(eq(schema.financeAccounts.id, body.accountId), eq(schema.financeAccounts.amcosId, run.amcosId)));
   if (!acc || !acc.isActive) throw badRequest('Akaunti ya fedha si sahihi');
   const amcos = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, run.amcosId) }))!;

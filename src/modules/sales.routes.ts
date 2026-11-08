@@ -14,7 +14,7 @@ import { AppError, badRequest, conflict, notFound } from '../lib/errors';
 import { requireAmcosPerm } from '../middleware/auth';
 import { amcosScope, readAmcosId, resolveWriteAmcosId } from '../middleware/tenant';
 import { audit } from '../lib/audit';
-import { D, fmt2, tshText } from '../lib/money';
+import { D, Decimal, fmt2, tshText } from '../lib/money';
 import { nextNumber, pad } from '../lib/counter';
 import * as ledger from '../lib/ledger';
 import { createApproval } from '../lib/approvals';
@@ -23,6 +23,7 @@ import { computeSettlement, memberDebts, ruleGlCode } from '../lib/tobacco';
 import { currentSeason } from './seasons.routes';
 import { todayStr } from './accounting.routes';
 import { toCsv } from './owner/common';
+import { assertOpen } from '../lib/periods';
 
 export const salesRouter = Router();
 const MK = schema.markets;
@@ -420,6 +421,7 @@ salesRouter.post('/batches/:id/confirm', requireAmcosPerm('sales.manage'), ah(as
     reference: z.string().trim().min(2, 'Weka kumbukumbu ya malipo (mf. namba ya bulk payment / cheki)'), txnDate: dateStr.optional(),
   }).parse(req.body);
   const b = await findBatch(req, id);
+  await assertOpen(db, b.amcosId, body.txnDate ?? todayStr());
   if (!['APPROVED', 'PROCESSING', 'PARTIAL'].includes(b.status)) throw badRequest(b.status === 'DRAFT' ? 'Orodha hii bado inasubiri idhini ya Meneja' : 'Orodha hii haipokei malipo tena');
   const [acc] = await db.select().from(schema.financeAccounts).where(and(eq(schema.financeAccounts.id, body.accountId), eq(schema.financeAccounts.amcosId, b.amcosId)));
   if (!acc || !acc.isActive) throw badRequest('Akaunti ya fedha si sahihi');
@@ -488,4 +490,39 @@ salesRouter.get('/summary', requireAmcosPerm('sales.read'), ah(async (req, res) 
     where s.amcos_id = ${amcosId} and s.season_id = ${s.id} and s.status in ('APPROVED', 'PAID') group by 1 order by 2 desc`);
   res.json({ season: s, farmers: Number(r.farmers), kg: fmt2(r.kg), grossTzs: fmt2(r.gross), deductions: fmt2(r.ded), netTzs: fmt2(r.net), paid: fmt2(r.paid),
     unpaid: fmt2(D(r.net).minus(r.paid)), deductionsByRule: byRule.rows.map((x) => ({ name: x.name, amount: fmt2(x.v) })) });
+}));
+
+// ------------------------------ MALIPO YA MNUNUZI (wadaiwa: makampuni ya tumbaku) ------------------------------
+/** Kila soko: thamani iliyoidhinishwa (mnunuzi anadaiwa) - malipo yaliyopokelewa kwa soko hilo, na umri wa deni. */
+salesRouter.get('/buyers', requireAmcosPerm('sales.read'), ah(async (req, res) => {
+  const amcosId = await readAmcosId(req);
+  const r = await db.execute<{ id: string; market_no: string; market_date: string; buyer_name: string | null; due: string; paid: string; last_paid: string | null }>(sql`
+    select m.id, m.market_no, m.market_date::text as market_date, m.buyer_name,
+      coalesce((select sum(s.gross_tzs) from settlements s where s.market_id = m.id and s.status in ('APPROVED', 'PAID')), 0) as due,
+      coalesce((select sum(case when t.kind = 'REVERSAL' then -t.amount else t.amount end) from finance_transactions t
+        where t.market_id = m.id and t.status = 'POSTED' and t.category = 'TOBACCO_SALES'), 0) as paid,
+      (select max(t.txn_date)::text from finance_transactions t where t.market_id = m.id and t.status = 'POSTED' and t.kind = 'INCOME') as last_paid
+    from markets m where m.amcos_id = ${amcosId}
+      and exists (select 1 from settlements s where s.market_id = m.id and s.status in ('APPROVED', 'PAID'))
+    order by m.market_date desc`);
+  const today = todayStr();
+  const days = (d: string) => Math.max(0, Math.round((Date.parse(today) - Date.parse(d)) / 86_400_000));
+  const rows = r.rows.map((x) => {
+    const outstanding = D(x.due).minus(x.paid);
+    const age = days(x.market_date);
+    return { id: x.id, marketNo: x.market_no, marketDate: x.market_date, buyerName: x.buyer_name, due: fmt2(x.due), paid: fmt2(x.paid), outstanding: fmt2(outstanding), lastPaid: x.last_paid,
+      days: age, bucket: outstanding.lte(0) ? 'PAID' : age <= 30 ? '0-30' : age <= 60 ? '31-60' : age <= 90 ? '61-90' : '90+' };
+  });
+  const [un] = (await db.execute<{ v: string }>(sql`
+    select coalesce(sum(case when kind = 'REVERSAL' then -amount else amount end), 0) as v from finance_transactions
+    where amcos_id = ${amcosId} and status = 'POSTED' and category = 'TOBACCO_SALES' and market_id is null`)).rows;
+  const buckets: Record<string, string> = {};
+  for (const b of ['0-30', '31-60', '61-90', '90+']) buckets[b] = fmt2(rows.filter((x) => x.bucket === b).reduce((s, x) => s.plus(x.outstanding), D(0)));
+  const byBuyer = new Map<string, Decimal>();
+  for (const x of rows) if (D(x.outstanding).gt(0)) byBuyer.set(x.buyerName ?? '—', (byBuyer.get(x.buyerName ?? '—') ?? D(0)).plus(x.outstanding));
+  res.json({
+    data: rows, buckets, unallocated: fmt2(un.v),
+    totalOutstanding: fmt2(rows.reduce((s, x) => s.plus(D(x.outstanding).gt(0) ? x.outstanding : 0), D(0))),
+    byBuyer: [...byBuyer].map(([name, v]) => ({ name, outstanding: fmt2(v) })),
+  });
 }));

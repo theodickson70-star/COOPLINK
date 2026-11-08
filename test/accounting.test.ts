@@ -401,3 +401,93 @@ test('Ripoti kuu: mapato na matumizi, mtiririko wa fedha na CSV', async () => {
   const other = await call('GET', `/api/v1/accounting/journals/${led.lines[0].entryId}`, (await login('0711000002', 'Demo12345')).token);
   assert.equal(other.status, 404);
 });
+
+// 9 ------------------------------------------------------------------
+const daysAgo = (n: number) => new Date(Date.parse(today + 'T00:00:00Z') - n * 86_400_000).toISOString().slice(0, 10);
+test('Salio la kuanzia: madeni ya wakulima na akaunti nyingine kwa idhini; daftari kuu linalingana', async () => {
+  const rows = await gl();
+  const id = (c: string) => rows.find((r) => r.code === c).id;
+  assert.equal((await call('POST', '/api/v1/accounting/opening-balances', accountant, { date: today, description: 'x', farmers: [{ memberNo: 'HAKUNA-1', debt: '1' }] })).status, 400);
+  assert.equal((await call('POST', '/api/v1/accounting/opening-balances', accountant, { date: today, description: 'x', lines: [{ glAccountId: id('1200'), debit: '5' }] })).status, 400, '1200 inawekwa kwa kila mkulima');
+  const before3900 = Number(bal(rows, '3900'));
+  const r = await call('POST', '/api/v1/accounting/opening-balances', accountant, {
+    date: today, description: 'Kuanza kutumia CoopLink',
+    farmers: [{ memberNo: farmerA.memberNo, debt: '50000' }, { memberNo: farmerB.memberNo.toLowerCase(), credit: '20000' }],
+    lines: [{ glAccountId: id('2150'), credit: '300000' }, { glAccountId: id('1300'), debit: '200000' }],
+  });
+  assert.equal(r.status, 202, JSON.stringify(r.body));
+  assert.equal(r.body.totals.equity, '-70000.00');
+  assert.equal(Number(bal(await gl(), '1200')), 0, 'Haiingii kabla ya idhini');
+  const ap = (await call('GET', '/api/v1/approvals?status=PENDING&type=OPENING_BALANCE', manager)).body.data[0];
+  assert.equal((await call('POST', `/api/v1/approvals/${ap.id}/decide`, manager, { decision: 'APPROVED', note: 'Nimelinganisha na vitabu vya zamani' })).status, 200);
+  const after = await gl();
+  assert.equal(bal(after, '1200'), '50000.00');
+  assert.equal(bal(after, '2200'), '20000.00');
+  assert.equal(bal(after, '2150'), '460000.00');
+  assert.equal(Number(bal(after, '3900')), before3900 - 70000);
+  assert.equal((await call('GET', `/api/v1/members/${farmerA.id}`, manager)).body.balance.balance, '-50000.00');
+  const per = (await call('GET', '/api/v1/accounting/periods', accountant)).body;
+  assert.equal(per.openings.length, 1);
+  await assertBooksBalance();
+});
+
+// 10 -----------------------------------------------------------------
+test('Mnunuzi anadaiwa kwa soko na umri wa deni; madeni ya Chama Kikuu/ushuru yanalipwa kwa idhini', async () => {
+  const b = (await call('GET', '/api/v1/sales/buyers', manager)).body;
+  assert.equal(b.data.length, 1);
+  assert.equal(b.data[0].due, '1000000.00');
+  assert.equal(b.unallocated, '1000000.00', 'Malipo ya awali hayakuunganishwa na soko');
+  const pay = await call('POST', '/api/v1/finance/income', accountant, { category: 'OTHER_INCOME', amount: '1', accountId: bank.id, description: 'x', marketId: b.data[0].id });
+  assert.equal(pay.status, 400, 'Soko kwa mauzo ya tumbaku tu');
+
+  const p = (await call('GET', '/api/v1/accounting/payables', accountant)).body.data;
+  const lga = p.find((x: any) => x.code === '2310');
+  assert.equal(lga.balance, '30000.00');
+  assert.equal((await call('POST', '/api/v1/finance/expenses', accountant, { category: 'REMITTANCE', amount: '30000', accountId: bank.id, description: 'Ushuru wa Halmashauri' })).status, 400, 'Lazima kuchagua deni');
+  const t = await call('POST', '/api/v1/finance/expenses', accountant, { category: 'REMITTANCE', amount: '30000', accountId: bank.id, description: 'Ushuru wa Halmashauri msimu', contraGlAccountId: lga.id });
+  assert.equal(t.status, 201);
+  await approve(t.body.transaction.id);
+  await call('POST', `/api/v1/finance/transactions/${t.body.transaction.id}/post`, accountant, {});
+  assert.equal(bal(await gl(), '2310'), '0.00');
+  await assertBooksBalance();
+});
+
+// 11 -----------------------------------------------------------------
+test('Kufunga mwaka na kufunga kipindi: ziada inahamia akiba, tarehe za nyuma zinakataliwa', async () => {
+  const d3 = daysAgo(3), d2 = daysAgo(2), d1 = daysAgo(1);
+  assert.equal((await call('POST', '/api/v1/finance/income', accountant, { category: 'OTHER_INCOME', amount: '100000', accountId: cash.id, description: 'Mapato ya zamani', txnDate: d3 })).status, 201);
+  const pv = (await call('GET', `/api/v1/accounting/year-end-preview?closeDate=${d2}`, accountant)).body;
+  assert.equal(pv.totalIncome, '100000.00');
+  assert.equal((await call('POST', '/api/v1/accounting/year-end-close', manager, { closeDate: d2 })).status, 403, 'Meneja anaidhinisha tu');
+  assert.equal((await call('POST', '/api/v1/accounting/year-end-close', accountant, { closeDate: today })).status, 400);
+  const before3200 = Number(bal(await gl(), '3200'));
+  assert.equal((await call('POST', '/api/v1/accounting/year-end-close', accountant, { closeDate: d2, note: 'Mwaka wa majaribio' })).status, 202);
+  assert.equal((await call('POST', '/api/v1/accounting/period-close', accountant, { lockedThrough: d1 })).status, 409, 'Ombi moja la kufunga kwa wakati mmoja');
+  const ap = (await call('GET', '/api/v1/approvals?status=PENDING&type=YEAR_END_CLOSE', manager)).body.data[0];
+  assert.equal((await call('POST', `/api/v1/approvals/${ap.id}/decide`, manager, { decision: 'APPROVED', note: 'Hesabu zimekaguliwa' })).status, 200);
+  let rows = await gl();
+  assert.equal(Number(bal(rows, '3200')), before3200 + 100000, 'Ziada imehamia akiba');
+  assert.equal(bal(rows, '4900'), '0.00', 'Mapato ya mwaka uliofungwa yamesafishwa');
+  const is = (await call('GET', `/api/v1/accounting/reports/income-statement?from=${d3}&to=${d2}`, manager)).body;
+  assert.equal(is.totalIncome, '100000.00', 'Ripoti ya mwaka uliofungwa bado inaonyesha mapato');
+  const bs = (await call('GET', '/api/v1/accounting/reports/balance-sheet', manager)).body;
+  assert.equal(bs.balanced, true); assert.equal(bs.lastClose, d2);
+
+  // Tarehe za kipindi kilichofungwa zinakataliwa
+  const late = await call('POST', '/api/v1/finance/income', accountant, { category: 'OTHER_INCOME', amount: '5', accountId: cash.id, description: 'Ya nyuma', txnDate: d2 });
+  assert.equal(late.status, 400); assert.match(late.body.error.message, /Kipindi kimefungwa/);
+  const jid = rows.find((r) => r.code === '1250').id, eq3200 = rows.find((r) => r.code === '3200').id;
+  assert.equal((await call('POST', '/api/v1/accounting/journals', accountant, { date: d2, description: 'Ya nyuma sana', lines: [{ glAccountId: jid, debit: '5' }, { glAccountId: eq3200, credit: '5' }] })).status, 400);
+  await assert.rejects(db.execute(sql`insert into journal_entries (amcos_id, entry_no, entry_date, description, source) values (${amcosId}, ${'L-' + RUN}, ${d2}, 'x', 'TEST')`), 'DB inakataa');
+  await assert.rejects(db.execute(sql`delete from period_locks where amcos_id = ${amcosId}`), 'Kufunga hakutenguliwi');
+
+  // Kufunga kipindi (mwezi uliokaguliwa)
+  assert.equal((await call('POST', '/api/v1/accounting/period-close', accountant, { lockedThrough: d1, note: 'Mwezi umekaguliwa' })).status, 202);
+  const pc = (await call('GET', '/api/v1/approvals?status=PENDING&type=PERIOD_CLOSE', manager)).body.data[0];
+  await call('POST', `/api/v1/approvals/${pc.id}/decide`, manager, { decision: 'APPROVED', note: 'Sawa' });
+  const per = (await call('GET', '/api/v1/accounting/periods', manager)).body;
+  assert.equal(per.lockedThrough, d1);
+  assert.deepEqual(per.locks.map((l: any) => l.kind), ['PERIOD', 'YEAR_END']);
+  assert.equal((await call('POST', '/api/v1/finance/income', accountant, { category: 'OTHER_INCOME', amount: '5', accountId: cash.id, description: 'Leo', txnDate: today })).status, 201, 'Leo bado iko wazi');
+  await assertBooksBalance();
+});

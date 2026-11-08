@@ -43,6 +43,13 @@
       "when": 1794128233584,
       "tag": "0005_accounting",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794139050596,
+      "tag": "0006_closing_and_openings",
+      "breakpoints": true
     }
   ]
 }

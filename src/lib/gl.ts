@@ -11,6 +11,7 @@ import { db, schema, type DbOrTx, type Tx } from '../db';
 import { D, Decimal, fmt2 } from './money';
 import { nextNumber, pad } from './counter';
 import { AppError, badRequest } from './errors';
+import { lockedThrough, nextDay } from './periods';
 
 type GlType = (typeof schema.glAccountTypeEnum.enumValues)[number];
 export interface ChartRow { code: string; name: string; type: GlType; subtype?: string }
@@ -80,7 +81,7 @@ export const CATEGORY_GL: Record<string, string> = {
   SALARIES: '5100', TRANSPORT: '5200', OFFICE: '5210', UTILITIES: '5220', MEETINGS: '5230', REPAIRS: '5240', TAXES: '5250',
   BANK_CHARGES: '5260', INPUT_HANDLING: '5270', TRAINING: '5280', OTHER_EXPENSE: '5990',
   // malipo
-  PAYMENT: '2200', CASH_LOAN: '1200', SUPPLIER: '2100', TRANSFER: '1990',
+  PAYMENT: '2200', CASH_LOAN: '1200', SUPPLIER: '2100', TRANSFER: '1990', REMITTANCE: '2320',
 };
 
 const CASH_BASE: Record<string, number> = { CASH: 1000, BANK: 1100, MOBILE_MONEY: 1150 };
@@ -129,6 +130,8 @@ export interface JLine { code?: string; glAccountId?: string; debit?: Decimal.Va
 export interface JInput {
   amcosId: string; date: string; description: string; source: string; sourceId?: string | null; reference?: string | null;
   approvalId?: string | null; reversalOfId?: string | null; createdById?: string | null; lines: JLine[];
+  /** true: tarehe ikiwa ndani ya kipindi kilichofungwa -> kosa. false (default): tukio la zamani linaandikwa siku ya kwanza iliyo wazi. */
+  strict?: boolean;
 }
 
 /**
@@ -158,9 +161,15 @@ export async function postJournal(tx: DbOrTx, j: JInput, maps?: Maps) {
   if (!dr.toDecimalPlaces(2).eq(cr.toDecimalPlaces(2))) throw new AppError(400, 'JOURNAL_UNBALANCED', `Journal haijalingana: debit ${fmt2(dr)} ≠ credit ${fmt2(cr)}`);
   if (lines.length < 2 || dr.isZero()) return null; // hakuna thamani ya kuandika
 
+  let date = j.date;
+  const lock = await lockedThrough(tx, j.amcosId);
+  if (lock && date <= lock) {
+    if (j.strict) throw badRequest(`Kipindi kimefungwa hadi ${lock}. Tumia tarehe ya ${nextDay(lock)} au baadaye.`);
+    date = nextDay(lock);
+  }
   const n = await nextNumber(tx, j.amcosId, 'journal');
   const [entry] = await tx.insert(JE).values({
-    amcosId: j.amcosId, entryNo: `JV-${pad(n)}`, entryDate: j.date, description: j.description.slice(0, 500), source: j.source,
+    amcosId: j.amcosId, entryNo: `JV-${pad(n)}`, entryDate: date, description: j.description.slice(0, 500), source: j.source,
     sourceId: j.sourceId ?? null, reference: j.reference ?? null, approvalId: j.approvalId ?? null, reversalOfId: j.reversalOfId ?? null,
     createdById: j.createdById ?? null,
   }).returning();
@@ -303,14 +312,15 @@ export async function syncLedger(amcosId: string) {
 export interface Bal { id: string; code: string; name: string; type: GlType; subtype: string | null; financeAccountId: string | null; isActive: boolean; isSystem: boolean; debit: string; credit: string; balance: string }
 
 /** Salio la kila akaunti kati ya tarehe (from hiari). balance = upande wa kawaida wa akaunti (chanya ni kawaida). */
-export async function balances(tx: DbOrTx, amcosId: string, o: { from?: string; to?: string } = {}): Promise<Bal[]> {
+export async function balances(tx: DbOrTx, amcosId: string, o: { from?: string; to?: string; excludeClosing?: boolean } = {}): Promise<Bal[]> {
   const r = await tx.execute<{ id: string; code: string; name: string; type: GlType; subtype: string | null; finance_account_id: string | null; is_active: boolean; is_system: boolean; dr: string; cr: string }>(sql`
     select a.id, a.code, a.name, a.type, a.subtype, a.finance_account_id, a.is_active, a.is_system,
       coalesce(sum(l.debit), 0) as dr, coalesce(sum(l.credit), 0) as cr
     from gl_accounts a
     left join journal_lines l on l.gl_account_id = a.id
       and exists (select 1 from journal_entries e where e.id = l.journal_entry_id
-        ${o.from ? sql`and e.entry_date >= ${o.from}` : sql``} ${o.to ? sql`and e.entry_date <= ${o.to}` : sql``})
+        ${o.from ? sql`and e.entry_date >= ${o.from}` : sql``} ${o.to ? sql`and e.entry_date <= ${o.to}` : sql``}
+        ${o.excludeClosing ? sql`and e.source <> 'YEAR_END_CLOSE'` : sql``})
     where a.amcos_id = ${amcosId}
     group by a.id order by a.code`);
   return r.rows.map((x) => {

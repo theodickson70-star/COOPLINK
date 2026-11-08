@@ -561,6 +561,7 @@ export const auditLogs = pgTable('audit_logs', {
 export const approvalTypeEnum = pgEnum('approval_type', [
   'MEMBER_REGISTRATION', 'EXPENSE', 'FARMER_PAYMENT', 'SUPPLIER_PAYMENT', 'PURCHASE', 'STOCK_ADJUSTMENT', 'INPUT_ISSUE', 'REVERSAL',
   'JOURNAL', 'TOBACCO_SALE', 'PAYMENT_BATCH', 'TRANSFER', 'PAYROLL', 'ASSET_DISPOSAL',
+  'OPENING_BALANCE', 'PERIOD_CLOSE', 'YEAR_END_CLOSE',
 ]);
 export const approvalStatusEnum = pgEnum('approval_status', ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']);
 export const financeAccountKindEnum = pgEnum('finance_account_kind', ['CASH', 'BANK', 'MOBILE_MONEY']);
@@ -631,6 +632,7 @@ export const financeTransactions = pgTable('finance_transactions', {
   reversalOfId: uuid().unique().references((): AnyPgColumn => financeTransactions.id),
   contraGlAccountId: uuid(),   // akaunti ya daftari kuu upande wa pili (hiari; vinginevyo kwa kundi)
   transferGroupId: uuid(),     // uhamisho kati ya akaunti: miamala miwili yenye kundi moja
+  marketId: uuid(),            // malipo ya mnunuzi wa tumbaku kwa soko husika
   createdById: uuid().notNull(),
   postedById: uuid(),
   postedAt: timestamp({ withTimezone: true }),
@@ -954,6 +956,19 @@ export const journalLines = pgTable('journal_lines', {
   supplierId: uuid(),
   lineNo: integer().notNull().default(1),
 }, (t) => [index().on(t.journalEntryId), index().on(t.amcosId, t.glAccountId)]);
+
+/** Vipindi vilivyofungwa: hakuna journal wala muamala unaoandikwa kwa tarehe hii au kabla yake (trigger ya DB). */
+export const periodLocks = pgTable('period_locks', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  lockedThrough: date().notNull(),
+  kind: text().notNull(),               // PERIOD | YEAR_END
+  note: text(),
+  approvalId: uuid(),
+  journalEntryId: uuid(),               // journal ya kufunga mwaka (YEAR_END)
+  createdById: uuid(),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.amcosId, t.lockedThrough)]);
 
 // ------------------------------ MISHAHARA ------------------------------
 export const employees = pgTable('employees', {

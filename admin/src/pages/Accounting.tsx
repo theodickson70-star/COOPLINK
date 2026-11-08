@@ -19,7 +19,8 @@ interface Dash {
   receivables: { farmers: string; buyers: string; other: string };
   payables: { suppliers: string; farmers: string; statutory: string; salaries: string; loans: string };
   inventory: string; fixedAssets: string;
-  ytd: { from: string; income: string; expense: string; surplus: string };
+  ytd: { from: string; season: string | null; income: string; expense: string; surplus: string };
+  lockedThrough: string | null;
   monthly: { month: string; income: string; expense: string }[];
   pending: Record<string, { count: number; amount: string }>;
   toPost: { count: number; amount: string };
@@ -45,17 +46,19 @@ export function AccountingHome({ embedded }: { embedded?: boolean }) {
           <Link className="qa" to="/bank"><strong>Benki</strong><span>Uhamisho na usuluhishi</span></Link>
           <Link className="qa" to="/payroll"><strong>Mishahara</strong><span>PAYE, NSSF, hati</span></Link>
           <Link className="qa" to="/ledger"><strong>Daftari kuu</strong><span>Chati, journal</span></Link>
+          <Link className="qa" to="/payables"><strong>Madeni ya chama</strong><span>Chama Kikuu, ushuru, kodi</span></Link>
           <Link className="qa" to="/accounting/reports"><strong>Ripoti kuu</strong><span>TB, mizania, cash flow</span></Link>
         </div>
       )}
       <div className="grid grid-kpi">
         <Kpi tone="dark" label="Fedha zilizopo (taslimu, benki, simu)" value={tsh(data.cash.total)} />
-        <Kpi label={`Mapato tangu ${date(data.ytd.from)}`} value={tsh(data.ytd.income)} />
-        <Kpi label="Matumizi (mwaka huu)" value={tsh(data.ytd.expense)} />
+        <Kpi label={data.ytd.season ? `Mapato — msimu ${data.ytd.season}` : `Mapato tangu ${date(data.ytd.from)}`} value={tsh(data.ytd.income)} />
+        <Kpi label={data.ytd.season ? 'Matumizi — msimu huu' : 'Matumizi (mwaka huu)'} value={tsh(data.ytd.expense)} />
         <Kpi tone={Number(data.ytd.surplus) < 0 ? 'bad' : undefined} label="Ziada / (upungufu)" value={<Amt v={data.ytd.surplus} zero="0" />} />
         <Kpi tone={data.unpaidFarmers.count ? 'gold' : undefined} label="Wakulima wanaosubiri malipo" value={num(data.unpaidFarmers.count)} hint={tsh(data.unpaidFarmers.amount)} />
         <Kpi tone={pendingTotal ? 'warn' : undefined} label="Yanasubiri idhini ya Meneja" value={num(pendingTotal)} hint={data.toPost.count ? `${data.toPost.count} yameidhinishwa — kamilisha` : undefined} />
       </div>
+      {data.lockedThrough && <p className="muted" style={{ margin: 0 }}>🔒 Vitabu vimefungwa hadi {date(data.lockedThrough)}</p>}
       <Alert kind={data.farmerLedgerCheck.matches ? 'ok' : 'warn'}>
         {data.farmerLedgerCheck.matches
           ? <>Ledger za wakulima zinalingana na daftari kuu ✓ (salio halisi {tsh(data.farmerLedgerCheck.memberLedger)})</>
@@ -221,7 +224,7 @@ function Journals() {
           <input className="input" placeholder="Tafuta namba, maelezo…" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Tafuta journal" />
           <Select aria-label="Chanzo" value={source} onChange={(e) => { setSource(e.target.value); setPage(1); }}>
             <option value="">Vyanzo vyote</option>
-            {Object.entries({ FINANCE_TXN: 'Muamala wa fedha', TOBACCO_SALE: 'Mauzo ya tumbaku', INPUT_ISSUE: 'Pembejeo kwa mkopo', STOCK_MOVEMENT: 'Stoo', PAYROLL: 'Mishahara', DEPRECIATION: 'Uchakavu', MANUAL: 'Journal ya mkono', ACCOUNT_OPENING: 'Salio la kuanzia' }).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            {Object.entries({ FINANCE_TXN: 'Muamala wa fedha', OPENING_BALANCE: 'Salio la kuanzia', YEAR_END_CLOSE: 'Kufunga mwaka', TOBACCO_SALE: 'Mauzo ya tumbaku', INPUT_ISSUE: 'Pembejeo kwa mkopo', STOCK_MOVEMENT: 'Stoo', PAYROLL: 'Mishahara', DEPRECIATION: 'Uchakavu', MANUAL: 'Journal ya mkono', ACCOUNT_OPENING: 'Salio la kuanzia' }).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
           <div className="grow" />
           {may('accounting.manage') && <Button onClick={() => setForm(true)}>+ Journal ya mkono</Button>}
@@ -375,8 +378,15 @@ function Statement({ accountId, onAccount }: { accountId: string; onAccount: (id
 type RLine = { id: string; code: string; name: string; amount: string };
 export function FinancialReports() {
   const [tab, setTab] = useState<'is' | 'bs' | 'cf' | 'tb'>('is');
+  const seasons = useFetch<{ data: { id: string; name: string; startDate: string; endDate: string; isCurrent: boolean }[] }>('/seasons');
   const [range, setRange] = useState<Range>(presetRange('year'));
+  const [seasonId, setSeasonId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const pickSeason = (s: { id: string; startDate: string; endDate: string }) => {
+    const t = today();
+    setSeasonId(s.id);
+    setRange({ preset: 'custom', from: s.startDate, to: s.endDate < t ? s.endDate : t });
+  };
   return (
     <>
       <PageHead title="Ripoti kuu za fedha" sub="Zinatoka moja kwa moja kwenye daftari kuu. Chapisha au hifadhi kama PDF kwa ajili ya bodi, mkutano mkuu na mkaguzi.">
@@ -385,7 +395,16 @@ export function FinancialReports() {
       <div className="no-print"><Tabs value={tab} onChange={setTab} items={[['is', 'Mapato na Matumizi'], ['bs', 'Mizania (Balance Sheet)'], ['cf', 'Mtiririko wa Fedha'], ['tb', 'Trial Balance']]} /></div>
       <section className="card card-pad no-print" style={{ marginBottom: 16 }}>
         <div className="actions" style={{ justifyContent: 'space-between' }}>
-          <DateRangeFilter value={range} onChange={setRange} />
+          <div className="stack" style={{ gap: 8 }}>
+            {!!seasons.data?.data.length && (
+              <div className="range-filter"><div className="seg" role="group" aria-label="Msimu">
+                {seasons.data.data.slice(0, 4).map((s) => (
+                  <button key={s.id} type="button" className={seasonId === s.id ? 'on' : ''} aria-pressed={seasonId === s.id} onClick={() => pickSeason(s)}>Msimu {s.name}</button>
+                ))}
+              </div></div>
+            )}
+            <DateRangeFilter value={range} onChange={(r) => { setSeasonId(null); setRange(r); }} />
+          </div>
           {tab === 'tb' && <Button variant="secondary" busy={busy} onClick={async () => { setBusy(true); try { await apiDownload('/accounting/reports/trial-balance.csv', { query: { asOf: range.to }, filename: `trial-balance-${range.to}.csv` }); } finally { setBusy(false); } }}>Pakua CSV</Button>}
         </div>
         {(tab === 'bs' || tab === 'tb') && <p className="muted" style={{ margin: '8px 0 0' }}>Hadi tarehe {date(range.to)}</p>}
@@ -425,9 +444,9 @@ function IncomeStatement({ range }: { range: Range }) {
 }
 
 function BalanceSheet({ asOf }: { asOf: string }) {
-  const { data } = useFetch<{ asOf: string; assets: RLine[]; liabilities: RLine[]; equity: RLine[]; retainedPrior: string; currentSurplus: string; totalAssets: string; totalLiabilities: string; totalEquity: string; totalLiabilitiesEquity: string; balanced: boolean }>('/accounting/reports/balance-sheet', { asOf });
+  const { data } = useFetch<{ asOf: string; currentFrom: string; lastClose: string | null; assets: RLine[]; liabilities: RLine[]; equity: RLine[]; retainedPrior: string; currentSurplus: string; totalAssets: string; totalLiabilities: string; totalEquity: string; totalLiabilitiesEquity: string; balanced: boolean }>('/accounting/reports/balance-sheet', { asOf });
   if (!data) return <Loading />;
-  const equity = [...data.equity, { id: 'rp', code: '', name: 'Ziada iliyolimbikizwa (miaka iliyopita)', amount: data.retainedPrior }, { id: 'cs', code: '', name: 'Ziada / (upungufu) ya mwaka huu', amount: data.currentSurplus }];
+  const equity = [...data.equity, { id: 'rp', code: '', name: data.lastClose ? 'Ziada ambayo haijafungwa (kabla ya kipindi hiki)' : 'Ziada iliyolimbikizwa (miaka iliyopita)', amount: data.retainedPrior }, { id: 'cs', code: '', name: data.lastClose ? `Ziada / (upungufu) tangu kufunga mwaka (${date(data.currentFrom)})` : 'Ziada / (upungufu) ya mwaka huu', amount: data.currentSurplus }];
   return (
     <section className="card card-pad print-doc">
       <DocHead title="MIZANIA (BALANCE SHEET)" sub={`Hadi ${date(data.asOf)}`} />

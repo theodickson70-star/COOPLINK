@@ -35,6 +35,10 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
   }
 
   const pg = pgErrorOf(err);
+  // Trigger ya kipindi kilichofungwa (P0001 + ujumbe wetu)
+  if (pg?.code === 'P0001' && pg.message?.startsWith('Kipindi kimefungwa')) {
+    return res.status(400).json({ error: { code: 'PERIOD_LOCKED', message: pg.message } });
+  }
   if (pg?.code === '23505' && pg.constraint === 'users_one_staff_per_role') {
     return res.status(409).json({ error: { code: 'STAFF_SLOT_TAKEN', message: 'AMCOS hii tayari ina mtumishi hai mwenye cheo hiki' } });
   }

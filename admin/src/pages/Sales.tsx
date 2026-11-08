@@ -24,7 +24,7 @@ interface Rule { id: string; name: string; code: string; basis: string; basisLab
 
 export function Sales() {
   const { may } = useAuth();
-  const [tab, setTab] = useState<'markets' | 'rules'>('markets');
+  const [tab, setTab] = useState<'markets' | 'buyers' | 'rules'>('markets');
   const sum = useFetch<{ season: { name: string }; farmers: number; kg: string; grossTzs: string; deductions: string; netTzs: string; paid: string; unpaid: string; deductionsByRule: { name: string; amount: string }[] }>('/sales/summary');
   return (
     <>
@@ -37,7 +37,8 @@ export function Sales() {
           <Kpi tone={Number(sum.data.unpaid) > 0 ? 'gold' : undefined} label="Bado hawajalipwa" value={tsh(sum.data.unpaid)} hint={`Wamelipwa ${tsh(sum.data.paid)}`} />
         </div>
       )}
-      <Tabs value={tab} onChange={setTab} items={[['markets', 'Masoko'], ['rules', 'Kanuni za makato']]} />
+      <Tabs value={tab} onChange={setTab} items={[['markets', 'Masoko'], ['buyers', 'Malipo ya mnunuzi'], ['rules', 'Kanuni za makato']]} />
+      {tab === 'buyers' && <Buyers canRecord={may('finance.record')} />}
       {tab === 'markets' && <Markets canManage={may('sales.manage')} />}
       {tab === 'rules' && <Rules canManage={may('sales.manage')} byRule={sum.data?.deductionsByRule ?? []} />}
     </>
@@ -513,5 +514,68 @@ export function SettlementStatement() {
         <Signatures items={['Mhasibu', 'Mkulima']} />
       </article>
     </>
+  );
+}
+
+// ------------------------------ MALIPO YA MNUNUZI ------------------------------
+interface BuyerRow { id: string; marketNo: string; marketDate: string; buyerName: string | null; due: string; paid: string; outstanding: string; lastPaid: string | null; days: number; bucket: string }
+const BUCKET: Record<string, string> = { '0-30': 'Siku 0–30', '31-60': 'Siku 31–60', '61-90': 'Siku 61–90', '90+': 'Zaidi ya siku 90' };
+
+function Buyers({ canRecord }: { canRecord: boolean }) {
+  const { data, reload } = useFetch<{ data: BuyerRow[]; buckets: Record<string, string>; unallocated: string; totalOutstanding: string; byBuyer: { name: string; outstanding: string }[] }>('/sales/buyers');
+  const [pay, setPay] = useState<BuyerRow | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+  if (!data) return <Loading />;
+  return (
+    <div className="stack">
+      <Alert kind="ok">{ok}</Alert>
+      <div className="grid grid-kpi">
+        <Kpi tone={Number(data.totalOutstanding) > 0 ? 'gold' : 'dark'} label="Wanunuzi wanadaiwa" value={tsh(data.totalOutstanding)} />
+        {Object.entries(data.buckets).map(([k, v]) => <Kpi key={k} tone={k === '90+' && Number(v) > 0 ? 'bad' : k === '61-90' && Number(v) > 0 ? 'warn' : undefined} label={BUCKET[k]} value={tsh(v)} />)}
+      </div>
+      {Number(data.unallocated) !== 0 && <Alert kind="warn">Malipo ya {tsh(data.unallocated)} yalirekodiwa kama "Mauzo ya tumbaku" bila kuunganishwa na soko. Yanapunguza deni la wanunuzi kwenye daftari kuu, lakini hayaonekani kwenye soko lolote hapa chini.</Alert>}
+      <section className="card">
+        {data.data.length === 0 ? <Empty>Hakuna soko lililoidhinishwa bado.</Empty> : (
+          <div className="table-wrap"><table className="table">
+            <thead><tr><th>Soko</th><th>Mnunuzi</th><th className="num">Anadaiwa</th><th className="num">Amelipa</th><th className="num">Salio</th><th>Umri</th><th /></tr></thead>
+            <tbody>{data.data.map((r) => (
+              <tr key={r.id}>
+                <td><Link to={`/sales/markets/${r.id}`}><strong>{r.marketNo}</strong></Link><div className="muted" style={{ fontSize: 12 }}>{date(r.marketDate)}</div></td>
+                <td>{r.buyerName ?? '—'}</td>
+                <td className="num">{tsh(r.due)}</td><td className="num">{tsh(r.paid)}{r.lastPaid && <div className="muted" style={{ fontSize: 12 }}>{date(r.lastPaid)}</div>}</td>
+                <td className="num"><strong className={Number(r.outstanding) > 0 ? 'money-neg' : ''}>{tsh(r.outstanding)}</strong></td>
+                <td>{r.bucket === 'PAID' ? <Badge status="PAID" /> : <span className={`badge ${r.days > 60 ? 'badge-bad' : r.days > 30 ? 'badge-warn' : 'badge-neutral'}`}>Siku {r.days}</span>}</td>
+                <td className="num">{canRecord && Number(r.outstanding) > 0 && <Button size="sm" onClick={() => setPay(r)}>Rekodi malipo</Button>}</td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        )}
+      </section>
+      {pay && <BuyerPayment row={pay} onClose={() => setPay(null)} onDone={(m) => { setPay(null); setOk(m); reload(); }} />}
+    </div>
+  );
+}
+
+function BuyerPayment({ row, onClose, onDone }: { row: BuyerRow; onClose: () => void; onDone: (m: string) => void }) {
+  const accounts = useFetch<{ data: { id: string; name: string; balance: string; isActive: boolean }[] }>('/finance/accounts');
+  const [f, setF] = useState({ amount: row.outstanding, accountId: '', txnDate: today(), reference: '' });
+  const { busy, error, run } = useAction();
+  return (
+    <Modal open title={`Malipo ya ${row.buyerName ?? 'mnunuzi'} — ${row.marketNo}`} onClose={onClose}
+      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={!f.accountId || !(Number(f.amount) > 0)} onClick={async () => {
+        const r = await run(() => api<{ transaction: { txnNo: string } }>('/finance/income', { method: 'POST', body: {
+          category: 'TOBACCO_SALES', marketId: row.id, amount: f.amount, accountId: f.accountId, txnDate: f.txnDate, reference: f.reference || null,
+          payee: row.buyerName, description: `Malipo ya mnunuzi ${row.buyerName ?? ''} soko ${row.marketNo}`.replace('  ', ' '),
+        } }));
+        if (r) onDone(`${r.transaction.txnNo}: malipo ya ${row.marketNo} yamerekodiwa`);
+      }}>Rekodi</Button></>}>
+      <Alert>{error}</Alert>
+      <div className="form-grid">
+        <TextField label="Kiasi kilichopokelewa (TSh) *" type="number" min="1" value={f.amount} onChange={(v) => setF({ ...f, amount: v })} help={`Salio la soko hili: ${tsh(row.outstanding)}`} />
+        <SelectField label="Akaunti iliyopokea *" value={f.accountId} onChange={(v) => setF({ ...f, accountId: v })} placeholder="Chagua…" options={accounts.data?.data.filter((a) => a.isActive).map((a) => ({ value: a.id, label: a.name })) ?? []} />
+        <TextField label="Tarehe" type="date" max={today()} value={f.txnDate} onChange={(v) => setF({ ...f, txnDate: v })} />
+        <TextField label="Kumbukumbu (namba ya malipo ya benki)" value={f.reference} onChange={(v) => setF({ ...f, reference: v })} />
+      </div>
+    </Modal>
   );
 }

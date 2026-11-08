@@ -23,6 +23,14 @@ import { findMemberScoped } from './members.routes';
 import { currentSeason } from './seasons.routes';
 import { toCsv } from './owner/common';
 import { journalFor } from '../lib/gl';
+import { assertOpen, lockedThrough } from '../lib/periods';
+
+/** Tarehe ya kukamilisha: kama tarehe ya maandalizi iko kwenye kipindi kilichofungwa, tumia leo. */
+async function postDate(amcosId: string, given: string | undefined, prepared: string) {
+  if (given) { await assertOpen(db, amcosId, given); return given; }
+  const l = await lockedThrough(db, amcosId);
+  return l && prepared <= l ? todayStr() : prepared;
+}
 
 export const financeRouter = Router();
 const T = schema.financeTransactions;
@@ -179,9 +187,18 @@ async function activeAccount(req: Request, id: string | null | undefined, requir
 
 /** MAPATO — yanarekodiwa moja kwa moja. Marejesho ya deni la mkulima yanaingia kwenye ledger yake. */
 financeRouter.post('/income', requireAmcosPerm('finance.record'), ah(async (req, res) => {
-  const body = baseTxn.extend({ category: z.string(), memberId: z.string().uuid().nullable().optional() }).parse(req.body);
+  const body = baseTxn.extend({ category: z.string(), memberId: z.string().uuid().nullable().optional(), marketId: z.string().uuid().nullable().optional() }).parse(req.body);
   if (!(body.category in INCOME_CATEGORIES)) throw badRequest('Aina ya mapato si sahihi');
   const amcosId = await resolveWriteAmcosId(req);
+  await assertOpen(db, amcosId, body.txnDate ?? todayStr());
+  // Malipo ya mnunuzi wa tumbaku yanaunganishwa na soko husika (kuona soko lipi bado halijalipwa)
+  let marketId: string | null = null;
+  if (body.marketId) {
+    if (body.category !== 'TOBACCO_SALES') throw badRequest('Soko linaunganishwa na malipo ya mauzo ya tumbaku tu');
+    const mk = await db.query.markets.findFirst({ where: and(eq(schema.markets.id, body.marketId), eq(schema.markets.amcosId, amcosId)) });
+    if (!mk) throw notFound('Soko');
+    marketId = mk.id;
+  }
   const account = (await activeAccount(req, body.accountId, true))!;
   const member = body.memberId ? await findMemberScoped(req, body.memberId) : null;
   if (body.category === 'FARMER_REPAYMENT' && !member) throw badRequest('Chagua mkulima anayerejesha deni');
@@ -190,7 +207,7 @@ financeRouter.post('/income', requireAmcosPerm('finance.record'), ah(async (req,
   const contra = ['FARMER_REPAYMENT', 'MEMBER_FEES'].includes(body.category) ? null : await checkContra(amcosId, body.contraGlAccountId);
   const txn = await db.transaction(async (tx) => {
     const [t] = await tx.insert(T).values({
-      contraGlAccountId: contra,
+      contraGlAccountId: contra, marketId,
       amcosId, seasonId: season?.id ?? null, txnNo: await nextTxnNo(tx, amcosId, amcos.code), kind: 'INCOME', direction: 'IN',
       category: body.category, accountId: account.id, amount: body.amount, txnDate: body.txnDate ?? todayStr(),
       description: body.description, reference: body.reference ?? null, payee: body.payee ?? (member ? `${member.firstName} ${member.lastName}` : null),
@@ -242,6 +259,11 @@ async function prepare(req: Request, kind: 'EXPENSE' | 'FARMER_PAYMENT' | 'SUPPL
 financeRouter.post('/expenses', requireAmcosPerm('finance.record'), ah(async (req, res) => {
   const body = baseTxn.extend({ category: z.string() }).parse(req.body);
   if (!(body.category in EXPENSE_CATEGORIES)) throw badRequest('Aina ya matumizi si sahihi');
+  if (body.category === 'REMITTANCE') {
+    // Kulipa deni la chama: lazima kuchagua deni husika (mf. 2150 Chama Kikuu, 2310 Halmashauri, 2410 PAYE)
+    const g = body.contraGlAccountId ? await db.query.glAccounts.findFirst({ where: eq(schema.glAccounts.id, body.contraGlAccountId) }) : null;
+    if (!g || g.type !== 'LIABILITY') throw badRequest('Chagua deni linalolipwa (akaunti ya madeni)');
+  }
   res.status(201).json(await prepare(req, 'EXPENSE', body, `${EXPENSE_CATEGORIES[body.category]}: ${tshText(body.amount)}${body.payee ? ` kwa ${body.payee}` : ''}`));
 }));
 
@@ -291,7 +313,7 @@ financeRouter.post('/transactions/:id/post', requireAmcosPerm('finance.post'), a
       await lockAccount(tx, outLeg.accountId!);
       const bal = await accountBalance(tx, outLeg.accountId!);
       if (bal.lessThan(outLeg.amount)) throw badRequest(`Salio la akaunti ya kutoa halitoshi (TSh ${fmt2(bal)})`);
-      const date = body.txnDate ?? outLeg.txnDate;
+      const date = await postDate(outLeg.amcosId, body.txnDate, outLeg.txnDate);
       const rows = await tx.update(T).set({ status: 'POSTED', txnDate: date, reference: body.reference ?? outLeg.reference, postedById: req.auth!.userId, postedAt: new Date() })
         .where(and(eq(T.transferGroupId, outLeg.transferGroupId!), eq(T.status, 'APPROVED'))).returning();
       if (rows.length !== 2) throw conflict('Uhamisho umebadilishwa na mtu mwingine');
@@ -301,12 +323,13 @@ financeRouter.post('/transactions/:id/post', requireAmcosPerm('finance.post'), a
     return res.json({ transaction: done });
   }
   const account = (await activeAccount(req, body.accountId ?? t.accountId, true))!;
+  const date = await postDate(t.amcosId, body.txnDate, t.txnDate);
   const txn = await db.transaction(async (tx) => {
     await lockAccount(tx, account.id);
     const bal = await accountBalance(tx, account.id);
     if (bal.lessThan(t.amount)) throw badRequest(`Salio la ${account.name} halitoshi (TSh ${fmt2(bal)})`);
     const [p] = await tx.update(T).set({
-      status: 'POSTED', accountId: account.id, txnDate: body.txnDate ?? t.txnDate, reference: body.reference ?? t.reference,
+      status: 'POSTED', accountId: account.id, txnDate: date, reference: body.reference ?? t.reference,
       postedById: req.auth!.userId, postedAt: new Date(),
     }).where(and(eq(T.id, id), eq(T.status, 'APPROVED'))).returning();
     if (!p) throw conflict('Muamala umebadilishwa na mtu mwingine');

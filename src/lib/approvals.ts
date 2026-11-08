@@ -19,6 +19,7 @@ import { assertManualAllowed, glMap, postJournal } from './gl';
 import { onPaymentBatch, onTobaccoSale } from './tobacco';
 import { onPayroll } from './payroll';
 import { onAssetDisposal } from './assets';
+import { onOpeningBalance, onPeriodClose, onYearEndClose } from './closing';
 
 type ApprovalType = (typeof schema.approvalTypeEnum.enumValues)[number];
 type Approval = typeof schema.approvalRequests.$inferSelect;
@@ -39,6 +40,9 @@ export const APPROVAL_LABEL: Record<ApprovalType, string> = {
   TRANSFER: 'Uhamisho kati ya akaunti',
   PAYROLL: 'Mishahara',
   ASSET_DISPOSAL: 'Kuondoa mali ya chama',
+  OPENING_BALANCE: 'Salio la kuanzia',
+  PERIOD_CLOSE: 'Kufunga kipindi',
+  YEAR_END_CLOSE: 'Kufunga mwaka wa fedha',
 };
 
 export async function createApproval(tx: Tx, req: Request, a: {
@@ -175,7 +179,7 @@ async function reverseOne(tx: Tx, req: Request, a: Approval, orig: typeof schema
     direction: orig.direction === 'IN' ? 'OUT' : 'IN', category: orig.category, accountId: orig.accountId, amount: orig.amount,
     txnDate: new Date().toISOString().slice(0, 10), description: `Kusahihisha ${orig.txnNo}: ${a.reason ?? ''}`.trim(),
     reference: orig.txnNo, payee: orig.payee, memberId: orig.memberId, supplierId: orig.supplierId, purchaseRequestId: orig.purchaseRequestId,
-    contraGlAccountId: orig.contraGlAccountId, transferGroupId: orig.transferGroupId,
+    contraGlAccountId: orig.contraGlAccountId, transferGroupId: orig.transferGroupId, marketId: orig.marketId,
     status: 'POSTED', approvalId: a.id, reversalOfId: orig.id, createdById: a.requestedById, postedById: req.auth!.userId, postedAt: new Date(),
   }).returning();
   const entries = await tx.select().from(schema.memberLedgerEntries).where(and(
@@ -245,6 +249,9 @@ const HANDLERS: Record<ApprovalType, (tx: Tx, req: Request, a: Approval, o: Outc
   TRANSFER: onTransfer,
   PAYROLL: onPayroll,
   ASSET_DISPOSAL: onAssetDisposal,
+  OPENING_BALANCE: onOpeningBalance,
+  PERIOD_CLOSE: onPeriodClose,
+  YEAR_END_CLOSE: onYearEndClose,
 };
 
 /** Meneja anaidhinisha au anakataa. Lazima awe wa chama hicho na asiwe aliyeanzisha ombi. */

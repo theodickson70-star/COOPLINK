@@ -92,7 +92,7 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
       : api(`/approvals/${a.id}/decide`, { method: 'POST', body: { decision, note } }));
     if (r) onDone(decision === 'APPROVED' ? `${a.requestNo} imeidhinishwa` : decision === 'REJECTED' ? `${a.requestNo} imekataliwa` : `${a.requestNo} imeondolewa`);
   };
-  const p = a.payload as { balanceAtRequest?: string; kind?: string; date?: string; lines?: { code: string; name: string; debit?: string; credit?: string; memo?: string | null }[]; totals?: { farmers: number; kg: string; grossTzs: string; deductions: string; netTzs: string } } | null;
+  const p = a.payload as { balanceAtRequest?: string; kind?: string; date?: string; lines?: { code: string; name: string; debit?: string; credit?: string; memo?: string | null }[]; totals?: { farmers: number; kg: string; grossTzs: string; deductions: string; netTzs: string; debit?: string; credit?: string; equity?: string; income?: string; expense?: string; surplus?: string }; farmers?: { memberNo: string; name: string; debt?: string | null; credit?: string | null }[]; lockedThrough?: string; closeDate?: string; openTransactions?: number } | null;
   return (
     <Modal open title={`${a.requestNo} · ${a.typeLabel ?? APPROVAL_TYPE_LABEL[a.type]}`} onClose={onClose}
       footer={canDecide ? <>
@@ -113,6 +113,21 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
           <tbody>{p.lines.map((l, i) => <tr key={i}><td><strong>{l.code}</strong> {l.name}{l.memo ? <div className="muted" style={{ fontSize: 12 }}>{l.memo}</div> : null}</td><td className="num">{l.debit ? tsh(l.debit) : ''}</td><td className="num">{l.credit ? tsh(l.credit) : ''}</td></tr>)}</tbody>
         </table><p className="muted" style={{ margin: '6px 0 0' }}>Tarehe ya journal: {p.date}</p></div>
       )}
+      {a.type === 'OPENING_BALANCE' && p?.totals && (
+        <>
+          <dl className="dl"><dt>Tarehe</dt><dd>{p.date}</dd><dt>Debit / Credit</dt><dd>{tsh(p.totals.debit)} / {tsh(p.totals.credit)}</dd><dt>Wakulima</dt><dd>{p.farmers?.length ?? 0}</dd></dl>
+          {(p.lines?.length || p.farmers?.length) ? (
+            <div className="table-wrap" style={{ maxHeight: 260, overflow: 'auto' }}><table className="table fin-table"><tbody>
+              {p.lines?.map((l, i) => <tr key={'l' + i}><td><strong>{l.code}</strong> {l.name}</td><td className="num">{l.debit ? tsh(l.debit) : ''}</td><td className="num">{l.credit ? tsh(l.credit) : ''}</td></tr>)}
+              {p.farmers?.map((f, i) => <tr key={'f' + i}><td>{f.name} <span className="muted">{f.memberNo}</span></td><td className="num">{f.debt ? `Deni ${tsh(f.debt)}` : ''}</td><td className="num">{f.credit ? `Anadai ${tsh(f.credit)}` : ''}</td></tr>)}
+            </tbody></table></div>
+          ) : null}
+        </>
+      )}
+      {a.type === 'YEAR_END_CLOSE' && p?.totals && (
+        <dl className="dl"><dt>Hadi tarehe</dt><dd>{p.closeDate}</dd><dt>Mapato</dt><dd>{tsh(p.totals.income)}</dd><dt>Matumizi</dt><dd>{tsh(p.totals.expense)}</dd><dt>Ziada → 3200</dt><dd><strong>{tsh(p.totals.surplus)}</strong></dd></dl>
+      )}
+      {(a.type === 'PERIOD_CLOSE' || a.type === 'YEAR_END_CLOSE') && <Alert kind="warn">Ukiidhinisha, vitabu vitafungwa hadi {p?.lockedThrough ?? p?.closeDate}: hakuna muamala wala journal wa tarehe hiyo au kabla yake utakaoruhusiwa. Haitenguliwi.{p?.openTransactions ? ` Miamala ${p.openTransactions} ya kipindi hicho bado haijakamilika.` : ''}</Alert>}
       {a.type === 'TOBACCO_SALE' && p?.totals && (
         <dl className="dl"><dt>Wakulima</dt><dd>{p.totals.farmers} · kilo {Number(p.totals.kg).toLocaleString('en-US')}</dd><dt>Mauzo</dt><dd>{tsh(p.totals.grossTzs)}</dd><dt>Makato</dt><dd>{tsh(p.totals.deductions)}</dd><dt>Malipo halisi</dt><dd><strong>{tsh(p.totals.netTzs)}</strong></dd></dl>
       )}
