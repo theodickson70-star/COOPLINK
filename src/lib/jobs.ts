@@ -6,7 +6,28 @@ import { runSubscriptionSweep } from './subscriptions';
 
 const LOCK_KEY = 815_204; // nambari yoyote ya kipekee
 
+async function jobTableExists() {
+  const r = await pool.query<{ ok: boolean }>("select to_regclass('public.job_runs') is not null as ok");
+  return r.rows[0].ok;
+}
+
+/**
+ * Endesha kazi moja. HAIRUSHI kosa nje (kosa la kazi ya nyuma lisiue server) — kila kosa linaandikwa kwenye logs
+ * na, kama inawezekana, kwenye job_runs.
+ */
 export async function runJob(name: string, fn: () => Promise<unknown>) {
+  try {
+    if (!(await jobTableExists())) {
+      console.error(`❌ Kazi ${name} haikuendeshwa: meza "job_runs" haipo. Endesha migrations (npm run release).`);
+      return;
+    }
+    await runJobInner(name, fn);
+  } catch (e) {
+    console.error(`❌ Kazi ${name} imeshindwa:`, (e as Error).message);
+  }
+}
+
+async function runJobInner(name: string, fn: () => Promise<unknown>) {
   const client = await pool.connect();
   try {
     const got = await client.query<{ ok: boolean }>('select pg_try_advisory_lock($1) as ok', [LOCK_KEY]);
@@ -19,6 +40,7 @@ export async function runJob(name: string, fn: () => Promise<unknown>) {
       const details = await fn();
       await db.update(schema.jobRuns).set({ status: 'SUCCESS', details: details as object, finishedAt: new Date() }).where(eq(schema.jobRuns.id, run.id));
     } catch (e) {
+      console.error(`❌ Kazi ${name} imeshindwa:`, (e as Error).message);
       await db.update(schema.jobRuns).set({ status: 'FAILED', details: { error: (e as Error).message }, finishedAt: new Date() }).where(eq(schema.jobRuns.id, run.id));
     } finally {
       await client.query('select pg_advisory_unlock($1)', [LOCK_KEY]);
@@ -32,7 +54,8 @@ export const JOBS = { subscriptions: () => runJob('subscriptions.sweep', () => r
 
 export function startJobs() {
   if (process.env.DISABLE_JOBS === 'true') return;
-  setTimeout(() => void JOBS.subscriptions(), 20_000).unref();
+  const first = Number(process.env.JOBS_FIRST_RUN_MS ?? 20_000);
+  setTimeout(() => void JOBS.subscriptions(), first).unref();
   setInterval(() => void JOBS.subscriptions(), 60 * 60 * 1000).unref();
 }
 

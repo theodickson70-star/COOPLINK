@@ -54,7 +54,7 @@ Data ya majaribio: `$env:SEED_DEMO="true"; npm run db:seed`. Kisha ingia kama Ka
    | Variable | Thamani |
    |---|---|
    | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (Railway) au URL ya Supabase pooler |
-   | `DIRECT_URL` | sawa na `DATABASE_URL` (Railway) au Supabase direct (5432) |
+   | `DIRECT_URL` | **Haihitajiki** (v0.3.1+). Migrations zinaendeshwa kwenye `DATABASE_URL` — database ile ile app inayotumia |
    | `DB_SSL` | `false` kwa Railway Postgres, `true` kwa Supabase |
    | `JWT_SECRET` | herufi 48+ za siri (tazama `.env.example`) |
    | `NODE_ENV` | `production` |
@@ -85,6 +85,14 @@ Kila mara utakapo-push GitHub, Railway itadeploy yenyewe.
 3. **Pesa si float.** Hesabu zote zinatumia `numeric` na `decimal.js`.
 4. **Kila kitendo kinaandikwa kwenye audit log.**
 5. **Mwanachama hafutwi.** Hali yake inabadilishwa tu.
+
+## Migrations na kuwaka kwa server (v0.3.1)
+
+Server ikiwaka inafanya kwa mpangilio huu: **(1)** inaunganisha `DATABASE_URL`, **(2)** inaendesha migrations ambazo hazijaendeshwa
+(`src/db/migrator.ts` — kila migration kwa hash yake, ndani ya transaction, kwa advisory lock), **(3)** inahakiki kwamba kila meza na
+column ambayo code inahitaji ipo (`src/db/verify-schema.ts`), **(4)** SUPER_ADMIN, **(5)** HTTP, **(6)** kazi za nyuma.
+Hatua 1–3 zikishindwa, server haiwaki nusu — inaandika sababu kwenye logs. `/health` inaonyesha `migrations` na `schema`.
+`npm run release` (pre-deploy) inafanya hatua 2–3 pia; zote mbili ni salama kuendeshwa mara nyingi.
 
 ## Watumishi wa AMCOS (v0.3.0)
 

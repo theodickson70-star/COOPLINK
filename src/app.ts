@@ -23,6 +23,7 @@ import { approvalsRouter } from './modules/approvals.routes';
 import { financeRouter } from './modules/finance.routes';
 import { storeRouter } from './modules/store.routes';
 import { workspaceRouter } from './modules/workspace.routes';
+import { startupState } from './lib/startup';
 import { superAdminStatus } from './lib/super-admin';
 
 // Toleo la mfumo (kutoka package.json) — linaonekana kwenye /health
@@ -47,7 +48,9 @@ export function createApp() {
     try {
       await db.execute(sql`select 1`);
       const superAdmin = await superAdminStatus().catch(() => undefined);
-      res.json({ status: 'ok', db: 'ok', version: VERSION, superAdmin, time: new Date().toISOString() });
+      const st = startupState();
+      const migrations = st.migrations ? { total: st.migrations.total, upToDate: true, appliedAtStartup: st.migrations.applied } : undefined;
+      res.json({ status: 'ok', db: 'ok', version: VERSION, superAdmin, migrations, schema: st.schema ? (st.schema.ok ? 'ok' : 'mismatch') : undefined, time: new Date().toISOString() });
     } catch {
       res.status(503).json({ status: 'error', db: 'down', version: VERSION });
     }
