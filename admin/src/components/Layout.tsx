@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth, ROLE_GROUPS, type AmcosPermission, type Role } from '../lib/auth';
 import { useFetch } from '../lib/hooks';
+import { NavIndicator, useNavIndicator } from './NavIndicator';
 import { api, getSelectedAmcos, setSelectedAmcos, type Paged } from '../lib/api';
 import { ROLE_LABEL } from '../lib/format';
 import { LogoMark, Wordmark } from './Logo';
@@ -87,6 +88,8 @@ function AmcosSwitcher() {
 export function Layout() {
   const { user, amcos, logout, can, may } = useAuth();
   const decider = may('approvals.decide');
+  const navRef = useRef<HTMLElement>(null);
+  const indicator = useNavIndicator(navRef);
   const pending = useFetch<{ total: number }>(user?.amcosId && may('approvals.read') ? '/approvals/summary' : null);
   const [open, setOpen] = useState(false);
   const loc = useLocation();
@@ -104,25 +107,27 @@ export function Layout() {
             <div style={{ fontSize: 11, color: '#8FB3A1', marginTop: 4, letterSpacing: '.08em' }}>VYAMA VYA MSINGI</div>
           </div>
         </div>
-        <nav className="nav">
-          {NAV.map((g, i) => {
+        <nav className="nav nav-animated" ref={navRef}>
+          <NavIndicator box={indicator} />
+          {(() => { let n = 0; return NAV.map((g, i) => {
             const items = g.items.filter((it) => (!it.roles || can(...it.roles)) && (!it.perm || may(...it.perm)));
             if (!items.length) return null;
             return (
               <div key={i} style={{ display: 'contents' }}>
                 {g.section && <div className="nav-section">{g.section}</div>}
                 {items.map((it) => (
-                  <NavLink key={it.to} to={it.to} end={it.to === '/'}>
-                    <Icon d={it.icon} />{it.to === '/approvals' && !decider ? 'Maombi yangu' : it.label}
+                  <NavLink key={it.to} to={it.to} end={it.to === '/'} style={{ animationDelay: `${60 + n++ * 35}ms` }}>
+                    <span className="nav-icon"><Icon d={it.icon} /></span>{it.to === '/approvals' && !decider ? 'Maombi yangu' : it.label}
                     {it.to === '/approvals' && decider && !!pending.data?.total && <span className="nav-count">{pending.data.total}</span>}
                   </NavLink>
                 ))}
               </div>
             );
-          })}
+          }); })()}
         </nav>
         <div className="sidebar-foot">CoopLink v{__APP_VERSION__}<br />Uwazi · Haki · Maendeleo</div>
       </aside>
+      {open && <button type="button" className="nav-scrim" aria-label="Funga menyu" onClick={() => setOpen(false)} />}
 
       <div className="main">
         <header className="topbar">

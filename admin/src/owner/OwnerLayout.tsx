@@ -1,10 +1,11 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth, type Permission } from '../lib/auth';
 import { OWNER_ROLE_LABEL, ROLE_LABEL } from '../lib/format';
 import { LogoMark, Wordmark } from '../components/Logo';
 import { Button } from '../components/ui';
 import { SystemBanner } from '../components/Notices';
+import { NavIndicator, useNavIndicator } from '../components/NavIndicator';
 
 const ic = (d: ReactNode) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>;
 const I = {
@@ -22,28 +23,36 @@ const I = {
   menu: ic(<path d="M3 6h18M3 12h18M3 18h18" />),
 };
 
-export const OWNER_NAV: { to: string; label: string; sub: string; icon: ReactNode; perm?: Permission }[] = [
-  { to: '/owner', label: 'Owner Dashboard', sub: 'Muhtasari wa biashara', icon: I.dash, perm: 'platform.dashboard' },
-  { to: '/owner/amcos', label: 'AMCOS Management', sub: 'Wateja (vyama)', icon: I.amcos, perm: 'amcos.read' },
-  { to: '/owner/subscriptions', label: 'Subscriptions & Pricing', sub: 'Mipango na bei', icon: I.subs, perm: 'subscriptions.read' },
-  { to: '/owner/finance', label: 'Finance & Revenue', sub: 'Fedha za kampuni', icon: I.finance, perm: 'finance.read' },
-  { to: '/owner/staff', label: 'Staff Management', sub: 'Wafanyakazi wa NAYA', icon: I.staff, perm: 'staff.manage' },
-  { to: '/owner/system', label: 'System Control Center', sub: 'Hali ya mfumo', icon: I.system, perm: 'system.read' },
-  { to: '/owner/comms', label: 'Marketing & Communication', sub: 'Matangazo na SMS', icon: I.comms, perm: 'comms.read' },
-  { to: '/owner/security', label: 'Security & Audit', sub: 'Usalama na kumbukumbu', icon: I.security, perm: 'security.read' },
-  { to: '/owner/backup', label: 'Backup & Database', sub: 'Hifadhi ya data', icon: I.backup, perm: 'backup.read' },
-  { to: '/owner/business', label: 'NAYA Group Business', sub: 'Malengo na ukuaji', icon: I.business, perm: 'business.read' },
-  { to: '/owner/settings', label: 'Owner Settings', sub: 'Akaunti yangu', icon: I.settings },
+// Menyu ya Owner kwa makundi (bila namba)
+export const OWNER_NAV: { to: string; label: string; sub: string; icon: ReactNode; perm?: Permission; group: string }[] = [
+  { to: '/owner', label: 'Owner Dashboard', sub: 'Muhtasari wa biashara', icon: I.dash, perm: 'platform.dashboard', group: 'Muhtasari' },
+  { to: '/owner/amcos', label: 'AMCOS Management', sub: 'Wateja (vyama)', icon: I.amcos, perm: 'amcos.read', group: 'Wateja' },
+  { to: '/owner/subscriptions', label: 'Subscriptions & Pricing', sub: 'Mipango na bei', icon: I.subs, perm: 'subscriptions.read', group: 'Wateja' },
+  { to: '/owner/finance', label: 'Finance & Revenue', sub: 'Fedha za kampuni', icon: I.finance, perm: 'finance.read', group: 'Fedha na Biashara' },
+  { to: '/owner/business', label: 'NAYA Group Business', sub: 'Malengo na ukuaji', icon: I.business, perm: 'business.read', group: 'Fedha na Biashara' },
+  { to: '/owner/staff', label: 'Staff Management', sub: 'Wafanyakazi wa NAYA', icon: I.staff, perm: 'staff.manage', group: 'Timu na Mawasiliano' },
+  { to: '/owner/comms', label: 'Marketing & Communication', sub: 'Matangazo na SMS', icon: I.comms, perm: 'comms.read', group: 'Timu na Mawasiliano' },
+  { to: '/owner/system', label: 'System Control Center', sub: 'Hali ya mfumo', icon: I.system, perm: 'system.read', group: 'Mfumo na Usalama' },
+  { to: '/owner/security', label: 'Security & Audit', sub: 'Usalama na kumbukumbu', icon: I.security, perm: 'security.read', group: 'Mfumo na Usalama' },
+  { to: '/owner/backup', label: 'Backup & Database', sub: 'Hifadhi ya data', icon: I.backup, perm: 'backup.read', group: 'Mfumo na Usalama' },
+  { to: '/owner/settings', label: 'Owner Settings', sub: 'Akaunti yangu', icon: I.settings, group: 'Akaunti' },
 ];
 
 export function OwnerLayout() {
   const { user, logout, has } = useAuth();
   const [open, setOpen] = useState(false);
+  const navRef = useRef<HTMLElement>(null);
+  const indicator = useNavIndicator(navRef);
   const loc = useLocation();
   useEffect(() => setOpen(false), [loc.pathname]);
   if (!user) return null;
   const isOwner = user.role === 'SUPER_ADMIN';
   const items = OWNER_NAV.filter((n) => !n.perm || has(n.perm));
+  const groups = items.reduce<{ name: string; items: typeof items }[]>((acc, it) => {
+    const g = acc.find((x) => x.name === it.group);
+    if (g) g.items.push(it); else acc.push({ name: it.group, items: [it] });
+    return acc;
+  }, []);
 
   return (
     <div className="shell owner">
@@ -55,13 +64,22 @@ export function OwnerLayout() {
             <div className="owner-tag">OWNER CONTROL</div>
           </div>
         </div>
-        <nav className="nav">
-          {items.map((it, i) => (
-            <NavLink key={it.to} to={it.to} end={it.to === '/owner'}>
-              <span className="nav-num" aria-hidden="true">{i + 1}</span>{it.icon}
-              <span className="nav-text"><span>{it.label}</span><small>{it.sub}</small></span>
-            </NavLink>
-          ))}
+        <nav className="nav nav-animated" ref={navRef}>
+          <NavIndicator box={indicator} />
+          {(() => {
+            let n = 0;
+            return groups.map((g) => (
+              <div key={g.name} className="nav-group">
+                <div className="nav-section">{g.name}</div>
+                {g.items.map((it) => (
+                  <NavLink key={it.to} to={it.to} end={it.to === '/owner'} style={{ animationDelay: `${60 + n++ * 35}ms` }}>
+                    <span className="nav-icon">{it.icon}</span>
+                    <span className="nav-text"><span>{it.label}</span><small>{it.sub}</small></span>
+                  </NavLink>
+                ))}
+              </div>
+            ));
+          })()}
         </nav>
         <div className="sidebar-foot">
           Powered by <strong>NAYA GROUP</strong><br />
@@ -70,6 +88,7 @@ export function OwnerLayout() {
         </div>
       </aside>
 
+      {open && <button type="button" className="nav-scrim" aria-label="Funga menyu" onClick={() => setOpen(false)} />}
       <div className="main">
         <header className="topbar">
           <Button variant="secondary" size="sm" className="menu-btn" onClick={() => setOpen(true)} aria-label="Fungua menyu">{I.menu}</Button>
