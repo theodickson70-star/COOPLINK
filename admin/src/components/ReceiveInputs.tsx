@@ -11,7 +11,6 @@ import { Alert, Button, Modal, SelectField, TextField } from './ui';
 
 interface Item { id: string; name: string; category: string; unit: string; isActive: boolean }
 interface PrLine { id: string; quantity: string; receivedQty: string; unitCost: string; inputItemId?: string; inputItem: { id?: string; name: string; unit: string } }
-const NEW = '__new__';
 
 export function ReceiveInputsModal({ itemId: initialItem, purchaseId: initialPr, onClose, onDone }: {
   itemId?: string; purchaseId?: string; onClose: () => void; onDone: (requestNo: string) => void;
@@ -24,6 +23,7 @@ export function ReceiveInputsModal({ itemId: initialItem, purchaseId: initialPr,
   const pr = useFetch<{ lines: PrLine[]; purchase: { prNo: string; supplierName: string | null } }>(mode === 'purchase' && prId ? `/store/purchases/${prId}` : null);
   const [lineId, setLineId] = useState('');
   const [itemId, setItemId] = useState(initialItem ?? '');
+  const [kind, setKind] = useState<'existing' | 'new'>('existing'); // bidhaa iliyopo au mpya
   const [nItem, setNItem] = useState({ name: '', category: 'FERTILIZER', unit: 'BAG', reorderLevel: '' });
   const [qty, setQty] = useState('');
   const [price, setPrice] = useState('');
@@ -41,13 +41,13 @@ export function ReceiveInputsModal({ itemId: initialItem, purchaseId: initialPr,
   const openLines = pr.data?.lines.filter((l) => Number(l.receivedQty) < Number(l.quantity)) ?? [];
   const line = openLines.find((l) => l.id === lineId);
   const lineItem = line ? active.find((i) => i.id === line.inputItemId) : undefined;
-  const isNew = mode === 'normal' && itemId === NEW;
-  const item = mode === 'purchase' ? lineItem : active.find((i) => i.id === itemId);
+  const isNew = mode === 'normal' && kind === 'new';
+  const item = mode === 'purchase' ? lineItem : isNew ? undefined : active.find((i) => i.id === itemId);
   const unit = isNew ? UNIT_LABEL[nItem.unit] : item ? UNIT_LABEL[item.unit] : line ? UNIT_LABEL[line.inputItem.unit] : 'kipimo';
   const current = item ? priceOf.get(item.id) : undefined;
 
   // Chama kisicho na bidhaa bado: fomu inaanza na bidhaa mpya
-  useEffect(() => { if (items.data && !initialItem && !itemId && !items.data.data.some((i) => i.isActive)) setItemId(NEW); }, [items.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (items.data && !initialItem && !items.data.data.some((i) => i.isActive)) setKind('new'); }, [items.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // Bei ya sasa inajazwa yenyewe (Stokipa anaweza kupendekeza mpya)
   useEffect(() => { setPrice(current ? String(Number(current)) : ''); }, [current]);
   useEffect(() => { if (line) { setQty(String(Number(line.quantity) - Number(line.receivedQty))); setCost(String(Number(line.unitCost))); } }, [line?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -83,8 +83,21 @@ export function ReceiveInputsModal({ itemId: initialItem, purchaseId: initialPr,
         </div>
       ) : (
         <>
-          <SelectField label="Bidhaa *" value={itemId} onChange={setItemId} placeholder="Chagua bidhaa…"
-            options={[...active.map((i) => ({ value: i.id, label: `${i.name} (${UNIT_LABEL[i.unit]})` })), { value: NEW, label: '+ Bidhaa mpya (haijasajiliwa)' }]} />
+          <div className="field">
+            <label>Bidhaa *</label>
+            <div className="choice-2" role="group" aria-label="Aina ya bidhaa">
+              <button type="button" className={kind === 'existing' ? 'on' : ''} aria-pressed={kind === 'existing'} disabled={!active.length} onClick={() => setKind('existing')}>
+                <strong>Bidhaa iliyopo</strong><span>{active.length ? `Imeshasajiliwa (${active.length})` : 'Bado hakuna bidhaa'}</span>
+              </button>
+              <button type="button" className={kind === 'new' ? 'on' : ''} aria-pressed={kind === 'new'} onClick={() => setKind('new')}>
+                <strong>Bidhaa mpya</strong><span>Inaingia stoo kwa mara ya kwanza</span>
+              </button>
+            </div>
+          </div>
+          {kind === 'existing' && (
+            <SelectField label="Chagua bidhaa *" value={itemId} onChange={setItemId} placeholder="Chagua…"
+              options={active.map((i) => ({ value: i.id, label: `${i.name} (${UNIT_LABEL[i.unit]})` }))} />
+          )}
           {isNew && (
             <div className="form-grid">
               <TextField label="Jina la bidhaa mpya *" value={nItem.name} onChange={(v) => setNItem({ ...nItem, name: v })} placeholder="mf. NPK 10:18:24 (50kg)" />
