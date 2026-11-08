@@ -188,7 +188,8 @@ test('Mauzo ya tumbaku: mabelo -> makato -> idhini -> ledger + daftari kuu -> or
   farmerB = await newMember('Bakari');
   // Mkulima A ana deni la pembejeo TSh 160,000
   const item = (await call('POST', '/api/v1/inputs/items', storekeeper, { name: 'NPK ' + RUN, category: 'FERTILIZER', unit: 'BAG' })).body.item;
-  assert.equal((await call('POST', '/api/v1/inputs/stock/receipts', storekeeper, { inputItemId: item.id, quantity: 10, reference: 'DN-' + RUN })).status, 201);
+  assert.equal((await call('POST', '/api/v1/inputs/stock/receipts', storekeeper, { inputItemId: item.id, quantity: 10, unitPrice: '80000', reference: 'DN-' + RUN })).status, 202);
+  await approve(item.id);
   assert.equal((await call('PUT', '/api/v1/inputs/prices', manager, { inputItemId: item.id, unitPrice: '80000' })).status, 200);
   const iss = await call('POST', '/api/v1/input-issues', storekeeper, { memberId: farmerA.id, lines: [{ inputItemId: item.id, quantity: 2 }] });
   await approve(iss.body.issue.id);
@@ -490,4 +491,20 @@ test('Kufunga mwaka na kufunga kipindi: ziada inahamia akiba, tarehe za nyuma zi
   assert.deepEqual(per.locks.map((l: any) => l.kind), ['PERIOD', 'YEAR_END']);
   assert.equal((await call('POST', '/api/v1/finance/income', accountant, { category: 'OTHER_INCOME', amount: '5', accountId: cash.id, description: 'Leo', txnDate: today })).status, 201, 'Leo bado iko wazi');
   await assertBooksBalance();
+});
+
+// 12 -----------------------------------------------------------------
+test('Mhasibu anaona pembejeo alizokopa kila mkulima na deni lake lote (bila taarifa binafsi)', async () => {
+  const list = await call('GET', '/api/v1/finance/farmers?filter=all', accountant);
+  assert.equal(list.status, 200);
+  const a = list.body.data.find((x: any) => x.id === farmerA.id);
+  assert.equal(a.inputs, '160000.00');
+  assert.equal(a.sales, '700000.00');
+  assert.equal(a.balance, (await call('GET', `/api/v1/members/${farmerA.id}`, manager)).body.balance.balance);
+  assert.equal(a.phone, undefined);
+  const d = (await call('GET', `/api/v1/finance/farmers/${farmerA.id}`, accountant)).body;
+  assert.equal(d.inputsSummary[0].quantity, '2.00');
+  assert.equal(d.issues[0].lines[0].unitPrice, '80000.00');
+  assert.equal(d.statement.at(-1).balance, d.balance);
+  assert.equal((await call('GET', `/api/v1/finance/farmers/${farmerA.id}`, storekeeper)).status, 403);
 });

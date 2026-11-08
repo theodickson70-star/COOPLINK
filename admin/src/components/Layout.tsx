@@ -66,6 +66,7 @@ const NAV: { section?: string; items: NavItem[] }[] = [
       { to: '/accounting', label: 'Dashibodi ya fedha', icon: I.gauge, perm: ['accounting.manage'] },
       { to: '/finance', label: 'Miamala na vocha', icon: I.wallet, perm: ['finance.record'] },
       { to: '/sales', label: 'Mauzo ya tumbaku', icon: I.leaf, perm: ['sales.manage'] },
+      { to: '/farmer-debts', label: 'Madeni ya wakulima', icon: I.members, perm: ['accounting.manage'] },
       { to: '/ledger', label: 'Daftari kuu', icon: I.book, perm: ['accounting.manage'] },
       { to: '/bank', label: 'Benki na usuluhishi', icon: I.bank, perm: ['accounting.manage'] },
       { to: '/payables', label: 'Madeni ya chama', icon: I.money, perm: ['accounting.manage'] },

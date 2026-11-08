@@ -58,6 +58,9 @@ const MARKERS: Record<string, string[]> = {
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'finance_transactions' and column_name = 'market_id')",
     "select exists (select 1 from pg_proc where proname = 'journal_period_guard')",
   ],
+  '0007_stock_receipt_approval': [
+    "select exists (select 1 from pg_enum e join pg_type t on t.oid = e.enumtypid where t.typname = 'approval_type' and e.enumlabel = 'STOCK_RECEIPT')",
+  ],
 };
 
 interface JournalEntry { tag: string; when: number }

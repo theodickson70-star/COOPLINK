@@ -81,6 +81,9 @@ export function Approvals() {
 export function DecideModal({ approval: a, onClose, onDone }: { approval: Approval; onClose: () => void; onDone: (msg: string) => void }) {
   const { user, may } = useAuth();
   const [note, setNote] = useState('');
+  const rp = a.type === 'STOCK_RECEIPT' ? (a.payload as { quantity: string; unitPrice: string; currentPrice: string | null; unitCost: string | null; unit: string; itemName: string; source: string | null; reference: string } | null) : null;
+  const [qty, setQty] = useState(rp ? String(Number(rp.quantity)) : '');
+  const [price, setPrice] = useState(rp ? String(Number(rp.unitPrice)) : '');
   const { busy, error, run } = useAction();
   const mine = a.requestedById === user?.id;
   const canDecide = a.status === 'PENDING' && may('approvals.decide') && !mine;
@@ -89,7 +92,7 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
   const act = async (decision: 'APPROVED' | 'REJECTED' | 'CANCEL') => {
     const r = await run(() => decision === 'CANCEL'
       ? api(`/approvals/${a.id}/cancel`, { method: 'POST', body: { note } })
-      : api(`/approvals/${a.id}/decide`, { method: 'POST', body: { decision, note } }));
+      : api(`/approvals/${a.id}/decide`, { method: 'POST', body: { decision, note, ...(rp && decision === 'APPROVED' && (Number(qty) !== Number(rp.quantity) || Number(price) !== Number(rp.unitPrice)) ? { changes: { quantity: qty, unitPrice: price } } : {}) } }));
     if (r) onDone(decision === 'APPROVED' ? `${a.requestNo} imeidhinishwa` : decision === 'REJECTED' ? `${a.requestNo} imekataliwa` : `${a.requestNo} imeondolewa`);
   };
   const p = a.payload as { balanceAtRequest?: string; kind?: string; date?: string; lines?: { code: string; name: string; debit?: string; credit?: string; memo?: string | null }[]; totals?: { farmers: number; kg: string; grossTzs: string; deductions: string; netTzs: string; debit?: string; credit?: string; equity?: string; income?: string; expense?: string; surplus?: string }; farmers?: { memberNo: string; name: string; debt?: string | null; credit?: string | null }[]; lockedThrough?: string; closeDate?: string; openTransactions?: number } | null;
@@ -112,6 +115,21 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
           <thead><tr><th>Akaunti</th><th className="num">Debit</th><th className="num">Credit</th></tr></thead>
           <tbody>{p.lines.map((l, i) => <tr key={i}><td><strong>{l.code}</strong> {l.name}{l.memo ? <div className="muted" style={{ fontSize: 12 }}>{l.memo}</div> : null}</td><td className="num">{l.debit ? tsh(l.debit) : ''}</td><td className="num">{l.credit ? tsh(l.credit) : ''}</td></tr>)}</tbody>
         </table><p className="muted" style={{ margin: '6px 0 0' }}>Tarehe ya journal: {p.date}</p></div>
+      )}
+      {rp && (
+        <>
+          <dl className="dl">
+            <dt>Bidhaa</dt><dd>{rp.itemName}</dd>
+            {rp.source && <><dt>Kutoka</dt><dd>{rp.source} · hati {rp.reference}</dd></>}
+            <dt>Bei ya sasa</dt><dd>{rp.currentPrice ? tsh(rp.currentPrice) : 'Haijawekwa'}</dd>
+            {rp.unitCost && <><dt>Gharama ya chama</dt><dd>{tsh(rp.unitCost)} kwa kipimo</dd></>}
+          </dl>
+          {canDecide && <div className="form-grid">
+            <TextField label="Idadi iliyopokelewa *" type="number" min="0" value={qty} onChange={setQty} />
+            <TextField label="Bei ya kumkopesha mkulima (TSh) *" type="number" min="1" value={price} onChange={setPrice} />
+          </div>}
+          {canDecide && <p className="muted" style={{ margin: 0 }}>Thamani: <strong>{tsh(Number(qty || 0) * Number(price || 0))}</strong>. Ukibadilisha idadi au bei, mabadiliko yako ndiyo yatakayotumika na yatahifadhiwa kwenye kumbukumbu.</p>}
+        </>
       )}
       {a.type === 'OPENING_BALANCE' && p?.totals && (
         <>

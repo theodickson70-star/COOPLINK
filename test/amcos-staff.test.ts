@@ -190,8 +190,17 @@ test('Mhasibu hawezi kuidhinisha ombi lake; hakuna anayeidhinisha ombi alilolian
 // 4 & 6 --------------------------------------------------------------
 test('Stokipa hawezi kuidhinisha marekebisho; stoo haibadiliki kabla ya idhini', async () => {
   itemId = (await call('GET', '/api/v1/inputs/items', A.storekeeper)).body.data.find((i: any) => i.name === 'NPK ' + RUN).id;
-  assert.equal((await call('POST', '/api/v1/inputs/stock/receipts', A.storekeeper, { inputItemId: itemId, quantity: 40, reference: 'DN-' + RUN, expiryDate: '2027-06-30', batchNo: 'B1' })).status, 201);
+  // Mzigo: Stokipa anaingiza idadi na bei -> Meneja anaidhinisha (na anaweza kurekebisha) -> ndipo stoo inaongezeka
+  assert.equal((await call('POST', '/api/v1/inputs/stock/receipts', A.storekeeper, { inputItemId: itemId, quantity: 40, reference: 'DN-' + RUN })).status, 400, 'Bei inahitajika');
+  const rc = await call('POST', '/api/v1/inputs/stock/receipts', A.storekeeper, { inputItemId: itemId, quantity: 45, unitPrice: '85000', unitCost: '70000', source: 'Chama Kikuu', reference: 'DN-' + RUN, expiryDate: '2027-06-30', batchNo: 'B1' });
+  assert.equal(rc.status, 202, JSON.stringify(rc.body));
+  assert.equal((await call('POST', '/api/v1/inputs/stock/receipts', A.storekeeper, { inputItemId: itemId, quantity: 45, unitPrice: '85000', reference: 'DN-' + RUN })).status, 409, 'Hati moja mara moja');
+  assert.equal(await stockOf(A.storekeeper, itemId), '0', 'Stoo haiongezeki kabla ya idhini');
+  assert.equal((await call('POST', `/api/v1/approvals/${rc.body.approval.id}/decide`, A.storekeeper, { decision: 'APPROVED', note: 'mimi' })).status, 403);
+  assert.equal((await call('POST', `/api/v1/approvals/${rc.body.approval.id}/decide`, A.manager, { decision: 'APPROVED', note: 'Nimehesabu mifuko', changes: { quantity: '40', unitPrice: '80000' } })).status, 200);
   assert.equal(await stockOf(A.storekeeper, itemId), '40.00');
+  const pr = (await call('GET', '/api/v1/inputs/prices', A.storekeeper)).body.data.find((x: any) => x.inputItemId === itemId);
+  assert.equal(pr.unitPrice, '80000.00', 'Bei iliyoidhinishwa na Meneja');
 
   const req = await call('POST', '/api/v1/inputs/stock/adjustments', A.storekeeper, { inputItemId: itemId, quantity: '-3', kind: 'DAMAGE', notes: 'Mifuko 3 imelowa maji' });
   assert.equal(req.status, 202);

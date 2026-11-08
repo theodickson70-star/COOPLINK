@@ -16,7 +16,7 @@ import { amcosScope, resolveWriteAmcosId } from '../middleware/tenant';
 import { audit } from '../lib/audit';
 import { nextNumber, pad } from '../lib/counter';
 import * as ledger from '../lib/ledger';
-import { D, fmt2 } from '../lib/money';
+import { D, fmt2, tshText } from '../lib/money';
 import { findMemberScoped } from './members.routes';
 import { lockItems, stockBalance } from '../lib/stock';
 import { createApproval } from '../lib/approvals';
@@ -191,7 +191,9 @@ const stockBody = z.object({
   notes: z.string().trim().optional(),
 });
 
-// Mzigo usiotokana na manunuzi ya chama (mf. pembejeo kutoka Chama Kikuu / mnunuzi). Namba ya hati (delivery note) inahitajika.
+// Mzigo wa pembejeo usiotokana na ombi la manunuzi (mf. kutoka Chama Kikuu / kampuni ya tumbaku).
+// Stokipa anaingiza idadi na bei inayopendekezwa -> Meneja anaidhinisha idadi na bei -> ndipo stoo inaongezeka
+// na pembejeo zinaweza kutolewa kwa wakulima. (Mzigo wa manunuzi yaliyoidhinishwa unapokelewa kwenye Manunuzi.)
 inputsRouter.post(
   '/stock/receipts',
   requireAmcosPerm('stock.receive'),
@@ -199,24 +201,42 @@ inputsRouter.post(
     const body = stockBody.extend({
       quantity: decimalSchema({ min: 0.01 }),
       reference: z.string().trim().min(2, 'Weka namba ya hati ya mzigo (delivery note)'),
+      unitPrice: decimalSchema({ min: 0.01 }).nullable().optional(),   // bei ya kumkopesha mkulima (kwa kipimo kimoja)
+      unitCost: decimalSchema({ min: 0 }).nullable().optional(),       // gharama ya chama (hiari)
+      source: z.string().trim().nullable().optional(),                 // mf. Chama Kikuu, mzabuni
       batchNo: z.string().trim().nullable().optional(),
       expiryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
       supplierId: z.string().uuid().nullable().optional(),
     }).parse(req.body);
     const item = await findItemScoped(req, body.inputItemId);
+    if (!item.isActive) throw badRequest('Bidhaa hii imesitishwa');
     const season = await resolveOpenSeason(body.seasonId);
-    const movement = await db.transaction(async (tx) => {
-      const [row] = await tx.insert(moves).values({
-        amcosId: item.amcosId, seasonId: season.id, inputItemId: item.id, type: 'RECEIPT',
-        quantity: body.quantity, reference: body.reference, notes: body.notes, createdById: req.auth!.userId,
-        batchNo: body.batchNo ?? null, expiryDate: body.expiryDate ?? null, supplierId: body.supplierId ?? null,
-      }).returning();
-      await audit(tx, req, { action: 'STOCK_RECEIPT', entity: 'StockMovement', entityId: row.id, amcosId: item.amcosId, after: row });
-      return row;
+    const current = await db.query.inputPrices.findFirst({ where: and(eq(prices.seasonId, season.id), eq(prices.inputItemId, item.id)) });
+    if (!body.unitPrice && !current) throw badRequest('Weka bei ya kumkopesha mkulima — bidhaa hii haina bei msimu huu');
+    const unitPrice = body.unitPrice ?? current!.unitPrice;
+    const [dup] = await db.select({ id: schema.approvalRequests.id }).from(schema.approvalRequests).where(and(
+      eq(schema.approvalRequests.amcosId, item.amcosId), eq(schema.approvalRequests.type, 'STOCK_RECEIPT'), eq(schema.approvalRequests.status, 'PENDING'),
+      eq(schema.approvalRequests.entityId, item.id), sql`${schema.approvalRequests.payload}->>'reference' = ${body.reference}`));
+    if (dup) throw conflict('Mzigo wa hati hii tayari unasubiri idhini');
+    const approval = await db.transaction(async (tx) => {
+      const value = D(body.quantity).times(unitPrice);
+      const a = await createApproval(tx, req, {
+        amcosId: item.amcosId, type: 'STOCK_RECEIPT', entityType: 'InputItem', entityId: item.id, amount: fmt2(value),
+        title: `Mzigo wa ${item.name}: ${body.quantity} ${item.unit.toLowerCase()} × ${tshText(unitPrice)}${current && current.unitPrice !== unitPrice ? ` (bei ya sasa ${tshText(current.unitPrice)})` : ''}`,
+        reason: [body.source && `Kutoka: ${body.source}`, `Hati: ${body.reference}`, body.notes].filter(Boolean).join(' · '),
+        payload: {
+          inputItemId: item.id, itemName: item.name, unit: item.unit, seasonId: season.id, quantity: body.quantity, unitPrice, currentPrice: current?.unitPrice ?? null,
+          unitCost: body.unitCost ?? null, reference: body.reference, source: body.source ?? null, batchNo: body.batchNo ?? null, expiryDate: body.expiryDate ?? null,
+          supplierId: body.supplierId ?? null, notes: body.notes ?? null,
+        },
+      });
+      await audit(tx, req, { action: 'STOCK_RECEIPT_REQUEST', entity: 'InputItem', entityId: item.id, amcosId: item.amcosId, after: { approval: a.requestNo, quantity: body.quantity, unitPrice } });
+      return a;
     });
-    res.status(201).json({ movement });
+    res.status(202).json({ approval });
   }),
 );
+
 
 // Marekebisho ya stoo: Stokipa ANAOMBA, Meneja anaidhinisha. Stoo HAIBADILIKI kabla ya idhini.
 //   kind: ADJUSTMENT (hesabu), DAMAGE (zimeharibika), EXPIRY (muda umeisha)

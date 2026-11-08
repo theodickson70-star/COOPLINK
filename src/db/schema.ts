@@ -562,6 +562,7 @@ export const approvalTypeEnum = pgEnum('approval_type', [
   'MEMBER_REGISTRATION', 'EXPENSE', 'FARMER_PAYMENT', 'SUPPLIER_PAYMENT', 'PURCHASE', 'STOCK_ADJUSTMENT', 'INPUT_ISSUE', 'REVERSAL',
   'JOURNAL', 'TOBACCO_SALE', 'PAYMENT_BATCH', 'TRANSFER', 'PAYROLL', 'ASSET_DISPOSAL',
   'OPENING_BALANCE', 'PERIOD_CLOSE', 'YEAR_END_CLOSE',
+  'STOCK_RECEIPT',
 ]);
 export const approvalStatusEnum = pgEnum('approval_status', ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']);
 export const financeAccountKindEnum = pgEnum('finance_account_kind', ['CASH', 'BANK', 'MOBILE_MONEY']);

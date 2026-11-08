@@ -43,7 +43,11 @@ export const APPROVAL_LABEL: Record<ApprovalType, string> = {
   OPENING_BALANCE: 'Salio la kuanzia',
   PERIOD_CLOSE: 'Kufunga kipindi',
   YEAR_END_CLOSE: 'Kufunga mwaka wa fedha',
+  STOCK_RECEIPT: 'Mzigo wa pembejeo (idadi na bei)',
 };
+
+/** Marekebisho ya Meneja wakati wa kuidhinisha mzigo wa pembejeo (idadi na bei). */
+export interface ReceiptChanges { quantity?: string; unitPrice?: string }
 
 export async function createApproval(tx: Tx, req: Request, a: {
   amcosId: string; type: ApprovalType; title: string; amount?: string | null; entityType?: string; entityId?: string;
@@ -234,6 +238,37 @@ async function onTransfer(tx: Tx, req: Request, a: Approval, o: Outcome, note: s
   await audit(tx, req, { action: `TRANSFER_${status}`, entity: 'FinanceTransaction', entityId: first.id, amcosId: a.amcosId, after: { status, note } });
 }
 
+interface ReceiptPayload {
+  inputItemId: string; itemName: string; seasonId: string; quantity: string; unitPrice: string; currentPrice: string | null; unitCost: string | null;
+  reference: string; source: string | null; batchNo: string | null; expiryDate: string | null; supplierId: string | null; notes: string | null;
+}
+
+/** Meneja ameidhinisha idadi na bei: stoo inaongezeka na bei ya msimu inawekwa — ndipo pembejeo zinaweza kutolewa. */
+async function onStockReceipt(tx: Tx, req: Request, a: Approval, o: Outcome, note: string, changes?: ReceiptChanges) {
+  if (o !== 'APPROVED') return;
+  const p = a.payload as ReceiptPayload;
+  const season = await tx.query.seasons.findFirst({ where: eq(schema.seasons.id, p.seasonId) });
+  if (!season || season.status === 'CLOSED') throw badRequest('Msimu wa mzigo huu umefungwa');
+  const item = await tx.query.inputItems.findFirst({ where: eq(schema.inputItems.id, p.inputItemId) });
+  if (!item || item.amcosId !== a.amcosId) throw conflict('Bidhaa haipo tena');
+  const quantity = changes?.quantity ?? p.quantity;
+  const unitPrice = changes?.unitPrice ?? p.unitPrice;
+  const adjusted = [quantity !== p.quantity && `idadi ${p.quantity} → ${quantity}`, unitPrice !== p.unitPrice && `bei ${p.unitPrice} → ${unitPrice}`].filter(Boolean).join(', ');
+  const [mv] = await tx.insert(schema.stockMovements).values({
+    amcosId: a.amcosId, seasonId: p.seasonId, inputItemId: p.inputItemId, type: 'RECEIPT', quantity, reference: p.reference,
+    notes: [p.source && `Kutoka: ${p.source}`, p.notes, `Idhini ${a.requestNo}: ${note}`, adjusted && `Meneja alirekebisha ${adjusted}`].filter(Boolean).join(' · '),
+    batchNo: p.batchNo, expiryDate: p.expiryDate, supplierId: p.supplierId, unitCost: p.unitCost, approvalId: a.id, createdById: a.requestedById,
+  }).returning();
+  const P = schema.inputPrices;
+  const before = await tx.query.inputPrices.findFirst({ where: and(eq(P.seasonId, p.seasonId), eq(P.inputItemId, p.inputItemId)) });
+  if (!before || before.unitPrice !== unitPrice) {
+    const [pr] = await tx.insert(P).values({ amcosId: a.amcosId, seasonId: p.seasonId, inputItemId: p.inputItemId, unitPrice })
+      .onConflictDoUpdate({ target: [P.seasonId, P.inputItemId], set: { unitPrice, updatedAt: new Date() } }).returning();
+    await audit(tx, req, { action: 'INPUT_PRICE_SET', entity: 'InputPrice', entityId: pr.id, amcosId: a.amcosId, before: before ?? null, after: { ...pr, approval: a.requestNo } });
+  }
+  await audit(tx, req, { action: 'STOCK_RECEIPT_APPROVED', entity: 'StockMovement', entityId: mv.id, amcosId: a.amcosId, after: { ...mv, unitPrice, adjusted: adjusted || null, note } });
+}
+
 const HANDLERS: Record<ApprovalType, (tx: Tx, req: Request, a: Approval, o: Outcome, note: string) => Promise<void>> = {
   MEMBER_REGISTRATION: onMember,
   EXPENSE: onFinanceTxn,
@@ -252,13 +287,21 @@ const HANDLERS: Record<ApprovalType, (tx: Tx, req: Request, a: Approval, o: Outc
   OPENING_BALANCE: onOpeningBalance,
   PERIOD_CLOSE: onPeriodClose,
   YEAR_END_CLOSE: onYearEndClose,
+  STOCK_RECEIPT: onStockReceipt,
 };
 
 /** Meneja anaidhinisha au anakataa. Lazima awe wa chama hicho na asiwe aliyeanzisha ombi. */
-export async function decideApproval(tx: Tx, req: Request, id: string, decision: 'APPROVED' | 'REJECTED', note: string) {
+export async function decideApproval(tx: Tx, req: Request, id: string, decision: 'APPROVED' | 'REJECTED', note: string, changes?: ReceiptChanges) {
   const a = await lockPending(tx, id);
   if (req.auth!.amcosId !== a.amcosId) throw notFound('Ombi');
   if (a.requestedById === req.auth!.userId) throw forbidden('Huwezi kuidhinisha ombi ulilolianzisha mwenyewe');
+  if (changes && (changes.quantity || changes.unitPrice)) {
+    if (a.type !== 'STOCK_RECEIPT') throw badRequest('Marekebisho yanaruhusiwa kwa mzigo wa pembejeo tu');
+    if (decision !== 'APPROVED') throw badRequest('Marekebisho ni kwa kuidhinisha tu');
+    await onStockReceipt(tx, req, a, decision, note, changes);
+    const what = [changes.quantity && `idadi ${changes.quantity}`, changes.unitPrice && `bei ${changes.unitPrice}`].filter(Boolean).join(', ');
+    return closeApproval(tx, req, a, decision, `${note} [Meneja amerekebisha: ${what}]`);
+  }
   await HANDLERS[a.type](tx, req, a, decision, note);
   return closeApproval(tx, req, a, decision, note);
 }

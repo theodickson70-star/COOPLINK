@@ -40,6 +40,7 @@ export function Workspace() {
     <>
       <PageHead title={`Habari, ${first}`} sub={<><strong>{data.title}</strong> · {STAFF_DUTY[data.role]}{data.season ? <> · Msimu <strong>{data.season.name}</strong></> : null}</>}>
         {data.role === 'CLERK' && <>
+          <Link className="btn btn-secondary" to="/inputs">Ingiza pembejeo (mzigo)</Link>
           <Link className="btn btn-gold" to="/input-issues/new">Toa pembejeo</Link>
           <Link className="btn btn-primary" to="/purchases">Ombi la manunuzi</Link>
         </>}

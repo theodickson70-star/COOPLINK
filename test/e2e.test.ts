@@ -211,7 +211,8 @@ test('pembejeo: bila bei / stoo haitoshi / watu wengi kwa wakati mmoja hawazidis
 
   assert.equal((await call('PUT', '/api/v1/inputs/prices', katibu, { inputItemId: id, unitPrice: '25000' })).status, 200);
   assert.equal((await call('POST', '/api/v1/inputs/stock/receipts', katibu, { inputItemId: id, quantity: 10, reference: 'DN-1' })).status, 403, 'Meneja hapokei stoo');
-  assert.equal((await call('POST', '/api/v1/inputs/stock/receipts', clerk, { inputItemId: id, quantity: 10, reference: 'DN-1' })).status, 201);
+  assert.equal((await call('POST', '/api/v1/inputs/stock/receipts', clerk, { inputItemId: id, quantity: 10, reference: 'DN-1' })).status, 202, 'Mzigo unasubiri idhini ya Meneja');
+  assert.equal((await decideFor(id)).status, 200);
 
   const over = await call('POST', '/api/v1/input-issues', clerk, { memberId, lines: [{ inputItemId: id, quantity: 11 }] });
   assert.equal(over.body.error.code, 'INSUFFICIENT_STOCK');

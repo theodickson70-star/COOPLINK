@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, apiDownload, type Paged } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
 import { CATEGORY_LABEL, date, dateTime, MOVE_LABEL, num, tsh, UNIT_LABEL } from '../lib/format';
@@ -17,8 +18,9 @@ export function Inputs() {
   const prices = useFetch<{ data: Price[] }>('/inputs/prices');
   const stock = useFetch<{ data: Stock[] }>('/inputs/stock');
   const [modal, setModal] = useState<null | { kind: 'item' | 'price' | 'receive' | 'adjust'; item?: Item } | { kind: 'count' }>(null);
+  const pending = useFetch<{ data: { id: string; requestNo: string; title: string; amount: string | null; reason: string | null; createdAt: string; requestedBy: string | null }[] }>(may('approvals.read') ? '/approvals' : null, { status: 'PENDING', type: 'STOCK_RECEIPT', pageSize: 50 });
   const [notice, setNotice] = useState<string | null>(null);
-  const reloadAll = () => { items.reload(); prices.reload(); stock.reload(); };
+  const reloadAll = () => { items.reload(); prices.reload(); stock.reload(); pending.reload(); };
   const done = (msg?: string) => { setModal(null); reloadAll(); setNotice(msg ?? null); };
 
   if (items.loading && !items.data) return <Loading />;
@@ -30,10 +32,21 @@ export function Inputs() {
       <PageHead title="Bidhaa na Stoo" sub="Pembejeo za chama, bei za msimu, salio la stoo na historia ya kila bidhaa">
         {may('reports.stock') && <Button variant="secondary" onClick={() => apiDownload('/store/stock.csv', { filename: 'stoo.csv' })}>Pakua ripoti (Excel)</Button>}
         {may('stock.adjust.request') && <Button variant="secondary" onClick={() => setModal({ kind: 'count' })}>Hesabu ya stoo</Button>}
-        {may('products.manage') && <Button onClick={() => setModal({ kind: 'item' })}>+ Bidhaa mpya</Button>}
+        {may('products.manage') && <Button variant="secondary" onClick={() => setModal({ kind: 'item' })}>+ Bidhaa mpya</Button>}
+        {may('stock.receive') && <Button variant="gold" disabled={!items.data?.data.some((i) => i.isActive)} onClick={() => setModal({ kind: 'receive' })}>+ Ingiza pembejeo (mzigo)</Button>}
       </PageHead>
       <Alert>{items.error ?? prices.error ?? stock.error}</Alert>
       <Alert kind="ok">{notice}</Alert>
+      {!!pending.data?.data.length && (
+        <section className="card" style={{ marginBottom: 16 }}>
+          <div className="section-head"><h2>Mizigo inayosubiri idhini ya Meneja ({pending.data.data.length})</h2>{may('approvals.decide') && <Link to="/approvals">Amua →</Link>}</div>
+          <div className="table-wrap"><table className="table"><tbody>{pending.data.data.map((p) => (
+            <tr key={p.id}><td style={{ whiteSpace: 'nowrap' }}><strong>{p.requestNo}</strong><div className="muted" style={{ fontSize: 12 }}>{dateTime(p.createdAt)}</div></td>
+              <td>{p.title}{p.reason && <div className="muted" style={{ fontSize: 12 }}>{p.reason}</div>}</td>
+              <td className="num">{p.amount ? tsh(p.amount) : ''}</td><td><Badge status="PENDING_APPROVAL" label="Haijaingia stoo" /></td></tr>
+          ))}</tbody></table></div>
+        </section>
+      )}
       <Tabs value={tab} onChange={setTab} items={[['stock', 'Salio la stoo'], ['expiring', 'Zinazoisha muda'], ['history', 'Historia ya bidhaa']]} />
 
       {tab === 'stock' && (
@@ -59,7 +72,7 @@ export function Inputs() {
                         <td className="num"><strong className={s?.low || Number(s?.balance ?? 0) <= 0 ? 'money-neg' : ''}>{num(s?.balance)}</strong>{s?.low && <div><span className="badge badge-warn">Stoo ndogo</span></div>}</td>
                         <td className="num">
                           <span className="actions" style={{ justifyContent: 'flex-end' }}>
-                            {may('stock.receive') && <Button size="sm" variant="secondary" onClick={() => setModal({ kind: 'receive', item: it })}>Pokea</Button>}
+                            {may('stock.receive') && it.isActive && <Button size="sm" variant="secondary" onClick={() => setModal({ kind: 'receive', item: it })}>Ingiza mzigo</Button>}
                             {may('stock.adjust.request') && <Button size="sm" variant="ghost" onClick={() => setModal({ kind: 'adjust', item: it })}>Omba marekebisho</Button>}
                             {may('prices.manage') && <Button size="sm" variant="ghost" onClick={() => setModal({ kind: 'price', item: it })}>Bei</Button>}
                             {may('products.manage') && <Button size="sm" variant="ghost" onClick={() => setModal({ kind: 'item', item: it })}>Hariri</Button>}
@@ -79,7 +92,7 @@ export function Inputs() {
 
       {modal?.kind === 'item' && <ItemModal item={'item' in modal ? modal.item : undefined} onClose={() => setModal(null)} onDone={() => done()} />}
       {modal?.kind === 'price' && 'item' in modal && modal.item && <PriceModal item={modal.item} current={priceOf.get(modal.item.id)} onClose={() => setModal(null)} onDone={() => done('Bei imehifadhiwa')} />}
-      {modal?.kind === 'receive' && 'item' in modal && modal.item && <ReceiveModal item={modal.item} onClose={() => setModal(null)} onDone={() => done('Mzigo umepokelewa na stoo imeongezeka')} />}
+      {modal?.kind === 'receive' && <ReceiveModal item={'item' in modal ? modal.item : undefined} items={items.data?.data.filter((i) => i.isActive) ?? []} priceOf={priceOf} onClose={() => setModal(null)} onDone={(no) => done(`Mzigo umetumwa kwa Meneja (${no}). Stoo itaongezeka na pembejeo zitaweza kutolewa baada ya Meneja kuidhinisha idadi na bei.`)} />}
       {modal?.kind === 'adjust' && 'item' in modal && modal.item && <AdjustModal item={modal.item} balance={stockOf.get(modal.item.id)?.balance ?? '0'} onClose={() => setModal(null)} onDone={() => done('Ombi la marekebisho limetumwa kwa Meneja. Stoo itabadilika baada ya idhini.')} />}
       {modal?.kind === 'count' && <CountModal items={items.data?.data.filter((i) => i.isActive) ?? []} stockOf={stockOf} onClose={() => setModal(null)} onDone={(n) => done(n ? `Tofauti ${n} zimetumwa kwa Meneja kama maombi ya marekebisho.` : 'Hesabu inalingana na mfumo. Hakuna marekebisho.')} />}
     </>
@@ -126,27 +139,44 @@ function PriceModal({ item, current, onClose, onDone }: { item: Item; current?: 
   );
 }
 
-function ReceiveModal({ item, onClose, onDone }: { item: Item; onClose: () => void; onDone: () => void }) {
+function ReceiveModal({ item: initial, items, priceOf, onClose, onDone }: { item?: Item; items: Item[]; priceOf: Map<string, string>; onClose: () => void; onDone: (requestNo: string) => void }) {
+  const [itemId, setItemId] = useState(initial?.id ?? '');
+  const item = items.find((i) => i.id === itemId) ?? initial;
+  const current = item ? priceOf.get(item.id) : undefined;
   const [qty, setQty] = useState('');
+  const [price, setPrice] = useState(current ? String(Number(current)) : '');
+  const [cost, setCost] = useState('');
+  const [source, setSource] = useState('');
   const [reference, setReference] = useState('');
   const [batchNo, setBatchNo] = useState('');
   const [expiry, setExpiry] = useState('');
   const [notes, setNotes] = useState('');
   const { busy, error, run } = useAction();
+  const unit = item ? UNIT_LABEL[item.unit].toLowerCase() : 'kipimo';
+  const value = Number(qty || 0) * Number(price || 0);
   return (
-    <Modal open title={`Pokea mzigo: ${item.name}`} onClose={onClose}
-      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={!qty || reference.trim().length < 2} onClick={async () => {
-        if (await run(() => api('/inputs/stock/receipts', { method: 'POST', body: { inputItemId: item.id, quantity: qty, reference, batchNo: batchNo || null, expiryDate: expiry || null, notes: notes || undefined } }))) onDone();
-      }}>Pokea</Button></>}>
-      <p className="muted" style={{ margin: 0 }}>Kwa mzigo usiotokana na ombi la manunuzi la chama (mf. pembejeo kutoka Chama Kikuu au kampuni ya tumbaku). Mzigo wa manunuzi upokee kwenye ukurasa wa <strong>Manunuzi</strong>.</p>
+    <Modal open title={item ? `Ingiza mzigo: ${item.name}` : 'Ingiza pembejeo (mzigo mpya)'} onClose={onClose}
+      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={!item || !(Number(qty) > 0) || !(Number(price) > 0) || reference.trim().length < 2} onClick={async () => {
+        const r = await run(() => api<{ approval: { requestNo: string } }>('/inputs/stock/receipts', { method: 'POST', body: {
+          inputItemId: item!.id, quantity: qty, unitPrice: price, unitCost: cost || null, source: source || null, reference,
+          batchNo: batchNo || null, expiryDate: expiry || null, notes: notes || undefined,
+        } }));
+        if (r) onDone(r.approval.requestNo);
+      }}>Tuma kwa Meneja</Button></>}>
+      <Alert kind="warn">Mzigo hauingii stoo mara moja: Meneja ataidhinisha <strong>idadi</strong> na <strong>bei ya kumkopesha mkulima</strong>, ndipo pembejeo zitaweza kutolewa. Mzigo wa ombi la manunuzi la chama upokee kwenye ukurasa wa Manunuzi.</Alert>
       <Alert>{error}</Alert>
+      {!initial && <SelectField label="Bidhaa *" value={itemId} onChange={(v) => { setItemId(v); const p = priceOf.get(v); setPrice(p ? String(Number(p)) : ''); }} placeholder="Chagua bidhaa…" options={items.map((i) => ({ value: i.id, label: `${i.name} (${UNIT_LABEL[i.unit]})` }))} />}
       <div className="form-grid">
-        <TextField label={`Kiasi (${UNIT_LABEL[item.unit]}) *`} type="number" min="0" step="0.01" value={qty} onChange={setQty} />
+        <TextField label={`Idadi (${unit}) *`} type="number" min="0" step="0.01" value={qty} onChange={setQty} />
+        <TextField label={`Bei kwa mkulima, kwa ${unit} (TSh) *`} type="number" min="1" value={price} onChange={setPrice} help={current ? `Bei ya sasa: ${tsh(current)}` : 'Bidhaa hii bado haina bei msimu huu'} />
+        <TextField label={`Gharama ya chama kwa ${unit} (hiari)`} type="number" min="0" value={cost} onChange={setCost} help="Bei ambayo chama kimenunulia/kimekopeshwa" />
+        <TextField label="Umetoka wapi" value={source} onChange={setSource} placeholder="mf. Chama Kikuu, mzabuni" />
         <TextField label="Namba ya hati ya mzigo (delivery note) *" value={reference} onChange={setReference} />
         <TextField label="Namba ya batch" value={batchNo} onChange={setBatchNo} />
         <TextField label="Tarehe ya kuisha muda" type="date" value={expiry} onChange={setExpiry} />
       </div>
-      <TextField label="Maelezo (mf. umetoka wapi)" value={notes} onChange={setNotes} />
+      <TextField label="Maelezo" value={notes} onChange={setNotes} />
+      {value > 0 && <p style={{ margin: 0 }}>Thamani kwa bei ya mkulima: <strong>{tsh(value)}</strong></p>}
     </Modal>
   );
 }

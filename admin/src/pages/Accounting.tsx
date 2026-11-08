@@ -46,6 +46,7 @@ export function AccountingHome({ embedded }: { embedded?: boolean }) {
           <Link className="qa" to="/bank"><strong>Benki</strong><span>Uhamisho na usuluhishi</span></Link>
           <Link className="qa" to="/payroll"><strong>Mishahara</strong><span>PAYE, NSSF, hati</span></Link>
           <Link className="qa" to="/ledger"><strong>Daftari kuu</strong><span>Chati, journal</span></Link>
+          <Link className="qa" to="/farmer-debts"><strong>Madeni ya wakulima</strong><span>Pembejeo na deni la kila mkulima</span></Link>
           <Link className="qa" to="/payables"><strong>Madeni ya chama</strong><span>Chama Kikuu, ushuru, kodi</span></Link>
           <Link className="qa" to="/accounting/reports"><strong>Ripoti kuu</strong><span>TB, mizania, cash flow</span></Link>
         </div>

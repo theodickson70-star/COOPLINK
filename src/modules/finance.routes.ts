@@ -475,3 +475,73 @@ financeRouter.get('/reports/transactions.csv', requireAmcosPerm('reports.finance
   res.setHeader('Content-Disposition', `attachment; filename="miamala-${from}-${to}.csv"`);
   res.send(csv);
 }));
+
+// ------------------------------ MADENI YA WAKULIMA (kwa Mhasibu) ------------------------------
+// Mhasibu haoni taarifa binafsi za wakulima; anaona pembejeo walizokopa, mauzo, makato, malipo na deni lote.
+const MLE = schema.memberLedgerEntries;
+
+financeRouter.get('/farmers', requireAmcosPerm('finance.read'), ah(async (req, res) => {
+  const q = paginationQuery.extend({ search: z.string().trim().optional(), filter: z.enum(['all', 'owing', 'owed']).default('owing') }).parse(req.query);
+  const M = schema.members;
+  const s = q.search ? `%${q.search}%` : null;
+  const sums = db.select({
+    memberId: MLE.memberId,
+    inputs: sql<string>`coalesce(sum(case when ${MLE.referenceType} = 'INPUT_ISSUE' then ${MLE.debit} - ${MLE.credit} else 0 end), 0)`.as('inputs'),
+    loans: sql<string>`coalesce(sum(case when ${MLE.type} = 'CASH_LOAN' then ${MLE.debit} else 0 end), 0)`.as('loans'),
+    sales: sql<string>`coalesce(sum(case when ${MLE.type} = 'TOBACCO_SALE' then ${MLE.credit} else 0 end), 0)`.as('sales'),
+    deductions: sql<string>`coalesce(sum(case when ${MLE.type} = 'DEDUCTION' then ${MLE.debit} else 0 end), 0)`.as('deductions'),
+    repaid: sql<string>`coalesce(sum(case when ${MLE.type} = 'REPAYMENT' then ${MLE.credit} else 0 end), 0)`.as('repaid'),
+    paid: sql<string>`coalesce(sum(case when ${MLE.type} = 'PAYMENT' then ${MLE.debit} else 0 end), 0)`.as('paid'),
+    balance: sql<string>`coalesce(sum(${MLE.credit}) - sum(${MLE.debit}), 0)`.as('balance'),
+    lastAt: sql<string>`max(${MLE.createdAt})`.as('last_at'),
+  }).from(MLE).where(amcosScope(req, MLE.amcosId)).groupBy(MLE.memberId).as('sums');
+  const where = and(
+    amcosScope(req, M.amcosId),
+    s ? or(ilike(M.firstName, s), ilike(M.lastName, s), ilike(M.memberNo, s), ilike(M.village, s)) : undefined,
+    q.filter === 'owing' ? sql`${sums.balance} < 0` : q.filter === 'owed' ? sql`${sums.balance} > 0` : undefined,
+  );
+  const base = db.select({ id: M.id, memberNo: M.memberNo, firstName: M.firstName, lastName: M.lastName, village: M.village, status: M.status,
+    inputs: sums.inputs, loans: sums.loans, sales: sums.sales, deductions: sums.deductions, repaid: sums.repaid, paid: sums.paid, balance: sums.balance, lastAt: sums.lastAt })
+    .from(M).innerJoin(sums, eq(sums.memberId, M.id)).where(where);
+  const [rows, [tot]] = await Promise.all([
+    base.orderBy(asc(sql`${sums.balance}`), asc(M.memberNo)).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
+    db.select({ n: count(), owing: sql<string>`coalesce(sum(case when ${sums.balance} < 0 then -${sums.balance} else 0 end), 0)`,
+      owed: sql<string>`coalesce(sum(case when ${sums.balance} > 0 then ${sums.balance} else 0 end), 0)`, inputs: sql<string>`coalesce(sum(${sums.inputs}), 0)` })
+      .from(M).innerJoin(sums, eq(sums.memberId, M.id)).where(where),
+  ]);
+  res.json({
+    ...paged(rows.map((r) => ({ ...r, inputs: fmt2(r.inputs), loans: fmt2(r.loans), sales: fmt2(r.sales), deductions: fmt2(r.deductions), repaid: fmt2(r.repaid), paid: fmt2(r.paid), balance: fmt2(r.balance), amountOwed: fmt2(D(r.balance).lt(0) ? D(r.balance).neg() : 0) })), tot.n, q.page, q.pageSize),
+    totals: { farmersOwing: fmt2(tot.owing), owedToFarmers: fmt2(tot.owed), inputs: fmt2(tot.inputs) },
+  });
+}));
+
+financeRouter.get('/farmers/:id', requireAmcosPerm('finance.read'), ah(async (req, res) => {
+  const { id } = uuidParam.parse(req.params);
+  const m = await findMemberScoped(req, id);
+  const entries = await db.select().from(MLE).where(eq(MLE.memberId, m.id)).orderBy(asc(MLE.createdAt));
+  let run = D(0);
+  const statement = entries.map((e) => { run = run.plus(e.credit).minus(e.debit); return { id: e.id, date: e.createdAt, type: e.type, description: e.description, debit: e.debit, credit: e.credit, balance: fmt2(run) }; });
+  const I = schema.inputIssues;
+  const issues = await db.select().from(I).where(and(eq(I.memberId, m.id), sql`${I.status} in ('ISSUED', 'CANCELLED', 'PENDING_APPROVAL')`)).orderBy(desc(I.issuedAt));
+  const lines = issues.length ? await db.select({ l: schema.inputIssueLines, name: schema.inputItems.name, unit: schema.inputItems.unit })
+    .from(schema.inputIssueLines).innerJoin(schema.inputItems, eq(schema.inputItems.id, schema.inputIssueLines.inputItemId))
+    .where(inArray(schema.inputIssueLines.inputIssueId, issues.map((i) => i.id))) : [];
+  const byItem = new Map<string, { name: string; unit: string; quantity: ReturnType<typeof D>; amount: ReturnType<typeof D> }>();
+  for (const x of lines) {
+    const iss = issues.find((i) => i.id === x.l.inputIssueId)!;
+    if (iss.status !== 'ISSUED') continue;
+    const cur = byItem.get(x.l.inputItemId) ?? { name: x.name, unit: x.unit, quantity: D(0), amount: D(0) };
+    cur.quantity = cur.quantity.plus(x.l.quantity); cur.amount = cur.amount.plus(x.l.amount);
+    byItem.set(x.l.inputItemId, cur);
+  }
+  const amcos = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, m.amcosId) }))!;
+  res.json({
+    member: { id: m.id, memberNo: m.memberNo, firstName: m.firstName, lastName: m.lastName, village: m.village, status: m.status },
+    amcos: { name: amcos.name, code: amcos.code },
+    balance: fmt2(run), amountOwed: fmt2(run.lt(0) ? run.neg() : 0),
+    inputsSummary: [...byItem.values()].map((v) => ({ name: v.name, unit: v.unit, quantity: fmt2(v.quantity), amount: fmt2(v.amount) })),
+    issues: issues.map((i) => ({ id: i.id, issueNo: i.issueNo, issuedAt: i.issuedAt, status: i.status, totalAmount: i.totalAmount, cancelReason: i.cancelReason,
+      lines: lines.filter((x) => x.l.inputIssueId === i.id).map((x) => ({ name: x.name, unit: x.unit, quantity: x.l.quantity, unitPrice: x.l.unitPrice, amount: x.l.amount })) })),
+    statement,
+  });
+}));

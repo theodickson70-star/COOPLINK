@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { aliasedTable, and, count, desc, eq, type SQL } from 'drizzle-orm';
 import { db, schema } from '../db';
-import { ah, paged, paginationQuery, uuidParam } from '../lib/http';
+import { ah, decimalSchema, paged, paginationQuery, uuidParam } from '../lib/http';
 import { notFound } from '../lib/errors';
 import { requireAmcosPerm } from '../middleware/auth';
 import { amcosScope } from '../middleware/tenant';
@@ -62,8 +62,11 @@ const note = z.string().trim().min(3, 'Andika maelezo ya uamuzi (angalau herufi 
 
 approvalsRouter.post('/:id/decide', requireAmcosPerm('approvals.decide'), ah(async (req, res) => {
   const { id } = uuidParam.parse(req.params);
-  const body = z.object({ decision: z.enum(['APPROVED', 'REJECTED']), note }).parse(req.body);
-  const approval = await db.transaction((tx) => decideApproval(tx, req, id, body.decision, body.note));
+  const body = z.object({
+    decision: z.enum(['APPROVED', 'REJECTED']), note,
+    changes: z.object({ quantity: decimalSchema({ min: 0.01 }).optional(), unitPrice: decimalSchema({ min: 0.01 }).optional() }).optional(),
+  }).parse(req.body);
+  const approval = await db.transaction((tx) => decideApproval(tx, req, id, body.decision, body.note, body.changes));
   res.json({ approval });
 }));
 
