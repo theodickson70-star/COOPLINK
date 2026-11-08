@@ -1,0 +1,12 @@
+# Haviingii kwenye Docker build (vinajengwa upya ndani ya image)
+node_modules
+admin/node_modules
+dist
+admin/dist
+.env
+.env.*
+!.env.example
+.git
+*.log
+*.tsbuildinfo
+.DS_Store
