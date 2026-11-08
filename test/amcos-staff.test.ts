@@ -330,3 +330,40 @@ test('Owner Super Admin anaendelea kufanya kazi bila kuathiriwa', async () => {
   const ws = (await call('GET', `/api/v1/workspace/summary?amcosId=${A.id}`, owner)).body;
   assert.equal(ws.finance.accounts.length, 1, 'Owner anaona (kusoma tu) fedha za chama alichochagua');
 });
+
+// 10 -----------------------------------------------------------------
+test('Kusajili chama: code inatolewa na mfumo; Meneja anaundwa na nenosiri la Owner na analazimika kulibadilisha', async () => {
+  const name = `Kasisi${RUN} AMCOS`;
+  const mgrPhone = uniqPhone('25575');
+  const weak = await call('POST', '/api/v1/owner/amcos', owner, { name, activate: true, manager: { fullName: 'Meneja Mpya', phone: mgrPhone, password: 'fupi' } });
+  assert.equal(weak.status, 400, 'nenosiri dhaifu linakataliwa');
+  const r = await call('POST', '/api/v1/owner/amcos', owner, { name, activate: true, manager: { fullName: 'Meneja Mpya', phone: mgrPhone, password: 'Kuanzia2026' } });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.amcos.code, `KASISI${RUN}`.slice(0, 8), 'code kutoka neno kuu la jina');
+  assert.equal(r.body.manager.fullName, 'Meneja Mpya');
+  assert.ok(!JSON.stringify(r.body).includes('Kuanzia2026'), 'nenosiri halirudishwi');
+  // Chama cha pili chenye jina linalofanana kinapata code tofauti
+  const r2 = await call('POST', '/api/v1/owner/amcos', owner, { name: `Chama cha Msingi Kasisi${RUN}` });
+  assert.equal(r2.status, 201);
+  assert.notEqual(r2.body.amcos.code, r.body.amcos.code);
+  assert.match(r2.body.amcos.code, /^KASISI.*2$/);
+  // Namba ya Meneja ikiwa tayari inatumika -> hakuna chama kinachoundwa
+  const dupe = await call('POST', '/api/v1/owner/amcos', owner, { name: 'Chama Kingine ' + RUN, manager: { fullName: 'X Y Z', phone: mgrPhone, password: 'Kuanzia2026' } });
+  assert.equal(dupe.status, 409);
+  // Meneja anaingia kwa nenosiri la kuanzia -> lazima abadilishe
+  const l = await login(mgrPhone, 'Kuanzia2026');
+  assert.ok(l.token);
+  assert.equal(l.user.mustChangePassword, true);
+  assert.equal(l.user.role, 'AMCOS_ADMIN');
+  assert.equal((await call('GET', '/api/v1/members', l.token)).status, 403, 'hawezi kutumia mfumo kabla ya kubadilisha nenosiri');
+  const ch = await call('POST', '/api/v1/auth/change-password', l.token, { currentPassword: 'Kuanzia2026', newPassword: 'Meneja2026x' });
+  assert.equal(ch.status, 200);
+  assert.equal((await call('GET', '/api/v1/members', ch.body.token)).status, 200);
+  // Audit haina nenosiri
+  const logs = await db.execute<{ after: unknown }>(sql`select after from audit_logs where amcos_id = ${r.body.amcos.id}`);
+  assert.ok(!JSON.stringify(logs.rows).includes('Kuanzia2026'));
+  // Kuweka Stokipa kwa nenosiri la Owner (bila nenosiri la muda kurudishwa)
+  const st = await call('POST', `/api/v1/owner/amcos/${r.body.amcos.id}/staff`, owner, { role: 'CLERK', fullName: 'Stokipa Kasisi', phone: uniqPhone('25574'), password: 'Stoo2026a' });
+  assert.equal(st.status, 201);
+  assert.equal(st.body.temporaryPassword, null);
+});

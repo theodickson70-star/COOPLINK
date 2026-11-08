@@ -239,10 +239,10 @@ function AmcosModal({ unions, isSuper, onClose, onDone }: { unions: { id: string
   };
   return (
     <Modal open title="Chama kipya cha Msingi" onClose={onClose}
-      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={f.name.length < 3 || f.code.length < 2} onClick={save}>Hifadhi</Button></>}>
+      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={f.name.trim().length < 3} onClick={save}>Hifadhi</Button></>}>
       <Alert>{error}</Alert>
       <TextField label="Jina la chama *" value={f.name} onChange={set('name')} />
-      <TextField label="Code *" help="Herufi/namba 2–12, mf. URM01. Inatumika kwenye namba za wanachama na haibadilishwi." value={f.code} onChange={(v) => set('code')(v.toUpperCase())} />
+      <TextField label="Code" help="Itatolewa na mfumo kutoka jina la chama (mf. Usoke AMCOS → USOKE)" value="Itatolewa na mfumo" disabled onChange={() => undefined} />
       <TextField label="Namba ya usajili (Mrajis)" value={f.regNumber} onChange={set('regNumber')} />
       <div className="form-grid">
         <TextField label="Mkoa" value={f.region} onChange={set('region')} />

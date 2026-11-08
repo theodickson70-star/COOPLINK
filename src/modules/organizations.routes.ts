@@ -1,6 +1,7 @@
 // Vyama Vikuu (unions) na Vyama vya Msingi (amcos)
 import { Router } from 'express';
 import { z } from 'zod';
+import { generateAmcosCode } from '../lib/amcos-code';
 import { and, asc, count, eq, ilike, or } from 'drizzle-orm';
 import { db, schema } from '../db';
 import { ah, paged, paginationQuery, phoneSchema, uuidParam } from '../lib/http';
@@ -72,10 +73,10 @@ unionsRouter.patch(
 );
 
 // ------------------------------ AMCOS ------------------------------
-const amcosBody = z.object({
+const amcosBody = z.object({ // code: hiari — isipotumwa, mfumo unaitoa
   unionId: z.string().uuid().optional(),
   name: z.string().trim().min(3),
-  code: codeSchema,
+  code: codeSchema.optional(),
   regNumber: z.string().trim().optional(),
   region: z.string().trim().optional(),
   district: z.string().trim().optional(),
@@ -123,7 +124,7 @@ amcosRouter.post(
       throw badRequest('Chama Kikuu hakipo');
     }
     const row = await db.transaction(async (tx) => {
-      const [a] = await tx.insert(schema.amcos).values(body).returning();
+      const [a] = await tx.insert(schema.amcos).values({ ...body, code: body.code ?? (await generateAmcosCode(tx, body.name)) }).returning();
       await audit(tx, req, { action: 'AMCOS_CREATE', entity: 'Amcos', entityId: a.id, amcosId: a.id, after: a });
       return a;
     });

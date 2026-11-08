@@ -8,7 +8,8 @@ import { badRequest, conflict, forbidden, notFound } from '../../lib/errors';
 import { requirePermission, requireReauth } from '../../middleware/auth';
 import { audit } from '../../lib/audit';
 import { assignPlan, currentSubscription, today } from '../../lib/subscriptions';
-import { hashPassword, tempPassword } from '../../lib/security';
+import { hashPassword, passwordSchemaRule, tempPassword } from '../../lib/security';
+import { generateAmcosCode } from '../../lib/amcos-code';
 import { AMCOS_STAFF_ROLES, STAFF_TITLE, type AmcosStaffRole } from '../../lib/amcos-permissions';
 import { assertSlotFree } from '../../lib/amcos-staff';
 
@@ -17,7 +18,8 @@ const A = schema.amcos;
 
 const body = z.object({
   name: z.string().trim().min(3),
-  code: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{2,12}$/, 'Code iwe herufi/namba 2-12 bila nafasi'),
+  // Code inatolewa na mfumo (generateAmcosCode). Ikitumwa (mf. data ya zamani), inakaguliwa tu.
+  code: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{2,12}$/, 'Code iwe herufi/namba 2-12 bila nafasi').optional(),
   unionId: z.string().uuid().nullable().optional(),
   regNumber: z.string().trim().nullable().optional(),
   region: z.string().trim().nullable().optional(),
@@ -75,26 +77,56 @@ ownerAmcosRouter.post(
   '/',
   requirePermission('amcos.create'),
   ah(async (req, res) => {
-    const b = body.extend({ activate: z.boolean().optional(), trialPlanId: z.string().uuid().optional() }).parse(req.body);
+    const b = body.extend({
+      activate: z.boolean().optional(),
+      trialPlanId: z.string().uuid().optional(),
+      // Meneja anaundwa pamoja na chama; Owner anaweka nenosiri la kuanzia, Meneja analibadilisha akiingia mara ya kwanza
+      manager: z.object({
+        fullName: z.string().trim().min(3, 'Jina la Meneja angalau herufi 3'),
+        phone: phoneSchema,
+        email: z.string().email().nullable().optional(),
+        password: z.string().refine(passwordSchemaRule.test, passwordSchemaRule.message),
+      }).optional(),
+    }).parse(req.body);
+    if (b.manager) {
+      if (!req.auth!.permissions.includes('amcos.staff')) throw forbidden('Huna ruhusa ya kuunda watumishi wa chama');
+      if (await db.query.users.findFirst({ where: eq(schema.users.phone, b.manager.phone), columns: { id: true } })) {
+        throw conflict('Namba ya simu ya Meneja tayari inatumika na akaunti nyingine');
+      }
+    }
+    const managerHash = b.manager ? await hashPassword(b.manager.password) : null;
     // Bila ruhusa ya kuidhinisha, chama kipya kinasubiri idhini (PENDING)
     const canApprove = req.auth!.permissions.includes('amcos.approve');
     const activate = !!b.activate && canApprove;
     if (b.trialPlanId && !activate) throw badRequest('Trial inaanzishwa pale chama kinapoidhinishwa');
     const plan = b.trialPlanId ? await db.query.subscriptionPlans.findFirst({ where: eq(schema.subscriptionPlans.id, b.trialPlanId) }) : null;
     if (b.trialPlanId && !plan) throw badRequest('Mpango haupo');
-    const { activate: _a, trialPlanId: _t, ...data } = b;
-    const row = await db.transaction(async (tx) => {
+    const { activate: _a, trialPlanId: _t, manager, ...data } = b;
+    const result = await db.transaction(async (tx) => {
+      const code = data.code ?? (await generateAmcosCode(tx, data.name));
+      if (data.code && (await tx.query.amcos.findFirst({ where: eq(A.code, data.code), columns: { id: true } }))) throw conflict('Code hii tayari inatumika');
       const [a] = await tx.insert(A).values({
         ...data,
+        code,
         status: activate ? 'ACTIVE' : 'PENDING', isActive: activate,
         registeredById: req.auth!.userId,
         approvedById: activate ? req.auth!.userId : null, approvedAt: activate ? new Date() : null,
       }).returning();
       if (plan) await assignPlan(tx, { amcosId: a.id, plan, cycle: 'TRIAL', startDate: today(), discountPercent: '0', userId: req.auth!.userId });
       await audit(tx, req, { action: 'AMCOS_REGISTER', entity: 'Amcos', entityId: a.id, amcosId: a.id, after: a });
-      return a;
+      let mgr: { id: string; fullName: string; phone: string } | null = null;
+      if (manager && managerHash) {
+        const [u] = await tx.insert(schema.users).values({
+          fullName: manager.fullName, phone: manager.phone, email: manager.email ?? null, role: 'AMCOS_ADMIN', amcosId: a.id,
+          passwordHash: managerHash, mustChangePassword: true,
+        }).returning({ id: schema.users.id, fullName: schema.users.fullName, phone: schema.users.phone });
+        // Nenosiri halihifadhiwi kwenye audit log
+        await audit(tx, req, { action: 'AMCOS_STAFF_ASSIGN', entity: 'User', entityId: u.id, amcosId: a.id, after: { ...u, role: 'AMCOS_ADMIN', title: 'Meneja', initialPasswordSetBy: 'owner' } });
+        mgr = u;
+      }
+      return { amcos: a, manager: mgr };
     });
-    res.status(201).json({ amcos: row });
+    res.status(201).json(result);
   }),
 );
 
@@ -246,6 +278,8 @@ ownerAmcosRouter.post('/:id/staff', requirePermission('amcos.staff'), ah(async (
     phone: phoneSchema,
     email: z.string().email().nullable().optional(),
     replace: z.boolean().optional(),
+    // Hiari: nenosiri la kuanzia lililowekwa na Owner. Lisipowekwa, mfumo unatoa la muda.
+    password: z.string().refine(passwordSchemaRule.test, passwordSchemaRule.message).optional(),
   }).parse(req.body);
   const a = await findAmcos(id);
   if (a.status === 'REJECTED') throw badRequest('Chama hiki kimekataliwa');
@@ -253,7 +287,8 @@ ownerAmcosRouter.post('/:id/staff', requirePermission('amcos.staff'), ah(async (
   if (holder && !body.replace) await assertSlotFree(db, id, body.role);
   if (holder) await requireReauth(req);
   if (await db.query.users.findFirst({ where: eq(U.phone, body.phone) })) throw conflict('Namba hii ya simu tayari inatumika na akaunti nyingine');
-  const password = tempPassword();
+  const ownPassword = !!body.password;
+  const password = body.password ?? tempPassword();
   const user = await db.transaction(async (tx) => {
     if (holder) {
       await tx.update(U).set({ isActive: false, tokenVersion: sql`${U.tokenVersion} + 1` }).where(eq(U.id, holder.id));
@@ -266,8 +301,8 @@ ownerAmcosRouter.post('/:id/staff', requirePermission('amcos.staff'), ah(async (
     await audit(tx, req, { action: 'AMCOS_STAFF_ASSIGN', entity: 'User', entityId: u.id, amcosId: id, after: { ...u, title: STAFF_TITLE[body.role as AmcosStaffRole], replaced: holder?.id ?? null } });
     return u;
   });
-  // Nenosiri la muda linaonyeshwa MARA MOJA tu
-  res.status(201).json({ user, temporaryPassword: password });
+  // Nenosiri la muda linaonyeshwa MARA MOJA tu; nenosiri alilochagua Owner halirudishwi
+  res.status(201).json({ user, temporaryPassword: ownPassword ? null : password });
 }));
 
 async function scopedStaff(amcosId: string, userId: string) {
