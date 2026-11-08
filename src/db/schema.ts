@@ -56,6 +56,7 @@ export const ledgerEntryTypeEnum = pgEnum('ledger_entry_type', [
   'REVERSAL',
   'OPENING_BALANCE',
   'REPAYMENT',       // Mkulima amerejesha deni kwa fedha taslimu (credit)
+  'GROUP_GUARANTEE', // Deni limelipwa na wanakikundi wenzake (credit kwa mdaiwa)
 ]);
 export const marketStatusEnum = pgEnum('market_status', ['SCHEDULED', 'OPEN', 'CLOSED', 'CANCELLED']);
 export const baleStatusEnum = pgEnum('bale_status', ['REGISTERED', 'GRADED', 'SOLD', 'REJECTED']);
@@ -308,6 +309,7 @@ export const inputIssues = pgTable('input_issues', {
   approvalId: uuid(),
   approvedById: uuid(),
   approvedAt: timestamp({ withTimezone: true }),
+  groupId: uuid(), // kikundi cha dhamana cha mkulima wakati wa ugawaji
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (t) => [
@@ -470,6 +472,8 @@ export const settlementLines = pgTable('settlement_lines', {
   deductionRuleId: uuid().references(() => deductionRules.id),
   description: text().notNull(),
   amount: money().notNull(),
+  kind: text().notNull().default('RULE'),   // RULE | GROUP_GUARANTEE
+  beneficiaryMemberId: uuid(),              // GROUP_GUARANTEE: mwanakikundi ambaye deni lake linalipwa
 }, (t) => [index().on(t.settlementId)]);
 
 export const paymentBatches = pgTable('payment_batches', {
@@ -563,6 +567,7 @@ export const approvalTypeEnum = pgEnum('approval_type', [
   'JOURNAL', 'TOBACCO_SALE', 'PAYMENT_BATCH', 'TRANSFER', 'PAYROLL', 'ASSET_DISPOSAL',
   'OPENING_BALANCE', 'PERIOD_CLOSE', 'YEAR_END_CLOSE',
   'STOCK_RECEIPT',
+  'GROUP_REGISTRATION', 'GROUP_CHANGE',
 ]);
 export const approvalStatusEnum = pgEnum('approval_status', ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']);
 export const financeAccountKindEnum = pgEnum('finance_account_kind', ['CASH', 'BANK', 'MOBILE_MONEY']);
@@ -1095,6 +1100,43 @@ export const bankReconciliationItems = pgTable('bank_reconciliation_items', {
   reconciliationId: uuid().notNull().references(() => bankReconciliations.id),
   financeTxnId: uuid().notNull().unique().references(() => financeTransactions.id), // muamala unasuluhishwa mara moja tu
 });
+
+// =====================================================================
+//  VIKUNDI VYA WAKULIMA (dhamana ya pamoja)
+//  Kila mkulima ana deni lake la pembejeo; kikundi kizima kinadhamini. Mwanachama akishindwa kumaliza
+//  deni lake kwenye mauzo, salio linakatwa kwa wenzake wa kikundi (kwa uwiano wa malipo yao).
+// =====================================================================
+export const groupStatusEnum = pgEnum('group_status', ['PENDING', 'ACTIVE', 'REJECTED', 'INACTIVE']);
+
+export const memberGroups = pgTable('member_groups', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  groupNo: text().notNull(),
+  name: text().notNull(),
+  village: text(),
+  leaderMemberId: uuid(),
+  status: groupStatusEnum().notNull().default('PENDING'),
+  approvalId: uuid(),
+  notes: text(),
+  createdById: uuid(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex().on(t.amcosId, t.groupNo), uniqueIndex().on(t.amcosId, t.name)]);
+
+export const memberGroupMembers = pgTable('member_group_members', {
+  id: id(),
+  groupId: uuid().notNull().references(() => memberGroups.id),
+  memberId: uuid().notNull().references(() => members.id),
+  joinedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  leftAt: timestamp({ withTimezone: true }),
+  addedById: uuid(),
+  removedById: uuid(),
+  removeReason: text(),
+}, (t) => [
+  index().on(t.groupId),
+  // mkulima mmoja yuko kwenye kikundi kimoja tu kwa wakati mmoja
+  uniqueIndex('member_one_active_group').on(t.memberId).where(sql`left_at is null`),
+]);
 
 // ---------------------------------------------------------------------
 //  RELATIONS (kwa db.query.*)

@@ -16,6 +16,7 @@ import { Payroll, PayrollRunDetail } from './pages/Payroll';
 import { Assets } from './pages/Assets';
 import { Payables, Periods } from './pages/Periods';
 import { FarmerDebtDetail, FarmerDebts } from './pages/FarmerDebts';
+import { GroupDetail, Groups } from './pages/Groups';
 import { Members, MemberNew } from './pages/Members';
 import { MemberDetail } from './pages/MemberDetail';
 import { Estimates } from './pages/Estimates';
@@ -128,6 +129,8 @@ export default function App() {
             <Route path="payroll" element={<Need p={['payroll.read']}><Payroll /></Need>} />
             <Route path="payroll/runs/:id" element={<Need p={['payroll.read']}><PayrollRunDetail /></Need>} />
             <Route path="accounting/periods" element={<Need p={['accounting.read']}><Periods /></Need>} />
+            <Route path="groups" element={<Need p={['members.read']}><Groups /></Need>} />
+            <Route path="groups/:id" element={<Need p={['members.read', 'finance.read']}><GroupDetail /></Need>} />
             <Route path="farmer-debts" element={<Need p={['finance.read']}><FarmerDebts /></Need>} />
             <Route path="farmer-debts/:id" element={<Need p={['finance.read']}><FarmerDebtDetail /></Need>} />
             <Route path="payables" element={<Need p={['accounting.read']}><Payables /></Need>} />

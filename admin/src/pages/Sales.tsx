@@ -166,7 +166,7 @@ function RuleForm({ rule, onClose, onDone }: { rule: Rule | null; onClose: () =>
 interface Bale { id: string; baleNo: string; memberId: string; memberNo: string; memberName: string; grossKg: string; netKg: string | null; grade: string | null; priceUsd: string | null; valueUsd: string | null; status: string; rejectReason: string | null }
 interface Settlement { id: string; settlementNo: string; memberId: string; memberNo: string; memberName: string; totalKg: string; grossUsd: string; grossTzs: string; totalDeductions: string; netTzs: string; status: string; paid: string; lines: { id: string; description: string; amount: string }[] }
 interface Batch { id: string; batchNo: string; totalAmount: string; status: string; payments: number; paid: string; createdAt: string }
-interface PreviewRow { memberId: string; memberNo: string; name: string; bales: number; totalKg: string; grossUsd: string; grossTzs: string; deductions: { code: string; description: string; amount: string }[]; totalDeductions: string; netTzs: string; debtBefore: string }
+interface PreviewRow { memberId: string; memberNo: string; name: string; bales: number; groupName: string | null; coveredByGroup: string; totalKg: string; grossUsd: string; grossTzs: string; deductions: { code: string; description: string; amount: string; kind?: string }[]; totalDeductions: string; netTzs: string; debtBefore: string }
 
 export function MarketDetail() {
   const { id } = useParams();
@@ -337,7 +337,8 @@ function Bales({ marketId, bales, editable, onChanged }: { marketId: string; bal
 }
 
 function SettlementPreview({ market, canSubmit, onDone }: { market: Market; canSubmit: boolean; onDone: (m: string) => void }) {
-  const pv = useFetch<{ rows: PreviewRow[]; totals: { farmers: number; kg: string; grossUsd: string; grossTzs: string; deductions: string; netTzs: string } }>(market.bales ? `/sales/markets/${market.id}/preview` : null);
+  const [nonSellers, setNonSellers] = useState(false);
+  const pv = useFetch<{ rows: PreviewRow[]; totals: { farmers: number; kg: string; grossUsd: string; grossTzs: string; deductions: string; netTzs: string }; guarantees: { groupName: string; debtorName: string; remaining: string; covered: string; uncovered: string; sold: boolean }[] }>(market.bales ? `/sales/markets/${market.id}/preview` : null, { includeNonSellers: nonSellers ? 'true' : undefined });
   const { busy, error, run } = useAction();
   if (!market.bales) return <Empty>Ingiza mabelo kwanza.</Empty>;
   if (pv.error) return <Alert>{pv.error}</Alert>;
@@ -345,19 +346,31 @@ function SettlementPreview({ market, canSubmit, onDone }: { market: Market; canS
   const t = pv.data.totals;
   return (
     <Section pad={false} title="Hakiki hesabu kabla ya kuwasilisha" actions={canSubmit ? <Button busy={busy} onClick={async () => {
-      const r = await run(() => api<{ approval: { requestNo: string } }>(`/sales/markets/${market.id}/settlements`, { method: 'POST' }));
+      const r = await run(() => api<{ approval: { requestNo: string } }>(`/sales/markets/${market.id}/settlements`, { method: 'POST', body: { includeNonSellers: nonSellers } }));
       if (r) onDone(`Hesabu za wakulima ${t.farmers} zimetumwa kwa Meneja (${r.approval.requestNo})`);
     }}>Wasilisha kwa Meneja</Button> : undefined}>
       <Alert>{error}</Alert>
-      <div className="card-pad"><Alert kind="warn">Hesabu hizi bado si rasmi. Zikiidhinishwa na Meneja, mauzo na makato yanaingia kwenye ledger za wakulima na daftari kuu, na soko linafungwa.</Alert></div>
+      <div className="card-pad stack" style={{ gap: 10 }}>
+        <Alert kind="warn">Hesabu hizi bado si rasmi. Zikiidhinishwa na Meneja, mauzo na makato yanaingia kwenye ledger za wakulima na daftari kuu, na soko linafungwa.</Alert>
+        {pv.data.guarantees.length > 0 && (
+          <div className="alert alert-warn" role="status">
+            <strong>Dhamana ya kikundi</strong> — wanachama hawa hawajamaliza madeni yao; salio linakatwa kwa wenzao wa kikundi waliouza soko hili (kwa uwiano wa malipo yao):
+            <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{pv.data.guarantees.map((g, i) => (
+              <li key={i}>{g.debtorName} · {g.groupName}{!g.sold ? ' (hajauza soko hili)' : ''}: salio {tsh(g.remaining)} → wenzake wanalipa <strong>{tsh(g.covered)}</strong>{Number(g.uncovered) > 0 ? `, linabaki ${tsh(g.uncovered)}` : ''}</li>
+            ))}</ul>
+          </div>
+        )}
+        <label className="check" style={{ marginTop: 0 }}><input type="checkbox" checked={nonSellers} onChange={(e) => setNonSellers(e.target.checked)} /> Kata pia madeni ya wanakikundi ambao hawajauza kwenye soko hili (mf. soko la mwisho la msimu)</label>
+      </div>
       <div className="table-wrap"><table className="table fin-table">
         <thead><tr><th>Mkulima</th><th className="num">Kilo</th><th className="num">Mauzo</th><th>Makato</th><th className="num">Malipo halisi</th></tr></thead>
         <tbody>{pv.data.rows.map((r) => (
           <tr key={r.memberId}>
-            <td>{r.name}<div className="muted" style={{ fontSize: 12 }}>{r.memberNo} · mabelo {r.bales}{Number(r.debtBefore) > 0 ? ` · deni ${tsh(r.debtBefore)}` : ''}</div></td>
+            <td>{r.name}<div className="muted" style={{ fontSize: 12 }}>{r.memberNo}{r.groupName ? ` · ${r.groupName}` : ''} · mabelo {r.bales}{Number(r.debtBefore) > 0 ? ` · deni ${tsh(r.debtBefore)}` : ''}</div></td>
             <td className="num">{num(r.totalKg)}</td>
             <td className="num">{tsh(r.grossTzs)}<div className="muted" style={{ fontSize: 12 }}>{usd(r.grossUsd)}</div></td>
-            <td style={{ fontSize: 13 }}>{r.deductions.map((d) => <div key={d.code}>{d.description}: {tsh(d.amount)}</div>)}</td>
+            <td style={{ fontSize: 13 }}>{r.deductions.map((d, k) => <div key={k} className={d.kind === 'GROUP_GUARANTEE' ? 'money-neg' : ''}>{d.description}: {tsh(d.amount)}</div>)}
+              {Number(r.coveredByGroup) > 0 && <div className="money-pos">Salio la deni limelipwa na kikundi: {tsh(r.coveredByGroup)}</div>}</td>
             <td className="num"><strong>{tsh(r.netTzs)}</strong></td>
           </tr>
         ))}

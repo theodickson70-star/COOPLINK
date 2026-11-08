@@ -13,7 +13,7 @@ interface Entry { id: string; type: string; debit: string; credit: string; descr
 
 export function MemberDetail() {
   const { id } = useParams();
-  const { data, error, loading, reload } = useFetch<{ member: Member; farms: Farm[]; balance: Balance | null; photo: { updatedAt: string } | null }>(`/members/${id}`);
+  const { data, error, loading, reload } = useFetch<{ member: Member; farms: Farm[]; balance: Balance | null; group: { groupId: string; name: string; groupNo: string } | null; photo: { updatedAt: string } | null }>(`/members/${id}`);
   const photoUrl = useMemberPhoto(id, data?.photo?.updatedAt);
   const { may } = useAuth();
   const st = useFetch<{ entries: Entry[] }>(may('ledger.read') ? `/members/${id}/statement` : null);
@@ -30,7 +30,7 @@ export function MemberDetail() {
 
   return (
     <>
-      <PageHead title={<span className="member-title">{photoUrl ? <img className="member-avatar" src={photoUrl} alt="" /> : <span className="member-avatar">{m.firstName.charAt(0)}</span>}{fullName(m)}</span>} sub={<><span>Namba ya uanachama: <strong>{m.memberNo}</strong></span> · <Badge status={m.status} /></>}>
+      <PageHead title={<span className="member-title">{photoUrl ? <img className="member-avatar" src={photoUrl} alt="" /> : <span className="member-avatar">{m.firstName.charAt(0)}</span>}{fullName(m)}</span>} sub={<><span>Namba ya uanachama: <strong>{m.memberNo}</strong></span> · <Badge status={m.status} />{data.group && <> · Kikundi: <Link to={`/groups/${data.group.groupId}`}>{data.group.name}</Link></>}</>}>
         <Button variant="secondary" onClick={() => window.print()} className="no-print">Chapisha taarifa</Button>
         {staff && <Button variant="secondary" onClick={() => setEdit(true)} className="no-print">Hariri</Button>}
         {may('members.approve') && m.status !== 'PENDING' && <Button variant="secondary" onClick={() => setStatusOpen(true)} className="no-print">Badilisha hali</Button>}

@@ -20,6 +20,7 @@ import { onPaymentBatch, onTobaccoSale } from './tobacco';
 import { onPayroll } from './payroll';
 import { onAssetDisposal } from './assets';
 import { onOpeningBalance, onPeriodClose, onYearEndClose } from './closing';
+import { onGroupChange, onGroupRegistration } from './groups';
 
 type ApprovalType = (typeof schema.approvalTypeEnum.enumValues)[number];
 type Approval = typeof schema.approvalRequests.$inferSelect;
@@ -44,6 +45,8 @@ export const APPROVAL_LABEL: Record<ApprovalType, string> = {
   PERIOD_CLOSE: 'Kufunga kipindi',
   YEAR_END_CLOSE: 'Kufunga mwaka wa fedha',
   STOCK_RECEIPT: 'Mzigo wa pembejeo (idadi na bei)',
+  GROUP_REGISTRATION: 'Usajili wa kikundi cha wakulima',
+  GROUP_CHANGE: 'Mabadiliko ya wanakikundi',
 };
 
 /** Marekebisho ya Meneja wakati wa kuidhinisha mzigo wa pembejeo (idadi na bei). */
@@ -288,6 +291,8 @@ const HANDLERS: Record<ApprovalType, (tx: Tx, req: Request, a: Approval, o: Outc
   PERIOD_CLOSE: onPeriodClose,
   YEAR_END_CLOSE: onYearEndClose,
   STOCK_RECEIPT: onStockReceipt,
+  GROUP_REGISTRATION: onGroupRegistration,
+  GROUP_CHANGE: onGroupChange,
 };
 
 /** Meneja anaidhinisha au anakataa. Lazima awe wa chama hicho na asiwe aliyeanzisha ombi. */

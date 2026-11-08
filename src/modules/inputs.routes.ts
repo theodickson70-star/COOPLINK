@@ -21,6 +21,7 @@ import { findMemberScoped } from './members.routes';
 import { lockItems, stockBalance } from '../lib/stock';
 import { createApproval } from '../lib/approvals';
 import { currentSeason } from './seasons.routes';
+import { activeGroups } from '../lib/groups';
 
 export const inputsRouter = Router();
 export const inputIssuesRouter = Router();
@@ -379,7 +380,9 @@ inputIssuesRouter.post(
 
       const amcos = (await tx.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId) }))!;
       const n = await nextNumber(tx, amcosId, 'input_issue');
+      const grp = (await activeGroups(tx, [member.id])).get(member.id);
       const [issue] = await tx.insert(issues).values({
+        groupId: grp?.groupId ?? null,
         amcosId, seasonId: season.id, memberId: member.id, issueNo: `${amcos.code}-P-${pad(n)}`,
         totalAmount: total, notes: body.notes, clientRef: body.clientRef, issuedById: req.auth!.userId, status: 'PENDING_APPROVAL',
       }).returning();

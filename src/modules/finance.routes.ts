@@ -501,6 +501,7 @@ financeRouter.get('/farmers', requireAmcosPerm('finance.read'), ah(async (req, r
     q.filter === 'owing' ? sql`${sums.balance} < 0` : q.filter === 'owed' ? sql`${sums.balance} > 0` : undefined,
   );
   const base = db.select({ id: M.id, memberNo: M.memberNo, firstName: M.firstName, lastName: M.lastName, village: M.village, status: M.status,
+    groupName: sql<string | null>`(select g.name from member_group_members x join member_groups g on g.id = x.group_id where x.member_id = "members"."id" and x.left_at is null and g.status = 'ACTIVE' limit 1)`,
     inputs: sums.inputs, loans: sums.loans, sales: sums.sales, deductions: sums.deductions, repaid: sums.repaid, paid: sums.paid, balance: sums.balance, lastAt: sums.lastAt })
     .from(M).innerJoin(sums, eq(sums.memberId, M.id)).where(where);
   const [rows, [tot]] = await Promise.all([

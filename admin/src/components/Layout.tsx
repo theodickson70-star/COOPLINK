@@ -47,6 +47,7 @@ const NAV: { section?: string; items: NavItem[] }[] = [
     section: 'Wakulima',
     items: [
       { to: '/members', label: 'Wakulima (wanachama)', icon: I.members, perm: ['members.read'] },
+      { to: '/groups', label: 'Vikundi vya wakulima', icon: I.org, perm: ['members.read'] },
       { to: '/estimates', label: 'Makisio', icon: I.estimate, perm: ['members.read'] },
       { to: '/balances', label: 'Madeni na Salio', icon: I.money, perm: ['ledger.read'] },
     ],

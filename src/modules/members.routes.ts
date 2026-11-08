@@ -5,6 +5,7 @@ import { db, schema } from '../db';
 import { ah, decimalSchema, paged, paginationQuery, phoneSchema, uuidParam } from '../lib/http';
 import { badRequest, conflict, notFound } from '../lib/errors';
 import { requireAmcosPerm } from '../middleware/auth';
+import { activeGroups } from '../lib/groups';
 import { hasAmcosPerm } from '../lib/amcos-permissions';
 import { createApproval } from '../lib/approvals';
 import { amcosScope, resolveWriteAmcosId } from '../middleware/tenant';
@@ -170,7 +171,8 @@ membersRouter.get(
     // Stokipa haoni taarifa za fedha za mkulima
     const balance = hasAmcosPerm(req.auth!.role, 'ledger.read') ? await memberBalance(db, member.amcosId, id) : null;
     const [photo] = await db.select({ updatedAt: schema.memberPhotos.updatedAt }).from(schema.memberPhotos).where(eq(schema.memberPhotos.memberId, id));
-    res.json({ member, farms, balance, photo: photo ? { updatedAt: photo.updatedAt } : null });
+    const group = (await activeGroups(db, [member.id])).get(member.id) ?? null;
+    res.json({ member, farms, balance, group, photo: photo ? { updatedAt: photo.updatedAt } : null });
   }),
 );
 

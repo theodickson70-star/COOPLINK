@@ -25,7 +25,7 @@ export function ruleGlCode(r: Pick<Rule, 'glAccountCode' | 'basis' | 'code' | 'n
   return '2320';
 }
 
-export interface DeductionCalc { ruleId: string; code: string; description: string; basis: Rule['basis']; glCode: string; amount: string }
+export interface DeductionCalc { ruleId: string | null; code: string; description: string; basis: Rule['basis'] | 'GROUP'; glCode: string; amount: string; kind?: 'RULE' | 'GROUP_GUARANTEE'; beneficiaryMemberId?: string }
 export interface SettlementCalc { totalKg: string; grossUsd: string; grossTzs: string; deductions: DeductionCalc[]; totalDeductions: string; netTzs: string; debtBefore: string }
 
 /** Hesabu ya mkulima mmoja. Makato hayazidi jumla ya mauzo (malipo halisi hayawi hasi). */
@@ -85,6 +85,9 @@ export async function onTobaccoSale(tx: Tx, req: Request, a: Approval, o: Outcom
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Dar_es_Salaam' });
   const date = market.marketDate <= today ? market.marketDate : today;
 
+  const names = await tx.select({ id: schema.members.id, f: schema.members.firstName, l: schema.members.lastName, no: schema.members.memberNo }).from(schema.members)
+    .where(inArray(schema.members.id, drafts.map((d) => d.memberId)));
+  const memberName = new Map(names.map((n) => [n.id, `${n.f} ${n.l} (${n.no})`]));
   let gross = D(0);
   const credits = new Map<string, Decimal>(); // glCode -> kiasi (makato yasiyo ya deni)
   const jl: JLine[] = [];
@@ -97,6 +100,20 @@ export async function onTobaccoSale(tx: Tx, req: Request, a: Approval, o: Outcom
     for (const l of lines.filter((x) => x.settlementId === s.id)) {
       const rule = l.deductionRuleId ? ruleById.get(l.deductionRuleId) : undefined;
       const code = rule ? ruleGlCode(rule) : '2320';
+      if (l.kind === 'GROUP_GUARANTEE' && l.beneficiaryMemberId) {
+        // Dhamana ya kikundi: malipo ya mdhamini yanapungua, deni la mwenzake linapungua kwa kiasi hicho hicho
+        const debtor = await tx.query.members.findFirst({ where: eq(schema.members.id, l.beneficiaryMemberId) });
+        await ledger.post(tx, {
+          amcosId: a.amcosId, memberId: s.memberId, seasonId: s.seasonId, type: 'DEDUCTION', debit: l.amount,
+          description: `${l.description} (${s.settlementNo})`, referenceType: 'GROUP_GUARANTEE', referenceId: s.id, createdById: req.auth!.userId,
+        });
+        await ledger.post(tx, {
+          amcosId: a.amcosId, memberId: l.beneficiaryMemberId, seasonId: s.seasonId, type: 'GROUP_GUARANTEE', credit: l.amount,
+          description: `Deni limelipwa na mwanakikundi ${memberName.get(s.memberId) ?? ''} (${s.settlementNo})`.replace('  ', ' '), referenceType: 'SETTLEMENT', referenceId: s.id, createdById: req.auth!.userId,
+        });
+        jl.push({ code: '1200', credit: l.amount, memberId: l.beneficiaryMemberId, memo: `Dhamana ya kikundi — ${debtor?.memberNo ?? ''}` });
+        continue;
+      }
       if (code === '1200') {
         // Deni la pembejeo linalipwa kwa mauzo: ledger ya mkulima tayari inaonyesha deni, salio linajipunguza lenyewe
         jl.push({ code: '1200', credit: l.amount, memberId: s.memberId, memo: `Deni limerejeshwa ${s.settlementNo}` });

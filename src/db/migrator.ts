@@ -61,6 +61,11 @@ const MARKERS: Record<string, string[]> = {
   '0007_stock_receipt_approval': [
     "select exists (select 1 from pg_enum e join pg_type t on t.oid = e.enumtypid where t.typname = 'approval_type' and e.enumlabel = 'STOCK_RECEIPT')",
   ],
+  '0008_member_groups': [
+    "select to_regclass('public.member_groups') is not null",
+    "select to_regclass('public.member_group_members') is not null",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'settlement_lines' and column_name = 'beneficiary_member_id')",
+  ],
 };
 
 interface JournalEntry { tag: string; when: number }

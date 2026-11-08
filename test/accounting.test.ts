@@ -508,3 +508,54 @@ test('Mhasibu anaona pembejeo alizokopa kila mkulima na deni lake lote (bila taa
   assert.equal(d.statement.at(-1).balance, d.balance);
   assert.equal((await call('GET', `/api/v1/finance/farmers/${farmerA.id}`, storekeeper)).status, 403);
 });
+
+// 13 -----------------------------------------------------------------
+test('Vikundi: kila mkulima deni lake, kikundi kinadhamini — salio la mwenzao linakatwa kwa uwiano wa malipo', async () => {
+  const C = await newMember('Chausiku'), Dm = await newMember('Daudi'), E = await newMember('Elia');
+  assert.equal((await call('POST', '/api/v1/groups', storekeeper, { name: 'Mmoja ' + RUN, memberIds: [C.id] })).status, 400, 'Kikundi kinahitaji wawili+');
+  const g = await call('POST', '/api/v1/groups', storekeeper, { name: 'Tumaini ' + RUN, village: 'Usoke', memberIds: [C.id, Dm.id, E.id], leaderMemberId: Dm.id });
+  assert.equal(g.status, 201, JSON.stringify(g.body));
+  assert.equal((await call('POST', '/api/v1/groups', storekeeper, { name: 'Pili ' + RUN, memberIds: [C.id, farmerA.id] })).status, 409, 'Mkulima mmoja kikundi kimoja');
+  await approve(g.body.group.id);
+  const groupId = g.body.group.id;
+
+  const item = (await call('GET', '/api/v1/inputs/items', storekeeper)).body.data.find((i: any) => i.name === 'NPK ' + RUN);
+  for (const [m, q] of [[C, 3], [Dm, 1]] as const) {
+    const iss = await call('POST', '/api/v1/input-issues', storekeeper, { memberId: m.id, lines: [{ inputItemId: item.id, quantity: q }] });
+    assert.equal(iss.status, 201, JSON.stringify(iss.body));
+    await approve(iss.body.issue.id);
+  }
+  const gd = (await call('GET', `/api/v1/groups/${groupId}`, accountant)).body;
+  assert.equal(gd.group.owing, '320000.00', 'Deni la kikundi = jumla ya madeni ya wanachama');
+  const rm = await call('POST', `/api/v1/groups/${groupId}/members/${C.id}/remove`, storekeeper, { reason: 'Anataka kuhama' });
+  assert.equal(rm.status, 400, 'Mwenye deni hatoki kikundi');
+
+  const mk = (await call('POST', '/api/v1/sales/markets', accountant, { marketDate: today, buyerName: 'TLTC', exchangeRate: '2500' })).body.market;
+  assert.equal((await call('POST', `/api/v1/sales/markets/${mk.id}/bales`, accountant, { bales: [
+    { memberId: C.id, baleNo: 'C1-' + RUN, grossKg: '50', priceUsd: '2.0' },
+    { memberId: Dm.id, baleNo: 'D1-' + RUN, grossKg: '100', priceUsd: '2.0' },
+    { memberId: E.id, baleNo: 'E1-' + RUN, grossKg: '40', priceUsd: '2.0' },
+  ] })).status, 201);
+  // C: 250,000 - (7,500 + 2,500 + 2,500) = 237,500 < deni 240,000 -> salio 2,500 linalipwa na D (net 395,000) na E (net 190,000)
+  const pv = (await call('GET', `/api/v1/sales/markets/${mk.id}/preview`, accountant)).body;
+  const r = (id: string) => pv.rows.find((x: any) => x.memberId === id);
+  assert.equal(r(C.id).netTzs, '0.00');
+  assert.equal(r(C.id).coveredByGroup, '2500.00');
+  const gD = r(Dm.id).deductions.find((d: any) => d.kind === 'GROUP_GUARANTEE'), gE = r(E.id).deductions.find((d: any) => d.kind === 'GROUP_GUARANTEE');
+  assert.equal((Number(gD.amount) + Number(gE.amount)).toFixed(2), '2500.00');
+  assert.ok(Math.abs(Number(gD.amount) - 1688.03) <= 0.02 && Math.abs(Number(gE.amount) - 811.97) <= 0.02, `${gD.amount} / ${gE.amount}`);
+  assert.equal(pv.guarantees[0].uncovered, '0.00');
+
+  assert.equal((await call('POST', `/api/v1/sales/markets/${mk.id}/settlements`, accountant, {})).status, 201);
+  await approve(mk.id);
+  const bal = async (id: string) => (await call('GET', `/api/v1/members/${id}`, manager)).body.balance.balance;
+  assert.equal(await bal(C.id), '0.00', 'Deni la C limemalizwa na kikundi');
+  assert.equal(await bal(Dm.id), (395000 - Number(gD.amount)).toFixed(2));
+  const after = (await call('GET', `/api/v1/groups/${groupId}`, accountant)).body;
+  assert.equal(after.group.owing, '0.00');
+  assert.equal(after.members.find((x: any) => x.memberId === C.id).coveredByGroup, '2500.00');
+  assert.equal(after.members.find((x: any) => x.memberId === Dm.id).guaranteedFor, gD.amount);
+  const fl = (await call('GET', '/api/v1/finance/farmers?filter=all&search=Daudi', accountant)).body.data[0];
+  assert.equal(fl.groupName, 'Tumaini ' + RUN);
+  await assertBooksBalance();
+});

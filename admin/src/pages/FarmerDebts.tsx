@@ -3,7 +3,7 @@
 //  Hakuna taarifa binafsi (NIDA, simu) — fedha tu.
 // =====================================================================
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { Paged } from '../lib/api';
 import { useFetch, useDebounced } from '../lib/hooks';
 import { date, LEDGER_LABEL, num, tsh } from '../lib/format';
@@ -11,14 +11,16 @@ import { Badge, Empty, Loading, PageHead, Pager } from '../components/ui';
 import { Kpi, Section, Tabs } from '../components/owner-ui';
 import { Amt, DocHead, PrintButton, Signatures } from './acc-common';
 
-interface Row { id: string; memberNo: string; firstName: string; lastName: string; village: string | null; status: string; inputs: string; loans: string; sales: string; deductions: string; repaid: string; paid: string; balance: string; amountOwed: string; lastAt: string }
+interface Row { id: string; groupName: string | null; memberNo: string; firstName: string; lastName: string; village: string | null; status: string; inputs: string; loans: string; sales: string; deductions: string; repaid: string; paid: string; balance: string; amountOwed: string; lastAt: string }
 
 export function FarmerDebts() {
-  const [filter, setFilter] = useState<'owing' | 'owed' | 'all'>('owing');
+  const [params] = useSearchParams();
+  const [filter, setFilter] = useState<'owing' | 'owed' | 'all' | 'groups'>(params.get('tab') === 'groups' ? 'groups' : 'owing');
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const dq = useDebounced(q, 300);
-  const { data, loading } = useFetch<Paged<Row> & { totals: { farmersOwing: string; owedToFarmers: string; inputs: string } }>('/finance/farmers', { filter, search: dq || undefined, page, pageSize: 25 });
+  const { data, loading } = useFetch<Paged<Row> & { totals: { farmersOwing: string; owedToFarmers: string; inputs: string } }>('/finance/farmers', { filter: filter === 'groups' ? 'all' : filter, search: dq || undefined, page, pageSize: 25 });
+  const groups = useFetch<{ data: { id: string; groupNo: string; name: string; village: string | null; status: string; members: number; owing: string; inputs: string; leader: string | null }[] }>(filter === 'groups' ? '/groups' : null, { status: 'ACTIVE' });
   const nav = useNavigate();
   return (
     <>
@@ -30,7 +32,23 @@ export function FarmerDebts() {
           <Kpi tone={Number(data.totals.owedToFarmers) > 0 ? 'gold' : undefined} label="Chama kinadaiwa na wakulima" value={tsh(data.totals.owedToFarmers)} />
         </div>
       )}
-      <div style={{ marginTop: 16 }}><Tabs value={filter} onChange={(v) => { setFilter(v); setPage(1); }} items={[['owing', 'Wenye deni'], ['owed', 'Wanaodai chama'], ['all', 'Wote']]} /></div>
+      <div style={{ marginTop: 16 }}><Tabs value={filter} onChange={(v) => { setFilter(v); setPage(1); }} items={[['owing', 'Wenye deni'], ['owed', 'Wanaodai chama'], ['all', 'Wote'], ['groups', 'Vikundi']]} /></div>
+      {filter === 'groups' ? (
+        <section className="card">
+          {!groups.data ? <Loading /> : !groups.data.data.length ? <Empty>Hakuna kikundi hai.</Empty> : (
+            <div className="table-wrap"><table className="table">
+              <thead><tr><th>Kikundi</th><th className="num">Wanachama</th><th className="num">Pembejeo</th><th className="num">Deni la kikundi</th></tr></thead>
+              <tbody>{groups.data.data.map((g) => (
+                <tr key={g.id} onClick={() => nav(`/groups/${g.id}`)} style={{ cursor: 'pointer' }}>
+                  <td><strong>{g.name}</strong><div className="muted" style={{ fontSize: 12 }}>{g.groupNo}{g.leader ? ` · Kiongozi ${g.leader}` : ''}</div></td>
+                  <td className="num">{g.members}</td><td className="num">{tsh(g.inputs)}</td>
+                  <td className="num"><strong className={Number(g.owing) > 0 ? 'money-neg' : ''}>{tsh(g.owing)}</strong></td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+          )}
+        </section>
+      ) : (
       <section className="card">
         <div className="toolbar"><input className="input" placeholder="Tafuta jina, namba au kijiji…" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} aria-label="Tafuta mkulima" /></div>
         {loading && !data ? <Loading /> : !data?.data.length ? <Empty>Hakuna mkulima kwenye orodha hii.</Empty> : (
@@ -38,7 +56,7 @@ export function FarmerDebts() {
             <thead><tr><th>Mkulima</th><th className="num">Pembejeo</th><th className="num">Mikopo ya fedha</th><th className="num">Mauzo</th><th className="num">Makato</th><th className="num">Malipo / marejesho</th><th className="num">Salio</th></tr></thead>
             <tbody>{data.data.map((r) => (
               <tr key={r.id} onClick={() => nav(`/farmer-debts/${r.id}`)} style={{ cursor: 'pointer' }}>
-                <td><strong>{r.firstName} {r.lastName}</strong><div className="muted" style={{ fontSize: 12 }}>{r.memberNo}{r.village ? ` · ${r.village}` : ''}</div></td>
+                <td><strong>{r.firstName} {r.lastName}</strong><div className="muted" style={{ fontSize: 12 }}>{r.memberNo}{r.village ? ` · ${r.village}` : ''}{r.groupName ? ` · Kikundi ${r.groupName}` : ''}</div></td>
                 <td className="num">{Number(r.inputs) ? tsh(r.inputs) : '—'}</td>
                 <td className="num">{Number(r.loans) ? tsh(r.loans) : '—'}</td>
                 <td className="num">{Number(r.sales) ? tsh(r.sales) : '—'}</td>
@@ -51,6 +69,7 @@ export function FarmerDebts() {
         )}
         <Pager meta={data?.meta} onPage={setPage} />
       </section>
+      )}
     </>
   );
 }

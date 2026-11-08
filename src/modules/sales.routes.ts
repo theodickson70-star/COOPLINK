@@ -20,6 +20,7 @@ import * as ledger from '../lib/ledger';
 import { createApproval } from '../lib/approvals';
 import { accountBalance, lockAccount, nextTxnNo } from '../lib/finance';
 import { computeSettlement, memberDebts, ruleGlCode } from '../lib/tobacco';
+import { activeGroups, groupMembers } from '../lib/groups';
 import { currentSeason } from './seasons.routes';
 import { todayStr } from './accounting.routes';
 import { toCsv } from './owner/common';
@@ -260,25 +261,82 @@ salesRouter.delete('/bales/:id', requireAmcosPerm('sales.manage'), ah(async (req
 }));
 
 // ------------------------------ HESABU ZA WAKULIMA (SETTLEMENT) ------------------------------
-async function computeMarket(tx: Tx | typeof db, m: typeof MK.$inferSelect) {
+async function computeMarket(tx: Tx | typeof db, m: typeof MK.$inferSelect, opts: { includeNonSellers?: boolean } = {}) {
   if (!m.exchangeRate) throw badRequest('Weka kiwango cha kubadilisha fedha (USD → TZS) cha soko hili');
   const bales = await tx.select().from(BL).where(and(eq(BL.marketId, m.id), eq(BL.status, 'SOLD')));
   if (!bales.length) throw badRequest('Soko hili halina mabelo yaliyouzwa');
   const rules = await tx.select().from(DR).where(and(eq(DR.amcosId, m.amcosId), eq(DR.seasonId, m.seasonId), eq(DR.isActive, true)));
-  const memberIds = [...new Set(bales.map((b) => b.memberId))];
-  const debts = await memberDebts(tx as Tx, m.amcosId, memberIds);
-  // Deni lililokwisha kukatwa kwenye hesabu nyingine zinazosubiri idhini lisikatwe mara mbili
+  const sellers = [...new Set(bales.map((b) => b.memberId))];
+  // Vikundi vya wauzaji na wenzao (kwa dhamana ya pamoja)
+  const groupOf = await activeGroups(tx, sellers);
+  const groupIds = [...new Set([...groupOf.values()].map((g) => g.groupId))];
+  const gMembers = await groupMembers(tx, groupIds);
+  const allIds = [...new Set([...sellers, ...[...gMembers.values()].flat()])];
+  const debts = await memberDebts(tx as Tx, m.amcosId, allIds);
+  // Deni lililokwisha kukatwa (au kulipwa na kikundi) kwenye hesabu zinazosubiri idhini lisikatwe mara mbili
   const pendingLoan = await tx.execute<{ member_id: string; v: string }>(sql`
-    select s.member_id, sum(l.amount) as v from settlement_lines l join settlements s on s.id = l.settlement_id
-    join deduction_rules r on r.id = l.deduction_rule_id
-    where s.amcos_id = ${m.amcosId} and s.status = 'DRAFT' and r.basis = 'OUTSTANDING_LOAN' group by s.member_id`);
+    select x.member_id, sum(x.v) as v from (
+      select s.member_id, l.amount as v from settlement_lines l join settlements s on s.id = l.settlement_id
+        join deduction_rules r on r.id = l.deduction_rule_id
+        where s.amcos_id = ${m.amcosId} and s.status = 'DRAFT' and r.basis = 'OUTSTANDING_LOAN'
+      union all
+      select l.beneficiary_member_id as member_id, l.amount as v from settlement_lines l join settlements s on s.id = l.settlement_id
+        where s.amcos_id = ${m.amcosId} and s.status = 'DRAFT' and l.kind = 'GROUP_GUARANTEE'
+    ) x group by x.member_id`);
   const pend = new Map(pendingLoan.rows.map((r) => [r.member_id, D(r.v)]));
-  const members = await tx.select().from(M).where(inArray(M.id, memberIds));
-  return members.map((mem) => {
-    const debt = D(debts.get(mem.id) ?? 0).minus(pend.get(mem.id) ?? 0);
-    const calc = computeSettlement(bales.filter((b) => b.memberId === mem.id), m.exchangeRate!, rules, debt.gt(0) ? debt : 0);
-    return { memberId: mem.id, memberNo: mem.memberNo, name: `${mem.firstName} ${mem.lastName}`, bales: bales.filter((b) => b.memberId === mem.id).length, ...calc };
-  }).sort((a, b) => a.memberNo.localeCompare(b.memberNo));
+  const debtNow = (id: string) => { const d = D(debts.get(id) ?? 0).minus(pend.get(id) ?? 0); return d.gt(0) ? d : D(0); };
+  const members = await tx.select().from(M).where(inArray(M.id, allIds));
+  const nameOf = new Map(members.map((x) => [x.id, { name: `${x.firstName} ${x.lastName}`, memberNo: x.memberNo }]));
+  const rows = members.filter((mem) => sellers.includes(mem.id)).map((mem) => {
+    const calc = computeSettlement(bales.filter((b) => b.memberId === mem.id), m.exchangeRate!, rules, debtNow(mem.id));
+    const g = groupOf.get(mem.id);
+    return { memberId: mem.id, memberNo: mem.memberNo, name: `${mem.firstName} ${mem.lastName}`, bales: bales.filter((b) => b.memberId === mem.id).length,
+      groupId: g?.groupId ?? null, groupName: g?.name ?? null, coveredByGroup: '0.00', ...calc };
+  });
+
+  // DHAMANA YA KIKUNDI: mwanachama akishindwa kumaliza deni lake, salio linakatwa kwa wenzake waliouza soko hili,
+  // kwa uwiano wa malipo yao halisi (hakuna anayekatwa zaidi ya malipo yake). Inahitaji kanuni ya "Deni la pembejeo".
+  const loanRule = rules.find((r) => r.basis === 'OUTSTANDING_LOAN');
+  const guarantees: { groupId: string; groupName: string; debtorId: string; debtorName: string; remaining: string; covered: string; uncovered: string; sold: boolean }[] = [];
+  if (loanRule) {
+    for (const gid of groupIds) {
+      const groupName = [...groupOf.values()].find((g) => g.groupId === gid)!.name;
+      const inGroup = gMembers.get(gid) ?? [];
+      const rowsIn = rows.filter((r) => r.groupId === gid);
+      const debtors: { id: string; remaining: Decimal; sold: boolean }[] = [];
+      for (const r of rowsIn) {
+        const recovered = r.deductions.filter((d) => d.basis === 'OUTSTANDING_LOAN').reduce((s, d) => s.plus(d.amount), D(0));
+        const rem = debtNow(r.memberId).minus(recovered);
+        if (rem.gt(0)) debtors.push({ id: r.memberId, remaining: rem, sold: true });
+      }
+      if (opts.includeNonSellers) {
+        for (const id of inGroup) if (!sellers.includes(id) && debtNow(id).gt(0)) debtors.push({ id, remaining: debtNow(id), sold: false });
+      }
+      for (const d of debtors) {
+        const guarantors = rowsIn.filter((r) => r.memberId !== d.id && D(r.netTzs).gt(0));
+        const capacity = guarantors.reduce((s, r) => s.plus(r.netTzs), D(0));
+        const need = Decimal.min(d.remaining, capacity);
+        let left = need;
+        guarantors.forEach((gr, k) => {
+          if (left.lte(0)) return;
+          const share = k === guarantors.length - 1 ? left : need.times(gr.netTzs).div(capacity).toDecimalPlaces(2, Decimal.ROUND_DOWN);
+          const amt = Decimal.min(share, left, D(gr.netTzs));
+          if (amt.lte(0)) return;
+          const who = nameOf.get(d.id)!;
+          gr.deductions.push({ ruleId: null, code: 'GROUP', basis: 'GROUP', glCode: '1200', kind: 'GROUP_GUARANTEE', beneficiaryMemberId: d.id, amount: fmt2(amt),
+            description: `Dhamana ya kikundi ${groupName}: deni la ${who.name} (${who.memberNo})` });
+          gr.totalDeductions = fmt2(D(gr.totalDeductions).plus(amt));
+          gr.netTzs = fmt2(D(gr.netTzs).minus(amt));
+          left = left.minus(amt);
+        });
+        const covered = need.minus(left);
+        const dr = rows.find((r) => r.memberId === d.id);
+        if (dr) dr.coveredByGroup = fmt2(D(dr.coveredByGroup).plus(covered));
+        guarantees.push({ groupId: gid, groupName, debtorId: d.id, debtorName: `${nameOf.get(d.id)!.name} (${nameOf.get(d.id)!.memberNo})`, remaining: fmt2(d.remaining), covered: fmt2(covered), uncovered: fmt2(d.remaining.minus(covered)), sold: d.sold });
+      }
+    }
+  }
+  return Object.assign(rows.sort((a, b) => a.memberNo.localeCompare(b.memberNo)), { guarantees });
 }
 
 const totalsOf = (rows: Awaited<ReturnType<typeof computeMarket>>) => ({
@@ -290,8 +348,9 @@ const totalsOf = (rows: Awaited<ReturnType<typeof computeMarket>>) => ({
 salesRouter.get('/markets/:id/preview', requireAmcosPerm('sales.read'), ah(async (req, res) => {
   const { id } = uuidParam.parse(req.params);
   const m = await findMarket(req, id);
-  const rows = await computeMarket(db, m);
-  res.json({ rows, totals: totalsOf(rows) });
+  const { includeNonSellers } = z.object({ includeNonSellers: z.enum(['true', 'false']).optional() }).parse(req.query);
+  const rows = await computeMarket(db, m, { includeNonSellers: includeNonSellers === 'true' });
+  res.json({ rows, totals: totalsOf(rows), guarantees: rows.guarantees });
 }));
 
 /** Hesabu za wakulima zinahifadhiwa (DRAFT) na kupelekwa kwa Meneja. Baada ya idhini zinaingia ledger na daftari kuu. */
@@ -302,13 +361,15 @@ salesRouter.post('/markets/:id/settlements', requireAmcosPerm('sales.manage'), a
   const out = await db.transaction(async (tx) => {
     await tx.execute(sql`select 1 from markets where id = ${id} for update`);
     await assertEditable(tx, m);
-    const rows = await computeMarket(tx, m);
+    const { includeNonSellers } = z.object({ includeNonSellers: z.boolean().optional() }).parse(req.body ?? {});
+    const rows = await computeMarket(tx, m, { includeNonSellers });
     const totals = totalsOf(rows);
+    const covered = rows.guarantees.reduce((s, g) => s.plus(g.covered), D(0));
     const approval = await createApproval(tx, req, {
       amcosId: m.amcosId, type: 'TOBACCO_SALE', entityType: 'Market', entityId: m.id, amount: totals.grossTzs,
       title: `Mauzo ${m.marketNo}: wakulima ${totals.farmers}, kilo ${Number(totals.kg).toLocaleString('en-US')}, jumla ${tshText(totals.grossTzs)}, malipo halisi ${tshText(totals.netTzs)}`,
       reason: `Mnunuzi: ${m.buyerName ?? '-'} · Kiwango: ${m.exchangeRate} TZS/USD · Makato ${tshText(totals.deductions)}`,
-      payload: { totals, exchangeRate: m.exchangeRate },
+      payload: { totals, exchangeRate: m.exchangeRate, guarantees: rows.guarantees, groupCovered: fmt2(covered) },
     });
     for (const r of rows) {
       const n = await nextNumber(tx, m.amcosId, 'settlement');
@@ -317,7 +378,7 @@ salesRouter.post('/markets/:id/settlements', requireAmcosPerm('sales.manage'), a
         totalKg: r.totalKg, grossUsd: r.grossUsd, exchangeRate: m.exchangeRate!, grossTzs: r.grossTzs, totalDeductions: r.totalDeductions, netTzs: r.netTzs,
         status: 'DRAFT', createdById: req.auth!.userId,
       }).returning();
-      if (r.deductions.length) await tx.insert(SL).values(r.deductions.map((d) => ({ settlementId: s.id, deductionRuleId: d.ruleId, description: d.description, amount: d.amount })));
+      if (r.deductions.length) await tx.insert(SL).values(r.deductions.map((d) => ({ settlementId: s.id, deductionRuleId: d.ruleId, description: d.description, amount: d.amount, kind: d.kind ?? 'RULE', beneficiaryMemberId: d.beneficiaryMemberId ?? null })));
     }
     await tx.update(MK).set({ approvalId: approval.id }).where(eq(MK.id, m.id));
     await audit(tx, req, { action: 'SETTLEMENTS_PREPARE', entity: 'Market', entityId: m.id, amcosId: m.amcosId, after: totals });

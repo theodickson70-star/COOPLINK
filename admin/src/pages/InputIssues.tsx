@@ -96,6 +96,7 @@ export function InputIssueNew() {
         <Alert>{error}</Alert>
         <section className="card card-pad stack">
           <MemberPicker value={member} onChange={setMember} />
+          {member && <MemberGroupNote memberId={member.id} />}
           <div className="table-wrap">
             <table className="table">
               <thead><tr><th>Pembejeo</th><th style={{ width: 140 }}>Kiasi</th><th className="num">Bei</th><th className="num">Stoo</th><th className="num">Jumla</th><th /></tr></thead>
@@ -193,4 +194,13 @@ export function InputIssueDetail() {
       </Modal>
     </>
   );
+}
+
+/** Kikundi cha dhamana cha mkulima (pembejeo zinatolewa kwa wanakikundi; kikundi kinadhamini deni). */
+function MemberGroupNote({ memberId }: { memberId: string }) {
+  const { data } = useFetch<{ group: { groupId: string; name: string; groupNo: string } | null; balance: { amountOwed: string } | null }>(`/members/${memberId}`);
+  if (!data) return null;
+  return data.group
+    ? <Alert kind="ok">Kikundi: <strong>{data.group.name}</strong> ({data.group.groupNo}) — kikundi kinadhamini deni la pembejeo hizi.{data.balance && Number(data.balance.amountOwed) > 0 ? ` Deni la sasa: TSh ${Number(data.balance.amountOwed).toLocaleString('en-US')}.` : ''}</Alert>
+    : <Alert kind="warn">Mkulima huyu hayuko kwenye kikundi cha dhamana. Kwa utaratibu wa chama, mweke kwenye kikundi kwanza (Vikundi vya wakulima).</Alert>;
 }
