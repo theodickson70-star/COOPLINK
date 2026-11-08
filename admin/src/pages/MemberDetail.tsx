@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api } from '../lib/api';
+import { api, apiBlobUrl } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
 import { date, dateTime, fullName, LEDGER_LABEL, num, phone, tsh } from '../lib/format';
 import { useAuth } from '../lib/auth';
@@ -13,7 +13,8 @@ interface Entry { id: string; type: string; debit: string; credit: string; descr
 
 export function MemberDetail() {
   const { id } = useParams();
-  const { data, error, loading, reload } = useFetch<{ member: Member; farms: Farm[]; balance: Balance | null }>(`/members/${id}`);
+  const { data, error, loading, reload } = useFetch<{ member: Member; farms: Farm[]; balance: Balance | null; photo: { updatedAt: string } | null }>(`/members/${id}`);
+  const photoUrl = useMemberPhoto(id, data?.photo?.updatedAt);
   const { may } = useAuth();
   const st = useFetch<{ entries: Entry[] }>(may('ledger.read') ? `/members/${id}/statement` : null);
   const [edit, setEdit] = useState(false);
@@ -29,7 +30,7 @@ export function MemberDetail() {
 
   return (
     <>
-      <PageHead title={fullName(m)} sub={<><span>{m.memberNo}</span> · <Badge status={m.status} /></>}>
+      <PageHead title={<span className="member-title">{photoUrl ? <img className="member-avatar" src={photoUrl} alt="" /> : <span className="member-avatar">{m.firstName.charAt(0)}</span>}{fullName(m)}</span>} sub={<><span>Namba ya uanachama: <strong>{m.memberNo}</strong></span> · <Badge status={m.status} /></>}>
         <Button variant="secondary" onClick={() => window.print()} className="no-print">Chapisha taarifa</Button>
         {staff && <Button variant="secondary" onClick={() => setEdit(true)} className="no-print">Hariri</Button>}
         {may('members.approve') && m.status !== 'PENDING' && <Button variant="secondary" onClick={() => setStatusOpen(true)} className="no-print">Badilisha hali</Button>}
@@ -51,11 +52,13 @@ export function MemberDetail() {
           <dl className="dl">
             <dt>Jinsia</dt><dd>{m.gender === 'FEMALE' ? 'Mwanamke' : 'Mwanaume'}</dd>
             <dt>Simu</dt><dd>{phone(m.phone)}</dd>
-            <dt>NIDA</dt><dd>{m.nidaNumber ?? '—'}</dd>
+            <dt>Kitambulisho</dt><dd>{m.nidaNumber ? `NIDA · ${m.nidaNumber}` : m.voterIdNumber ? `Kadi ya mpiga kura · ${m.voterIdNumber}` : '—'}</dd>
             <dt>Kijiji</dt><dd>{[m.village, m.hamlet].filter(Boolean).join(', ') || '—'}</dd>
             <dt>Alijiunga</dt><dd>{date(m.joinedAt)}</dd>
             <dt>Hisa</dt><dd>{m.sharesCount}</dd>
-            <dt>Malipo</dt><dd>{m.preferredPayment === 'BANK' ? `${m.bankName ?? 'Benki'} · ${m.bankAccountNumber ?? '—'}` : m.preferredPayment === 'CASH' ? 'Taslimu' : `${m.mobileMoneyProvider ?? ''} · ${phone(m.mobileMoneyNumber)}`}</dd>
+            <dt>Kiingilio</dt><dd>{m.entryFee ? tsh(m.entryFee) : '—'} {m.entryFeePaid ? <Badge status="APPROVED" label="Kimelipwa" /> : m.entryFee ? <Badge status="DRAFT" label="Hakijalipwa" /> : null}{m.entryFeePaid && m.entryFeeReference ? <span className="muted"> · {m.entryFeeReference}</span> : null}</dd>
+            <dt>Mzamini</dt><dd>{m.guarantorName ? `${m.guarantorName} · ${phone(m.guarantorPhone)}` : '—'}</dd>
+            <dt>Malipo</dt><dd>{m.preferredPayment === 'BANK' ? (m.bankAccountNumber ? `${m.bankName ?? 'Benki'} · ${m.bankAccountNumber}` : 'Benki · —') : m.preferredPayment === 'CASH' ? 'Taslimu' : m.mobileMoneyNumber ? `${({ MPESA: 'M-Pesa', AIRTEL_MONEY: 'Airtel Money', MIXX_BY_YAS: 'Mixx by Yas', HALOPESA: 'HaloPesa', TPESA: 'T-Pesa' } as Record<string, string>)[m.mobileMoneyProvider ?? ''] ?? ''} · ${phone(m.mobileMoneyNumber)}` : '—'}</dd>
             <dt>Mrithi</dt><dd>{m.nextOfKinName ? `${m.nextOfKinName} (${m.nextOfKinRelation ?? '—'}) · ${phone(m.nextOfKinPhone)}` : '—'}</dd>
           </dl>
         </section>
@@ -100,7 +103,7 @@ export function MemberDetail() {
       </section>}
 
       <Modal open={edit} title="Hariri mwanachama" onClose={() => setEdit(false)}>
-        <EditMember member={m} onDone={() => { setEdit(false); reload(); }} />
+        <EditMember member={m} photoUrl={photoUrl} onDone={() => { setEdit(false); reload(); }} />
       </Modal>
       <FarmModal open={farmOpen} memberId={m.id} onClose={() => setFarmOpen(false)} onDone={() => { setFarmOpen(false); reload(); }} />
       <StatusModal open={statusOpen} member={m} onClose={() => setStatusOpen(false)} onDone={() => { setStatusOpen(false); reload(); }} />
@@ -108,15 +111,32 @@ export function MemberDetail() {
   );
 }
 
-function EditMember({ member, onDone }: { member: Member; onDone: () => void }) {
+function EditMember({ member, photoUrl, onDone }: { member: Member; photoUrl: string | null; onDone: () => void }) {
   const { busy, error, run } = useAction();
   return (
-    <MemberForm initial={fromMember(member)} submitLabel="Hifadhi mabadiliko" busy={busy} error={error}
-      onSubmit={async (p) => {
-        const r = await run(() => api(`/members/${member.id}`, { method: 'PATCH', body: p }));
+    <MemberForm initial={fromMember(member)} editing currentPhoto={photoUrl} submitLabel="Hifadhi mabadiliko" busy={busy} error={error}
+      onSubmit={async (p, photo) => {
+        const r = await run(async () => {
+          const res = await api(`/members/${member.id}`, { method: 'PATCH', body: p });
+          if (photo) await api(`/members/${member.id}/photo`, { method: 'PUT', body: { mimeType: photo.mimeType, data: photo.data } });
+          return res;
+        });
         if (r) onDone();
       }} />
   );
+}
+
+/** Picha ya mkulima (inahitaji token, kwa hiyo inapakuliwa kama blob). */
+function useMemberPhoto(id: string | undefined, version: string | undefined) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    let made: string | null = null;
+    setUrl(null);
+    if (id && version) apiBlobUrl(`/members/${id}/photo`).then((u) => { made = u; if (alive) setUrl(u); else if (u) URL.revokeObjectURL(u); }).catch(() => undefined);
+    return () => { alive = false; if (made) URL.revokeObjectURL(made); };
+  }, [id, version]);
+  return url;
 }
 
 function FarmModal({ open, memberId, onClose, onDone }: { open: boolean; memberId: string; onClose: () => void; onDone: () => void }) {

@@ -39,7 +39,8 @@ export function createApp() {
   const app = express();
   app.set('trust proxy', 1); // Railway / Vercel / Nginx
   app.disable('x-powered-by');
-  app.use(helmet({ contentSecurityPolicy: { directives: { upgradeInsecureRequests: null } } }));
+  // img-src: blob: inahitajika kuonyesha picha za wakulima (zinapakuliwa kwa token) na kupunguza picha kwenye kifaa
+  app.use(helmet({ contentSecurityPolicy: { directives: { upgradeInsecureRequests: null, imgSrc: ["'self'", 'data:', 'blob:'] } } }));
   app.use(cors({ origin: env.CORS_ORIGINS === '*' ? true : env.CORS_ORIGINS.split(',').map((s) => s.trim()) }));
   app.use(express.json({ limit: '1mb' }));
   if (env.NODE_ENV !== 'test') app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));

@@ -181,6 +181,7 @@ export const members = pgTable('members', {
   gender: genderEnum().notNull(),
   dateOfBirth: date(),
   nidaNumber: text(),
+  voterIdNumber: text(), // Kadi ya mpiga kura (kwa wasio na NIDA)
   phone: text(),
   village: text(),
   hamlet: text(), // Kitongoji
@@ -201,16 +202,35 @@ export const members = pgTable('members', {
   nextOfKinName: text(),
   nextOfKinPhone: text(),
   nextOfKinRelation: text(),
+  // Kiingilio cha uanachama. Fedha halisi inaingizwa na Mhasibu (Mapato -> Ada za uanachama) na inaweka "imelipwa" hapa.
+  entryFee: numeric({ precision: 14, scale: 2 }),
+  entryFeePaid: boolean().notNull().default(false),
+  entryFeePaidAt: date(),
+  entryFeeReference: text(), // namba ya muamala wa CoopLink au risiti ya zamani
+  // Mzamini wa mkulima
+  guarantorName: text(),
+  guarantorPhone: text(),
   createdById: uuid(),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (t) => [
   uniqueIndex().on(t.amcosId, t.memberNo),
   uniqueIndex().on(t.amcosId, t.nidaNumber),
+  uniqueIndex().on(t.amcosId, t.voterIdNumber),
   index().on(t.amcosId, t.lastName),
   index().on(t.amcosId, t.phone),
   index().on(t.amcosId, t.status),
 ]);
+
+/** Picha ya mkulima (JPEG iliyopunguzwa ukubwa, ~50KB). Iko kwenye database kwa sababu diski ya Railway hufutika kila deploy. */
+export const memberPhotos = pgTable('member_photos', {
+  memberId: uuid().primaryKey().references(() => members.id),
+  mimeType: text().notNull(),
+  data: text().notNull(), // base64
+  sizeBytes: integer().notNull(),
+  uploadedById: uuid(),
+  updatedAt: updatedAt(),
+});
 
 export const farms = pgTable('farms', {
   id: id(),

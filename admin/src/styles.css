@@ -457,3 +457,85 @@ button.card.kpi:hover { border-color: var(--green); }
 @media (prefers-reduced-motion: reduce) {
   .nav-indicator, .nav-animated a, .nav-icon, .sidebar, .sidebar .brand, .nav-scrim { transition: none !important; animation: none !important; }
 }
+
+/* ------------------------------ FOMU YA MKULIMA (v0.3.4) ------------------------------ */
+.photo-field { display: flex; gap: 14px; align-items: center; }
+.photo-box {
+  width: 88px; height: 88px; border-radius: 18px; overflow: hidden; flex: none; display: grid; place-items: center;
+  background: linear-gradient(135deg, #E7F1EA, #F6EFD9); border: 1px solid var(--line); color: var(--green); font-size: 34px; font-weight: 700;
+}
+.photo-box img { width: 100%; height: 100%; object-fit: cover; }
+.form-note { grid-column: 1 / -1; margin: -4px 0 0; font-size: 13px; }
+.member-title { display: inline-flex; align-items: center; gap: 14px; }
+.member-avatar {
+  width: 52px; height: 52px; border-radius: 14px; object-fit: cover; flex: none; display: inline-grid; place-items: center;
+  background: linear-gradient(135deg, #E7F1EA, #F6EFD9); color: var(--green); font-size: 22px; border: 1px solid var(--line);
+}
+
+/* ------------------------------ FOMU KWA HATUA (v0.3.5) ------------------------------ */
+.wizard { display: flex; flex-direction: column; gap: 14px; }
+.wizard-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.wizard-steps button {
+  width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; background: var(--paper); border: 1px solid var(--line);
+  border-radius: 14px; padding: 10px 12px; cursor: pointer; font: inherit; color: var(--muted); min-height: 58px;
+  transition: border-color .25s, box-shadow .25s, transform .2s, background-color .25s;
+}
+.wizard-steps button:disabled { cursor: default; opacity: .6; }
+.wizard-steps button:not(:disabled):hover { border-color: var(--green); transform: translateY(-1px); }
+.wz-dot {
+  width: 30px; height: 30px; border-radius: 999px; flex: none; display: grid; place-items: center; font-weight: 700; font-size: 14px;
+  background: #EFE8D6; color: var(--muted); transition: background-color .3s, color .3s, transform .3s cubic-bezier(.3, 1.6, .5, 1);
+}
+.wz-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.wz-text strong { color: var(--ink); font-size: 14px; }
+.wz-text small { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wizard-steps li.done .wz-dot { background: var(--green); color: #fff; }
+.wizard-steps li.on button { border-color: var(--gold); box-shadow: 0 6px 18px rgba(227, 168, 58, .22); background: #FFFBF1; }
+.wizard-steps li.on .wz-dot { background: var(--gold); color: var(--forest); transform: scale(1.08); }
+.wizard-progress { height: 4px; background: #EFE8D6; border-radius: 99px; overflow: hidden; margin-top: -4px; }
+.wizard-progress span { display: block; height: 100%; background: linear-gradient(90deg, var(--green), var(--gold)); border-radius: 99px; transition: width .45s cubic-bezier(.22, .9, .3, 1); }
+.wizard-panel { animation: wz-in .35s cubic-bezier(.2, .8, .2, 1) both; }
+.wizard-head { margin-bottom: 14px; }
+.wizard-head h2 { margin: 2px 0 0; font-size: 20px; }
+.wz-count { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--green); }
+.wizard-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.span-2 { grid-column: span 2; }
+@keyframes wz-in { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+
+/* Njia ya malipo kama vitufe vikubwa */
+.pay-choice { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.pay-choice button {
+  border: 1.5px solid var(--line); background: var(--paper); border-radius: 14px; padding: 14px; text-align: left; cursor: pointer; font: inherit;
+  display: flex; flex-direction: column; gap: 2px; transition: border-color .2s, background-color .2s, transform .2s; min-height: 64px;
+}
+.pay-choice button:hover { transform: translateY(-1px); border-color: var(--green); }
+.pay-choice button.on { border-color: var(--green); background: #EEF6F0; box-shadow: inset 0 0 0 1px var(--green); }
+.pay-choice small { color: var(--muted); font-size: 12px; }
+
+/* Hakiki */
+.review { display: flex; flex-direction: column; gap: 14px; }
+.review-head { display: flex; align-items: center; gap: 14px; }
+.review-head h3 { margin: 0 0 2px; font-size: 20px; }
+.review-block { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: #FCFAF3; }
+.review-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.link-btn { background: none; border: none; padding: 0; color: var(--green); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+@media (max-width: 760px) {
+  .wizard-steps { grid-template-columns: repeat(4, auto); justify-content: space-between; }
+  .wizard-steps button { padding: 6px; border: none; background: none; min-height: 0; flex-direction: column; gap: 4px; text-align: center; }
+  .wizard-steps li.on button { box-shadow: none; background: none; }
+  .wz-text small { display: none; }
+  .wz-text strong { font-size: 11.5px; }
+  .span-2 { grid-column: auto; }
+  .pay-choice { grid-template-columns: 1fr; }
+  .wizard-actions {
+    position: sticky; bottom: 0; z-index: 5; margin: 0 -16px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    background: rgba(246, 240, 225, .96); backdrop-filter: blur(6px); border-top: 1px solid var(--line);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wizard-panel, .wizard-progress span, .wz-dot, .wizard-steps button, .pay-choice button { animation: none !important; transition: none !important; }
+}
+.review-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.review-block .dl { grid-template-columns: minmax(84px, 38%) 1fr; }
+.review-block .dl dd { overflow-wrap: anywhere; }

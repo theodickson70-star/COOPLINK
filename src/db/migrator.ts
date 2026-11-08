@@ -42,6 +42,11 @@ const MARKERS: Record<string, string[]> = {
     "select to_regclass('public.finance_transactions') is not null",
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'input_items' and column_name = 'reorder_level')",
   ],
+  '0004_member_form': [
+    "select to_regclass('public.member_photos') is not null",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'members' and column_name = 'voter_id_number')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'members' and column_name = 'guarantor_phone')",
+  ],
 };
 
 interface JournalEntry { tag: string; when: number }

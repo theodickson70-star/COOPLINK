@@ -100,3 +100,13 @@ export async function apiDownload(path: string, opts: { method?: string; body?: 
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
+
+/** Picha inayohitaji token (mf. picha ya mkulima) -> object URL ya kuonyesha kwenye <img>. */
+export async function apiBlobUrl(path: string): Promise<string | null> {
+  const headers: Record<string, string> = {};
+  if (token) headers.authorization = `Bearer ${token}`;
+  if (amcosId) headers['x-amcos-id'] = amcosId;
+  const res = await fetch(`${BASE}/api/v1${path}`, { headers });
+  if (!res.ok) return null;
+  return URL.createObjectURL(await res.blob());
+}

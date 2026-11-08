@@ -367,3 +367,61 @@ test('Kusajili chama: code inatolewa na mfumo; Meneja anaundwa na nenosiri la Ow
   assert.equal(st.status, 201);
   assert.equal(st.body.temporaryPassword, null);
 });
+
+// 11 -----------------------------------------------------------------
+test('Fomu ya mkulima: namba ya zamani, kadi ya mpiga kura, kiingilio, picha na mzamini', async () => {
+  const oldNo = `URM/${RUN}/015`;
+  const r = await call('POST', '/api/v1/members', A.manager, {
+    memberNo: oldNo.toLowerCase(), firstName: 'Zuhura', lastName: 'Kasimu' + RUN, gender: 'FEMALE',
+    voterIdNumber: `T-1000-${RUN}-567`, entryFee: '20000', guarantorName: 'Selemani Kasimu', guarantorPhone: '0754111222',
+  });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const mem = r.body.member;
+  assert.equal(mem.memberNo, oldNo, 'namba ya zamani inatumika (herufi kubwa)');
+  assert.equal(mem.voterIdNumber, `T-1000-${RUN}-567`);
+  assert.equal(mem.nidaNumber, null);
+  assert.equal(mem.entryFee, '20000.00');
+  assert.equal(mem.entryFeePaid, false);
+  assert.equal(mem.guarantorPhone, '255754111222');
+  // Namba au kadi ya mpiga kura isijirudie
+  const dupNo = await call('POST', '/api/v1/members', A.manager, { memberNo: oldNo, firstName: 'Mtu', lastName: 'Mwingine', gender: 'MALE' });
+  assert.equal(dupNo.status, 409);
+  assert.match(dupNo.body.error.message, /Zuhura/);
+  assert.equal((await call('POST', '/api/v1/members', A.manager, { firstName: 'Mtu', lastName: 'Wa Tatu', gender: 'MALE', voterIdNumber: `T-1000-${RUN}-567` })).status, 409);
+  // Namba ya chama ileile, chama kingine: inaruhusiwa
+  assert.equal((await call('POST', '/api/v1/members', B.manager, { memberNo: oldNo, firstName: 'Juma', lastName: 'B' + RUN, gender: 'MALE' })).status, 201);
+  // Bila namba -> mfumo unatoa
+  const auto = await call('POST', '/api/v1/members', A.manager, { firstName: 'Auto', lastName: 'Namba' + RUN, gender: 'MALE' });
+  assert.match(auto.body.member.memberNo, /^SA.*-\d{6}$/);
+  // Alishalipa zamani: risiti ni lazima
+  assert.equal((await call('PATCH', `/api/v1/members/${auto.body.member.id}`, A.manager, { entryFeePaid: true })).status, 400);
+  const old = await call('PATCH', `/api/v1/members/${auto.body.member.id}`, A.manager, { entryFee: '15000', entryFeePaid: true, entryFeeReference: 'RISITI-2019-44', entryFeePaidAt: '2019-03-01' });
+  assert.equal(old.status, 200);
+  assert.equal(old.body.member.entryFeePaid, true);
+  // Namba ya uanachama inabadilishwa na Meneja tu
+  assert.equal((await call('PATCH', `/api/v1/members/${mem.id}`, A.storekeeper, { memberNo: 'NYINGINE-1' })).status, 400);
+  assert.equal((await call('PATCH', `/api/v1/members/${mem.id}`, A.manager, { memberNo: `URM/${RUN}/016` })).status, 200);
+
+  // Mhasibu akipokea kiingilio -> kinawekwa "kimelipwa"; reversal inakirudisha "hakijalipwa"
+  const inc = await call('POST', '/api/v1/finance/income', A.accountant, { category: 'MEMBER_FEES', amount: '20000', description: 'Kiingilio cha Zuhura', accountId: cashId, memberId: mem.id });
+  assert.equal(inc.status, 201);
+  let after = (await call('GET', `/api/v1/members/${mem.id}`, A.manager)).body.member;
+  assert.equal(after.entryFeePaid, true);
+  assert.equal(after.entryFeeReference, inc.body.transaction.txnNo);
+  const rv = await call('POST', `/api/v1/finance/transactions/${inc.body.transaction.id}/reverse`, A.accountant, { reason: 'Imeandikwa kwa mkulima asiye sahihi' });
+  assert.equal((await call('POST', `/api/v1/approvals/${rv.body.approval.id}/decide`, A.manager, { decision: 'APPROVED', note: 'Sawa, sahihisha' })).status, 200);
+  after = (await call('GET', `/api/v1/members/${mem.id}`, A.manager)).body.member;
+  assert.equal(after.entryFeePaid, false);
+
+  // Picha (hiari): kupakia, kusoma, AMCOS nyingine haioni
+  const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='.repeat(2);
+  assert.equal((await call('PUT', `/api/v1/members/${mem.id}/photo`, A.storekeeper, { mimeType: 'image/png', data: png })).status, 200);
+  const det = (await call('GET', `/api/v1/members/${mem.id}`, A.manager)).body;
+  assert.ok(det.photo?.updatedAt);
+  const img = await fetch(`${base}/api/v1/members/${mem.id}/photo`, { headers: { authorization: `Bearer ${A.manager}` } });
+  assert.equal(img.status, 200);
+  assert.equal(img.headers.get('content-type'), 'image/png');
+  assert.equal((await fetch(`${base}/api/v1/members/${mem.id}/photo`, { headers: { authorization: `Bearer ${B.manager}` } })).status, 404);
+  assert.equal((await call('PUT', `/api/v1/members/${mem.id}/photo`, A.manager, { mimeType: 'image/gif', data: png })).status, 400);
+  assert.equal((await call('PUT', `/api/v1/members/${mem.id}/photo`, A.manager, { mimeType: 'image/jpeg', data: 'A'.repeat(600_000) })).status, 400, 'picha kubwa mno');
+});

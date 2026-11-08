@@ -188,6 +188,11 @@ financeRouter.post('/income', requireAmcosPerm('finance.record'), ah(async (req,
         description: `Marejesho ya deni ${t.txnNo}`, referenceType: 'FINANCE_TXN', referenceId: t.id, createdById: req.auth!.userId,
       });
     }
+    // Kiingilio cha uanachama: kinawekwa "kimelipwa" kwenye taarifa za mkulima
+    if (member && body.category === 'MEMBER_FEES' && !member.entryFeePaid) {
+      await tx.update(schema.members).set({ entryFeePaid: true, entryFeePaidAt: t.txnDate, entryFeeReference: t.txnNo }).where(eq(schema.members.id, member.id));
+      await audit(tx, req, { action: 'MEMBER_ENTRY_FEE_PAID', entity: 'Member', entityId: member.id, amcosId, before: { entryFeePaid: false }, after: { entryFeePaid: true, reference: t.txnNo, amount: t.amount } });
+    }
     await audit(tx, req, { action: 'FINANCE_INCOME_RECORD', entity: 'FinanceTransaction', entityId: t.id, amcosId, after: t });
     return t;
   });

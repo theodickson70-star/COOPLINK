@@ -1,9 +1,9 @@
 import { Router, type Request } from 'express';
 import { z } from 'zod';
-import { and, asc, count, desc, eq, ilike, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, ne, or, sql } from 'drizzle-orm';
 import { db, schema } from '../db';
 import { ah, decimalSchema, paged, paginationQuery, phoneSchema, uuidParam } from '../lib/http';
-import { badRequest, notFound } from '../lib/errors';
+import { badRequest, conflict, notFound } from '../lib/errors';
 import { requireAmcosPerm } from '../middleware/auth';
 import { hasAmcosPerm } from '../lib/amcos-permissions';
 import { createApproval } from '../lib/approvals';
@@ -25,7 +25,10 @@ const memberBody = z.object({
   lastName: z.string().trim().min(2),
   gender: z.enum(schema.genderEnum.enumValues),
   dateOfBirth: opt(dateStr),
+  // Namba ya uanachama aliyopewa na chama zamani. Ikiachwa wazi, mfumo unaitoa (mf. USOKE-000001).
+  memberNo: opt(z.string().trim().toUpperCase().regex(/^[A-Z0-9][A-Z0-9/.\- ]{0,29}$/, 'Namba ya uanachama iwe herufi/namba (inaweza kuwa na / au -), hadi herufi 30')),
   nidaNumber: opt(z.string().trim().regex(/^\d{20}$/, 'Namba ya NIDA iwe tarakimu 20')),
+  voterIdNumber: opt(z.string().trim().toUpperCase().regex(/^[A-Z0-9][A-Z0-9\- ]{5,24}$/, 'Namba ya kadi ya mpiga kura si sahihi')),
   phone: opt(phoneSchema),
   village: opt(z.string().trim()),
   hamlet: opt(z.string().trim()),
@@ -42,7 +45,30 @@ const memberBody = z.object({
   nextOfKinName: opt(z.string().trim()),
   nextOfKinPhone: opt(phoneSchema),
   nextOfKinRelation: opt(z.string().trim()),
+  entryFee: opt(decimalSchema({ min: 0 })),
+  // "Alishalipa kabla ya CoopLink" — inahitaji namba ya risiti ya zamani. Malipo mapya yanarekodiwa na Mhasibu.
+  entryFeePaid: z.boolean().optional(),
+  entryFeePaidAt: opt(dateStr),
+  entryFeeReference: opt(z.string().trim().max(60)),
+  guarantorName: opt(z.string().trim().min(3, 'Jina la mzamini angalau herufi 3')),
+  guarantorPhone: opt(phoneSchema),
 });
+
+function checkEntryFee(b: { entryFeePaid?: boolean; entryFeeReference?: string | null }, before?: { entryFeeReference: string | null }) {
+  if (b.entryFeePaid && !(b.entryFeeReference ?? before?.entryFeeReference)) throw badRequest('Weka namba ya risiti ya kiingilio');
+}
+
+/** Namba za uanachama na vitambulisho visijirudie ndani ya chama — ujumbe unaoeleweka. */
+async function assertUnique(amcosId: string, b: { memberNo?: string | null; nidaNumber?: string | null; voterIdNumber?: string | null }, exceptId?: string) {
+  const checks: [keyof typeof b, string][] = [['memberNo', 'Namba ya uanachama'], ['nidaNumber', 'Namba ya NIDA'], ['voterIdNumber', 'Namba ya kadi ya mpiga kura']];
+  for (const [k, label] of checks) {
+    const v = b[k];
+    if (!v) continue;
+    const [dup] = await db.select({ id: m.id, memberNo: m.memberNo, firstName: m.firstName, lastName: m.lastName }).from(m)
+      .where(and(eq(m.amcosId, amcosId), eq(m[k], v), exceptId ? ne(m.id, exceptId) : undefined));
+    if (dup) throw conflict(`${label} ${v} tayari ni ya ${dup.firstName} ${dup.lastName} (${dup.memberNo})`);
+  }
+}
 
 /** Pata mwanachama NDANI ya wigo wa mtumiaji tu (vinginevyo 404). */
 export async function findMemberScoped(req: Request, id: string) {
@@ -66,7 +92,7 @@ membersRouter.get(
       amcosScope(req, m.amcosId),
       q.status ? eq(m.status, q.status) : undefined,
       q.village ? ilike(m.village, q.village) : undefined,
-      s ? or(ilike(m.firstName, s), ilike(m.lastName, s), ilike(m.memberNo, s), ilike(m.phone, s), ilike(m.nidaNumber, s)) : undefined,
+      s ? or(ilike(m.firstName, s), ilike(m.lastName, s), ilike(m.memberNo, s), ilike(m.phone, s), ilike(m.nidaNumber, s), ilike(m.voterIdNumber, s)) : undefined,
     );
     const [rows, [{ total }]] = await Promise.all([
       db.select().from(m).where(where).orderBy(asc(m.lastName), asc(m.firstName))
@@ -85,13 +111,22 @@ membersRouter.post(
     const body = memberBody.extend({ amcosId: z.string().uuid().optional() }).parse(req.body);
     const amcosId = await resolveWriteAmcosId(req, body.amcosId);
     const amcos = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId) }))!;
+    checkEntryFee(body);
+    await assertUnique(amcosId, body);
+    const { memberNo: givenNo, amcosId: _ignored, ...data } = body;
 
     const member = await db.transaction(async (tx) => {
-      const n = await nextNumber(tx, amcosId, 'member');
+      // Namba iliyopo (ya zamani) au mpya kutoka mfumo — mpya inaruka namba zilizokwisha chukuliwa
+      let memberNo = givenNo ?? '';
+      while (!memberNo) {
+        const candidate = `${amcos.code}-${pad(await nextNumber(tx, amcosId, 'member'))}`;
+        const taken = await tx.select({ id: m.id }).from(m).where(and(eq(m.amcosId, amcosId), eq(m.memberNo, candidate)));
+        if (!taken.length) memberNo = candidate;
+      }
       const confirmer = hasAmcosPerm(req.auth!.role, 'members.approve');
       const [row] = await tx
         .insert(m)
-        .values({ ...body, amcosId, memberNo: `${amcos.code}-${pad(n)}`, createdById: req.auth!.userId, status: confirmer ? 'ACTIVE' : 'PENDING' })
+        .values({ ...data, amcosId, memberNo, createdById: req.auth!.userId, status: confirmer ? 'ACTIVE' : 'PENDING' })
         .returning();
       await audit(tx, req, { action: 'MEMBER_CREATE', entity: 'Member', entityId: row.id, amcosId, after: row });
       if (!confirmer) {
@@ -114,7 +149,8 @@ membersRouter.get(
     const farms = await db.select().from(schema.farms).where(eq(schema.farms.memberId, id)).orderBy(asc(schema.farms.createdAt));
     // Stokipa haoni taarifa za fedha za mkulima
     const balance = hasAmcosPerm(req.auth!.role, 'ledger.read') ? await memberBalance(db, member.amcosId, id) : null;
-    res.json({ member, farms, balance });
+    const [photo] = await db.select({ updatedAt: schema.memberPhotos.updatedAt }).from(schema.memberPhotos).where(eq(schema.memberPhotos.memberId, id));
+    res.json({ member, farms, balance, photo: photo ? { updatedAt: photo.updatedAt } : null });
   }),
 );
 
@@ -125,8 +161,15 @@ membersRouter.patch(
     const { id } = uuidParam.parse(req.params);
     const body = memberBody.partial().parse(req.body);
     const before = await findMemberScoped(req, id);
+    if (body.memberNo !== undefined && body.memberNo !== before.memberNo) {
+      // Namba ya uanachama inabadilishwa na Meneja tu (inatumika kwenye risiti na ripoti)
+      if (!hasAmcosPerm(req.auth!.role, 'members.approve')) throw badRequest('Namba ya uanachama inabadilishwa na Meneja tu');
+      if (!body.memberNo) throw badRequest('Namba ya uanachama haiwezi kuwa tupu');
+    }
+    checkEntryFee(body, before);
+    await assertUnique(before.amcosId, body, id);
     const member = await db.transaction(async (tx) => {
-      const [row] = await tx.update(m).set(body).where(eq(m.id, id)).returning();
+      const [row] = await tx.update(m).set({ ...body, memberNo: body.memberNo ?? undefined }).where(eq(m.id, id)).returning();
       await audit(tx, req, { action: 'MEMBER_UPDATE', entity: 'Member', entityId: id, amcosId: before.amcosId, before, after: row });
       return row;
     });
@@ -238,5 +281,57 @@ membersRouter.get(
       .where(and(eq(a.amcosId, member.amcosId), eq(a.entity, 'Member'), eq(a.entityId, id)))
       .orderBy(desc(a.createdAt)).limit(50);
     res.json({ data: rows });
+  }),
+);
+
+// ------------------------------ PICHA YA MKULIMA (hiari) ------------------------------
+const P = schema.memberPhotos;
+const MAX_PHOTO = 400 * 1024; // baada ya kupunguzwa kwenye kifaa, picha ni ~30-80KB
+
+membersRouter.get(
+  '/:id/photo',
+  ah(async (req, res) => {
+    const { id } = uuidParam.parse(req.params);
+    await findMemberScoped(req, id);
+    const [p] = await db.select().from(P).where(eq(P.memberId, id));
+    if (!p) throw notFound('Picha');
+    res.setHeader('Content-Type', p.mimeType);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.send(Buffer.from(p.data, 'base64'));
+  }),
+);
+
+membersRouter.put(
+  '/:id/photo',
+  requireAmcosPerm('members.write'),
+  ah(async (req, res) => {
+    const { id } = uuidParam.parse(req.params);
+    const body = z.object({
+      mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+      data: z.string().min(100).regex(/^[A-Za-z0-9+/=]+$/, 'Picha si sahihi'),
+    }).parse(req.body);
+    const member = await findMemberScoped(req, id);
+    const size = Buffer.byteLength(body.data, 'base64');
+    if (size > MAX_PHOTO) throw badRequest('Picha ni kubwa mno (zaidi ya 400KB)');
+    await db.transaction(async (tx) => {
+      await tx.insert(P).values({ memberId: id, mimeType: body.mimeType, data: body.data, sizeBytes: size, uploadedById: req.auth!.userId })
+        .onConflictDoUpdate({ target: P.memberId, set: { mimeType: body.mimeType, data: body.data, sizeBytes: size, uploadedById: req.auth!.userId, updatedAt: sql`now()` } });
+      await audit(tx, req, { action: 'MEMBER_PHOTO_SET', entity: 'Member', entityId: id, amcosId: member.amcosId, after: { sizeBytes: size, mimeType: body.mimeType } });
+    });
+    res.json({ ok: true, sizeBytes: size });
+  }),
+);
+
+membersRouter.delete(
+  '/:id/photo',
+  requireAmcosPerm('members.write'),
+  ah(async (req, res) => {
+    const { id } = uuidParam.parse(req.params);
+    const member = await findMemberScoped(req, id);
+    await db.transaction(async (tx) => {
+      await tx.delete(P).where(eq(P.memberId, id));
+      await audit(tx, req, { action: 'MEMBER_PHOTO_REMOVE', entity: 'Member', entityId: id, amcosId: member.amcosId });
+    });
+    res.json({ ok: true });
   }),
 );

@@ -163,6 +163,12 @@ async function onReversal(tx: Tx, req: Request, a: Approval, o: Outcome, note: s
     sql`${schema.memberLedgerEntries.type} <> 'REVERSAL'`,
   ));
   for (const e of entries) await ledger.reverse(tx, e.id, `Kusahihisha ${orig.txnNo}`, req.auth!.userId);
+  if (orig.category === 'MEMBER_FEES' && orig.memberId) {
+    const M = schema.members;
+    const [mem] = await tx.update(M).set({ entryFeePaid: false, entryFeePaidAt: null, entryFeeReference: null })
+      .where(and(eq(M.id, orig.memberId), eq(M.entryFeeReference, orig.txnNo))).returning({ id: M.id });
+    if (mem) await audit(tx, req, { action: 'MEMBER_ENTRY_FEE_REVERSED', entity: 'Member', entityId: mem.id, amcosId: a.amcosId, after: { entryFeePaid: false, reversedTxn: orig.txnNo } });
+  }
   await audit(tx, req, { action: 'FINANCE_TXN_REVERSED', entity: 'FinanceTransaction', entityId: orig.id, amcosId: a.amcosId, after: { reversal: rev, note } });
 }
 

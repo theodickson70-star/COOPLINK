@@ -68,7 +68,7 @@ export function Badge({ status, label }: { status: string; label?: string }) {
   return <span className={`badge badge-${tone}`}>{label ?? STATUS_LABEL[status] ?? status}</span>;
 }
 
-export function PageHead({ title, sub, children }: { title: string; sub?: ReactNode; children?: ReactNode }) {
+export function PageHead({ title, sub, children }: { title: ReactNode; sub?: ReactNode; children?: ReactNode }) {
   return (
     <div className="page-head">
       <div>
