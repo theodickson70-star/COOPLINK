@@ -22,6 +22,7 @@ import {
 import { findMemberScoped } from './members.routes';
 import { currentSeason } from './seasons.routes';
 import { toCsv } from './owner/common';
+import { journalFor } from '../lib/gl';
 
 export const financeRouter = Router();
 const T = schema.financeTransactions;
@@ -75,6 +76,7 @@ financeRouter.patch('/accounts/:id', requireAmcosPerm('finance.accounts'), ah(as
   if (body.openingBalance !== undefined && body.openingBalance !== before.openingBalance) {
     const [{ n }] = await db.select({ n: count() }).from(T).where(eq(T.accountId, id));
     if (n > 0) throw badRequest('Salio la kuanzia haliwezi kubadilishwa baada ya akaunti kuwa na miamala');
+    if (await journalFor(db, before.amcosId, 'ACCOUNT_OPENING', id)) throw badRequest('Salio la kuanzia limeshaingia kwenye daftari kuu — tumia journal ya marekebisho');
   }
   const account = await db.transaction(async (tx) => {
     const [a] = await tx.update(ACC).set(body).where(eq(ACC.id, id)).returning();
@@ -153,7 +155,17 @@ const baseTxn = z.object({
   reference: z.string().trim().nullable().optional(),
   payee: z.string().trim().nullable().optional(),
   accountId: z.string().uuid().nullable().optional(),
+  contraGlAccountId: z.string().uuid().nullable().optional(), // hiari: akaunti ya daftari kuu (mf. 1500 mali, 2410 PAYE)
 });
+
+/** Akaunti ya daftari kuu iliyochaguliwa kwa mkono: lazima iwe ya chama hiki, iwe hai na isiwe akaunti ya fedha. */
+async function checkContra(amcosId: string, id: string | null | undefined) {
+  if (!id) return null;
+  const [g] = await db.select().from(schema.glAccounts).where(and(eq(schema.glAccounts.id, id), eq(schema.glAccounts.amcosId, amcosId)));
+  if (!g || !g.isActive) throw badRequest('Akaunti ya daftari kuu si sahihi');
+  if (g.subtype === 'CASH' || g.subtype === 'CASH_GROUP' || g.subtype === 'TRANSFER') throw badRequest('Chagua akaunti isiyo ya fedha (kwa uhamisho tumia ukurasa wa Benki)');
+  return g.id;
+}
 
 async function activeAccount(req: Request, id: string | null | undefined, required: boolean) {
   if (!id) {
@@ -175,8 +187,10 @@ financeRouter.post('/income', requireAmcosPerm('finance.record'), ah(async (req,
   if (body.category === 'FARMER_REPAYMENT' && !member) throw badRequest('Chagua mkulima anayerejesha deni');
   const amcos = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId) }))!;
   const season = await currentSeason();
+  const contra = ['FARMER_REPAYMENT', 'MEMBER_FEES'].includes(body.category) ? null : await checkContra(amcosId, body.contraGlAccountId);
   const txn = await db.transaction(async (tx) => {
     const [t] = await tx.insert(T).values({
+      contraGlAccountId: contra,
       amcosId, seasonId: season?.id ?? null, txnNo: await nextTxnNo(tx, amcosId, amcos.code), kind: 'INCOME', direction: 'IN',
       category: body.category, accountId: account.id, amount: body.amount, txnDate: body.txnDate ?? todayStr(),
       description: body.description, reference: body.reference ?? null, payee: body.payee ?? (member ? `${member.firstName} ${member.lastName}` : null),
@@ -205,8 +219,10 @@ async function prepare(req: Request, kind: 'EXPENSE' | 'FARMER_PAYMENT' | 'SUPPL
   if (body.accountId) await activeAccount(req, body.accountId, false);
   const amcos = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId) }))!;
   const season = await currentSeason();
+  const contra = kind === 'EXPENSE' ? await checkContra(amcosId, body.contraGlAccountId) : null;
   return db.transaction(async (tx) => {
     const [t] = await tx.insert(T).values({
+      contraGlAccountId: contra,
       amcosId, seasonId: season?.id ?? null, txnNo: await nextTxnNo(tx, amcosId, amcos.code), kind, direction: 'OUT',
       category: body.category, accountId: body.accountId ?? null, amount: body.amount, txnDate: body.txnDate ?? todayStr(),
       description: body.description, reference: body.reference ?? null, payee: body.payee ?? null,
@@ -265,6 +281,25 @@ financeRouter.post('/transactions/:id/post', requireAmcosPerm('finance.post'), a
   const body = z.object({ accountId: z.string().uuid().optional(), txnDate: dateStr.optional(), reference: z.string().trim().optional() }).parse(req.body);
   const t = await scopedTxn(req, id);
   if (t.status !== 'APPROVED') throw badRequest(t.status === 'PENDING_APPROVAL' ? 'Muamala huu bado unasubiri idhini ya Meneja' : 'Muamala huu hauwezi kukamilishwa');
+  if (t.kind === 'TRANSFER') {
+    // Uhamisho: pande zote mbili zinakamilishwa pamoja, kuanzia upande wa kutoa fedha
+    const pair = await db.select().from(T).where(and(eq(T.transferGroupId, t.transferGroupId!), eq(T.status, 'APPROVED')));
+    const outLeg = pair.find((p) => p.direction === 'OUT');
+    const inLeg = pair.find((p) => p.direction === 'IN');
+    if (!outLeg || !inLeg) throw conflict('Uhamisho huu haujakamilika vizuri');
+    const done = await db.transaction(async (tx) => {
+      await lockAccount(tx, outLeg.accountId!);
+      const bal = await accountBalance(tx, outLeg.accountId!);
+      if (bal.lessThan(outLeg.amount)) throw badRequest(`Salio la akaunti ya kutoa halitoshi (TSh ${fmt2(bal)})`);
+      const date = body.txnDate ?? outLeg.txnDate;
+      const rows = await tx.update(T).set({ status: 'POSTED', txnDate: date, reference: body.reference ?? outLeg.reference, postedById: req.auth!.userId, postedAt: new Date() })
+        .where(and(eq(T.transferGroupId, outLeg.transferGroupId!), eq(T.status, 'APPROVED'))).returning();
+      if (rows.length !== 2) throw conflict('Uhamisho umebadilishwa na mtu mwingine');
+      await audit(tx, req, { action: 'TRANSFER_POST', entity: 'FinanceTransaction', entityId: outLeg.id, amcosId: outLeg.amcosId, after: { out: outLeg.txnNo, in: inLeg.txnNo, amount: outLeg.amount } });
+      return rows.find((r) => r.id === id)!;
+    });
+    return res.json({ transaction: done });
+  }
   const account = (await activeAccount(req, body.accountId ?? t.accountId, true))!;
   const txn = await db.transaction(async (tx) => {
     await lockAccount(tx, account.id);

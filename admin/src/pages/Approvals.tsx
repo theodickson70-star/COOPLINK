@@ -23,6 +23,10 @@ export function entityLink(a: Pick<Approval, 'entityType' | 'entityId'>) {
   if (a.entityType === 'InputIssue') return `/input-issues/${a.entityId}`;
   if (a.entityType === 'PurchaseRequest') return `/purchases/${a.entityId}`;
   if (a.entityType === 'FinanceTransaction') return `/finance?txn=${a.entityId}`;
+  if (a.entityType === 'Market') return `/sales/markets/${a.entityId}`;
+  if (a.entityType === 'PaymentBatch') return `/sales/batches/${a.entityId}`;
+  if (a.entityType === 'PayrollRun') return `/payroll/runs/${a.entityId}`;
+  if (a.entityType === 'FixedAsset') return '/fixed-assets';
   return null;
 }
 
@@ -88,7 +92,7 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
       : api(`/approvals/${a.id}/decide`, { method: 'POST', body: { decision, note } }));
     if (r) onDone(decision === 'APPROVED' ? `${a.requestNo} imeidhinishwa` : decision === 'REJECTED' ? `${a.requestNo} imekataliwa` : `${a.requestNo} imeondolewa`);
   };
-  const p = a.payload as { balanceAtRequest?: string; kind?: string } | null;
+  const p = a.payload as { balanceAtRequest?: string; kind?: string; date?: string; lines?: { code: string; name: string; debit?: string; credit?: string; memo?: string | null }[]; totals?: { farmers: number; kg: string; grossTzs: string; deductions: string; netTzs: string } } | null;
   return (
     <Modal open title={`${a.requestNo} · ${a.typeLabel ?? APPROVAL_TYPE_LABEL[a.type]}`} onClose={onClose}
       footer={canDecide ? <>
@@ -103,6 +107,15 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
         <dt>Aliyeomba</dt><dd>{a.requestedBy} ({ROLE_LABEL[a.requestedRole] ?? a.requestedRole}) · {dateTime(a.createdAt)}</dd>
         {a.decidedAt && <><dt>Uamuzi</dt><dd>{STATUS[a.status]} na {a.decidedBy} · {dateTime(a.decidedAt)}<div className="muted">"{a.decisionNote}"</div></dd></>}
       </dl>
+      {a.type === 'JOURNAL' && p?.lines && (
+        <div className="table-wrap"><table className="table fin-table">
+          <thead><tr><th>Akaunti</th><th className="num">Debit</th><th className="num">Credit</th></tr></thead>
+          <tbody>{p.lines.map((l, i) => <tr key={i}><td><strong>{l.code}</strong> {l.name}{l.memo ? <div className="muted" style={{ fontSize: 12 }}>{l.memo}</div> : null}</td><td className="num">{l.debit ? tsh(l.debit) : ''}</td><td className="num">{l.credit ? tsh(l.credit) : ''}</td></tr>)}</tbody>
+        </table><p className="muted" style={{ margin: '6px 0 0' }}>Tarehe ya journal: {p.date}</p></div>
+      )}
+      {a.type === 'TOBACCO_SALE' && p?.totals && (
+        <dl className="dl"><dt>Wakulima</dt><dd>{p.totals.farmers} · kilo {Number(p.totals.kg).toLocaleString('en-US')}</dd><dt>Mauzo</dt><dd>{tsh(p.totals.grossTzs)}</dd><dt>Makato</dt><dd>{tsh(p.totals.deductions)}</dd><dt>Malipo halisi</dt><dd><strong>{tsh(p.totals.netTzs)}</strong></dd></dl>
+      )}
       {link && <p style={{ margin: 0 }}><Link to={link} onClick={onClose}>Fungua rekodi inayohusika →</Link></p>}
       {mine && a.status === 'PENDING' && may('approvals.decide') && <Alert kind="warn">Huwezi kuidhinisha ombi ulilolianzisha mwenyewe.</Alert>}
       <Alert>{error}</Alert>

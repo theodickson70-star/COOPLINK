@@ -31,6 +31,13 @@ export const AMCOS_PERMISSIONS = {
   'finance.record': 'Kurekodi mapato na kuandaa matumizi/malipo',
   'finance.post': 'Kukamilisha malipo yaliyoidhinishwa',
   'finance.accounts': 'Kusimamia akaunti za fedha na bajeti',
+  // Uhasibu kamili (Mhasibu)
+  'accounting.read': 'Kuona daftari kuu na ripoti kuu za fedha (TB, mapato na matumizi, mizania, mtiririko wa fedha)',
+  'accounting.manage': 'Chati ya akaunti, journal, usuluhishi wa benki, uhamisho, mali za chama na uchakavu',
+  'sales.read': 'Kuona mauzo ya tumbaku na malipo ya wakulima',
+  'sales.manage': 'Kusimamia masoko, mabelo, makato na malipo ya wakulima',
+  'payroll.read': 'Kuona mishahara',
+  'payroll.manage': 'Kusimamia wafanyakazi na kuandaa mishahara',
   // Idhini
   'approvals.read': 'Kuona maombi ya idhini',
   'approvals.decide': 'Kuidhinisha au kukataa maombi',
@@ -48,18 +55,21 @@ export type AmcosStaffRole = (typeof AMCOS_STAFF_ROLES)[number];
 export const STAFF_TITLE: Record<AmcosStaffRole, string> = { AMCOS_ADMIN: 'Meneja', ACCOUNTANT: 'Mhasibu', CLERK: 'Stokipa' };
 export const isAmcosStaff = (r: Role): r is AmcosStaffRole => (AMCOS_STAFF_ROLES as readonly Role[]).includes(r);
 
-const READ: AmcosPermission[] = ['members.read', 'ledger.read', 'stock.read', 'finance.read', 'approvals.read', 'staff.read', 'audit.read', 'reports.finance', 'reports.stock'];
+const READ: AmcosPermission[] = ['members.read', 'ledger.read', 'stock.read', 'finance.read', 'approvals.read', 'staff.read', 'audit.read', 'reports.finance', 'reports.stock', 'accounting.read', 'sales.read', 'payroll.read'];
 
 export const AMCOS_ROLE_PERMISSIONS: Partial<Record<Role, AmcosPermission[]>> = {
   AMCOS_ADMIN: [
     'members.read', 'members.write', 'members.approve', 'estimates.write', 'estimates.approve', 'ledger.read',
     'stock.read', 'prices.manage', 'issues.cancel',
     'finance.read', 'approvals.read', 'approvals.decide', 'staff.read', 'audit.read', 'reports.finance', 'reports.stock',
+    // Meneja: ripoti na idhini tu — haandiki journal, vocha wala mishahara
+    'accounting.read', 'sales.read', 'payroll.read',
   ],
   ACCOUNTANT: [
     'members.read', 'members.write', 'estimates.write', 'ledger.read',
     'stock.read',
     'finance.read', 'finance.record', 'finance.post', 'finance.accounts',
+    'accounting.read', 'accounting.manage', 'sales.read', 'sales.manage', 'payroll.read', 'payroll.manage',
     'approvals.read', 'audit.read', 'reports.finance', 'reports.stock',
   ],
   CLERK: [

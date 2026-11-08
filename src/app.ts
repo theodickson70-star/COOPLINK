@@ -23,6 +23,11 @@ import { approvalsRouter } from './modules/approvals.routes';
 import { financeRouter } from './modules/finance.routes';
 import { storeRouter } from './modules/store.routes';
 import { workspaceRouter } from './modules/workspace.routes';
+import { accountingRouter } from './modules/accounting.routes';
+import { bankRouter } from './modules/bank.routes';
+import { salesRouter } from './modules/sales.routes';
+import { payrollRouter } from './modules/payroll.routes';
+import { assetsRouter } from './modules/assets.routes';
 import { startupState } from './lib/startup';
 import { superAdminStatus } from './lib/super-admin';
 
@@ -81,6 +86,11 @@ export function createApp() {
   api.use('/approvals', approvalsRouter);       // Idhini za Meneja
   api.use('/finance', financeRouter);           // Fedha za chama (Mhasibu)
   api.use('/store', storeRouter);               // Stoo, manunuzi, wazabuni (Stokipa)
+  api.use('/accounting', accountingRouter);     // Daftari kuu na ripoti kuu (Mhasibu)
+  api.use('/bank', bankRouter);                 // Uhamisho, usuluhishi wa benki, vocha
+  api.use('/sales', salesRouter);               // Mauzo ya tumbaku na makato
+  api.use('/payroll', payrollRouter);           // Mishahara
+  api.use('/assets', assetsRouter);             // Mali za chama na uchakavu
   api.use('/workspace', workspaceRouter);       // Dashibodi za watumishi
 
   app.use('/api/v1', api);

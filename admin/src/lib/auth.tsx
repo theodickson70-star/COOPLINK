@@ -17,7 +17,8 @@ export type AmcosPermission =
   | 'stock.read' | 'products.manage' | 'prices.manage' | 'stock.receive' | 'stock.adjust.request' | 'issues.request' | 'issues.cancel'
   | 'suppliers.manage' | 'purchases.request' | 'purchases.receive'
   | 'finance.read' | 'finance.record' | 'finance.post' | 'finance.accounts'
-  | 'approvals.read' | 'approvals.decide' | 'staff.read' | 'audit.read' | 'reports.finance' | 'reports.stock';
+  | 'approvals.read' | 'approvals.decide' | 'staff.read' | 'audit.read' | 'reports.finance' | 'reports.stock'
+  | 'accounting.read' | 'accounting.manage' | 'sales.read' | 'sales.manage' | 'payroll.read' | 'payroll.manage';
 
 export interface User {
   id: string;

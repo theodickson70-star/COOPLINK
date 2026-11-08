@@ -72,3 +72,13 @@ export async function resolveWriteAmcosId(req: Request, explicit?: string | null
   if (!(await canAccessAmcos(req, requested))) throw forbidden('Huna ruhusa kwenye chama hiki');
   return requested;
 }
+
+/** Chama kimoja cha KUSOMA (kwa ripoti za chama mmoja mmoja, mf. daftari kuu). */
+export async function readAmcosId(req: Request): Promise<string> {
+  const auth = req.auth!;
+  if (auth.amcosId) return auth.amcosId;
+  const requested = requestedAmcosId(req);
+  if (!requested) throw badRequest('Chagua chama (amcosId)');
+  if (!(await canAccessAmcos(req, requested))) throw forbidden('Huna ruhusa kwenye chama hiki');
+  return requested;
+}

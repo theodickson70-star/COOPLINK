@@ -13,6 +13,7 @@ export const INCOME_CATEGORIES: Record<string, string> = {
   LOAN_RECEIVED: 'Mkopo uliopokelewa',
   GRANT: 'Ruzuku / msaada',
   INTEREST: 'Riba ya benki',
+  ASSET_SALE: 'Mauzo ya mali za chama',
   OTHER_INCOME: 'Mapato mengine',
 };
 export const EXPENSE_CATEGORIES: Record<string, string> = {

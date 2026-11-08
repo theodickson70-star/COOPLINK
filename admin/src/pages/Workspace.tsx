@@ -6,6 +6,7 @@ import { dateTime, MOVE_LABEL, num, STAFF_DUTY, tsh, UNIT_LABEL } from '../lib/f
 import { Alert, Badge, Empty, Loading, PageHead } from '../components/ui';
 import { Kpi, Section } from '../components/owner-ui';
 import { Dashboard } from './Dashboard';
+import { AccountingHome } from './Accounting';
 
 interface Summary {
   role: string; title: string | null;
@@ -42,11 +43,15 @@ export function Workspace() {
           <Link className="btn btn-gold" to="/input-issues/new">Toa pembejeo</Link>
           <Link className="btn btn-primary" to="/purchases">Ombi la manunuzi</Link>
         </>}
-        {data.role === 'ACCOUNTANT' && <Link className="btn btn-primary" to="/finance">Rekodi muamala</Link>}
+        {data.role === 'ACCOUNTANT' && <>
+          <Link className="btn btn-gold" to="/sales">Mauzo ya tumbaku</Link>
+          <Link className="btn btn-primary" to="/finance">Rekodi muamala</Link>
+        </>}
+        {data.role === 'AMCOS_ADMIN' && <Link className="btn btn-secondary" to="/accounting/reports">Ripoti za fedha</Link>}
         {data.role === 'AMCOS_ADMIN' && <Link className="btn btn-gold" to="/approvals">Idhini ({data.approvals?.total ?? 0})</Link>}
       </PageHead>
       {data.role === 'AMCOS_ADMIN' && <Manager d={data} />}
-      {data.role === 'ACCOUNTANT' && <Accountant d={data} />}
+      {data.role === 'ACCOUNTANT' && <div className="stack"><AccountingHome embedded /><Pending d={data} title="Maombi yangu" /></div>}
       {data.role === 'CLERK' && <Storekeeper d={data} />}
     </>
   );

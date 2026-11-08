@@ -384,6 +384,10 @@ export const markets = pgTable('markets', {
   marketDate: date().notNull(),
   location: text(),
   status: marketStatusEnum().notNull().default('SCHEDULED'),
+  buyerName: text(),                                             // kampuni ya ununuzi (mf. TLTC, Alliance One)
+  exchangeRate: numeric({ precision: 12, scale: 4 }),            // USD -> TZS siku ya soko
+  approvalId: uuid(),                                            // idhini ya mauzo (TOBACCO_SALE)
+  notes: text(),
   createdById: uuid(),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -432,6 +436,7 @@ export const deductionRules = pgTable('deduction_rules', {
   rate: numeric({ precision: 14, scale: 4 }).notNull(),
   currency: currencyEnum().notNull().default('TZS'),
   priority: integer().notNull().default(100),
+  glAccountCode: text(), // akaunti ya daftari kuu makato yanapoenda (mf. 2310 ushuru wa halmashauri)
   isActive: boolean().notNull().default(true),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -443,6 +448,8 @@ export const settlements = pgTable('settlements', {
   seasonId: uuid().notNull().references(() => seasons.id),
   memberId: uuid().notNull().references(() => members.id),
   settlementNo: text().notNull(),
+  marketId: uuid(),
+  approvalId: uuid(),
   totalKg: numeric({ precision: 12, scale: 2 }).notNull(),
   grossUsd: numeric({ precision: 14, scale: 2 }).notNull(),
   exchangeRate: numeric({ precision: 12, scale: 4 }).notNull(),
@@ -472,6 +479,9 @@ export const paymentBatches = pgTable('payment_batches', {
   batchNo: text().notNull(),
   totalAmount: money().notNull(),
   status: paymentBatchStatusEnum().notNull().default('DRAFT'),
+  marketId: uuid(),
+  approvalId: uuid(),
+  accountId: uuid(),
   approvedById: uuid(),
   approvedAt: timestamp({ withTimezone: true }),
   createdById: uuid(),
@@ -492,6 +502,7 @@ export const payments = pgTable('payments', {
   status: paymentStatusEnum().notNull().default('PENDING'),
   providerRef: text(),
   failureReason: text(),
+  financeTxnId: uuid(),
   idempotencyKey: text().notNull().unique(),
   paidAt: timestamp({ withTimezone: true }),
   createdAt: createdAt(),
@@ -549,10 +560,11 @@ export const auditLogs = pgTable('audit_logs', {
 // =====================================================================
 export const approvalTypeEnum = pgEnum('approval_type', [
   'MEMBER_REGISTRATION', 'EXPENSE', 'FARMER_PAYMENT', 'SUPPLIER_PAYMENT', 'PURCHASE', 'STOCK_ADJUSTMENT', 'INPUT_ISSUE', 'REVERSAL',
+  'JOURNAL', 'TOBACCO_SALE', 'PAYMENT_BATCH', 'TRANSFER', 'PAYROLL', 'ASSET_DISPOSAL',
 ]);
 export const approvalStatusEnum = pgEnum('approval_status', ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']);
 export const financeAccountKindEnum = pgEnum('finance_account_kind', ['CASH', 'BANK', 'MOBILE_MONEY']);
-export const financeTxnKindEnum = pgEnum('finance_txn_kind', ['INCOME', 'EXPENSE', 'FARMER_PAYMENT', 'SUPPLIER_PAYMENT', 'REVERSAL']);
+export const financeTxnKindEnum = pgEnum('finance_txn_kind', ['INCOME', 'EXPENSE', 'FARMER_PAYMENT', 'SUPPLIER_PAYMENT', 'REVERSAL', 'TRANSFER']);
 export const financeDirectionEnum = pgEnum('finance_direction', ['IN', 'OUT']);
 export const financeTxnStatusEnum = pgEnum('finance_txn_status', ['PENDING_APPROVAL', 'APPROVED', 'POSTED', 'REJECTED', 'CANCELLED']);
 export const purchaseStatusEnum = pgEnum('purchase_status', ['PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED']);
@@ -617,6 +629,8 @@ export const financeTransactions = pgTable('finance_transactions', {
   status: financeTxnStatusEnum().notNull(),
   approvalId: uuid(),
   reversalOfId: uuid().unique().references((): AnyPgColumn => financeTransactions.id),
+  contraGlAccountId: uuid(),   // akaunti ya daftari kuu upande wa pili (hiari; vinginevyo kwa kundi)
+  transferGroupId: uuid(),     // uhamisho kati ya akaunti: miamala miwili yenye kundi moja
   createdById: uuid().notNull(),
   postedById: uuid(),
   postedAt: timestamp({ withTimezone: true }),
@@ -881,6 +895,189 @@ export const restoreRequests = pgTable('restore_requests', {
   decidedAt: timestamp({ withTimezone: true }),
   decisionNotes: text(),
   createdAt: createdAt(),
+});
+
+// =====================================================================
+//  UHASIBU KAMILI WA CHAMA (Mhasibu) — daftari kuu la double-entry
+//   - Kila muamala wa chama unakuwa "journal" yenye debit = credit (trigger inakagua)
+//   - Journal haibadilishwi wala kufutwa: inasahihishwa kwa journal ya kinyume (reversalOfId)
+//   - Fedha za chama HAZICHANGANYWI na za CoopLink
+// =====================================================================
+export const glAccountTypeEnum = pgEnum('gl_account_type', ['ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE']);
+export const payrollStatusEnum = pgEnum('payroll_status', ['PENDING_APPROVAL', 'APPROVED', 'PAID', 'REJECTED', 'CANCELLED']);
+export const assetStatusEnum = pgEnum('asset_status', ['ACTIVE', 'DISPOSAL_PENDING', 'DISPOSED']);
+
+/** Chati ya akaunti (chart of accounts) ya kila chama. */
+export const glAccounts = pgTable('gl_accounts', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  code: text().notNull(),
+  name: text().notNull(),
+  type: glAccountTypeEnum().notNull(),
+  subtype: text(),                       // CASH, RECEIVABLE, PAYABLE, FIXED_ASSET ... (kwa ripoti)
+  isSystem: boolean().notNull().default(false),
+  isActive: boolean().notNull().default(true),
+  financeAccountId: uuid().unique(),     // akaunti ya fedha (taslimu/benki/simu) inayowakilishwa
+  description: text(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex().on(t.amcosId, t.code)]);
+
+export const journalEntries = pgTable('journal_entries', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  entryNo: text().notNull(),
+  entryDate: date().notNull(),
+  description: text().notNull(),
+  source: text().notNull(),              // FINANCE_TXN, INPUT_ISSUE, TOBACCO_SALE, PAYROLL, DEPRECIATION, MANUAL ...
+  sourceId: uuid(),
+  reference: text(),
+  approvalId: uuid(),
+  reversalOfId: uuid().unique().references((): AnyPgColumn => journalEntries.id),
+  createdById: uuid(),
+  createdAt: createdAt(),
+}, (t) => [
+  uniqueIndex().on(t.amcosId, t.entryNo),
+  uniqueIndex().on(t.amcosId, t.source, t.sourceId),
+  index().on(t.amcosId, t.entryDate),
+]);
+
+export const journalLines = pgTable('journal_lines', {
+  id: id(),
+  journalEntryId: uuid().notNull().references(() => journalEntries.id),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  glAccountId: uuid().notNull().references(() => glAccounts.id),
+  debit: money().notNull().default('0'),
+  credit: money().notNull().default('0'),
+  memo: text(),
+  memberId: uuid(),
+  supplierId: uuid(),
+  lineNo: integer().notNull().default(1),
+}, (t) => [index().on(t.journalEntryId), index().on(t.amcosId, t.glAccountId)]);
+
+// ------------------------------ MISHAHARA ------------------------------
+export const employees = pgTable('employees', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  employeeNo: text().notNull(),
+  fullName: text().notNull(),
+  position: text().notNull(),
+  phone: text(),
+  basicSalary: money().notNull(),
+  allowances: money().notNull().default('0'),
+  otherDeductions: money().notNull().default('0'),   // mf. marejesho ya mkopo wa mshahara
+  nssfNo: text(),
+  tin: text(),
+  paymentMethod: paymentMethodEnum().notNull().default('BANK'),
+  bankName: text(),
+  accountNumber: text(),
+  startDate: date(),
+  isActive: boolean().notNull().default(true),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex().on(t.amcosId, t.employeeNo)]);
+
+export const payrollRuns = pgTable('payroll_runs', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  runNo: text().notNull(),
+  period: text().notNull(),               // YYYY-MM
+  status: payrollStatusEnum().notNull().default('PENDING_APPROVAL'),
+  totalGross: money().notNull(),
+  totalPaye: money().notNull(),
+  totalNssfEmployee: money().notNull(),
+  totalNssfEmployer: money().notNull(),
+  totalWcf: money().notNull(),
+  totalSdl: money().notNull(),
+  totalOtherDeductions: money().notNull(),
+  totalNet: money().notNull(),
+  approvalId: uuid(),
+  paidTxnId: uuid(),
+  notes: text(),
+  createdById: uuid(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [
+  uniqueIndex().on(t.amcosId, t.runNo),
+  uniqueIndex('payroll_runs_one_per_period').on(t.amcosId, t.period).where(sql`status in ('PENDING_APPROVAL', 'APPROVED', 'PAID')`),
+]);
+
+export const payrollLines = pgTable('payroll_lines', {
+  id: id(),
+  payrollRunId: uuid().notNull().references(() => payrollRuns.id),
+  employeeId: uuid().notNull().references(() => employees.id),
+  basicSalary: money().notNull(),
+  allowances: money().notNull(),
+  gross: money().notNull(),
+  nssfEmployee: money().notNull(),
+  taxable: money().notNull(),
+  paye: money().notNull(),
+  otherDeductions: money().notNull(),
+  net: money().notNull(),
+  nssfEmployer: money().notNull(),
+  wcf: money().notNull(),
+  sdl: money().notNull(),
+}, (t) => [uniqueIndex().on(t.payrollRunId, t.employeeId)]);
+
+// ------------------------------ MALI ZA CHAMA ------------------------------
+export const fixedAssets = pgTable('fixed_assets', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  assetNo: text().notNull(),
+  name: text().notNull(),
+  category: text().notNull(),             // BUILDING, VEHICLE, EQUIPMENT, FURNITURE, COMPUTER, LAND, OTHER
+  acquisitionDate: date().notNull(),
+  cost: money().notNull(),
+  residualValue: money().notNull().default('0'),
+  usefulLifeMonths: integer().notNull(),  // 0 = haichakai (mf. ardhi)
+  location: text(),
+  serialNo: text(),
+  fundingTxnId: uuid(),                   // muamala uliolipia (kama haipo: ni mali iliyokuwepo -> salio la kuanzia)
+  status: assetStatusEnum().notNull().default('ACTIVE'),
+  disposedAt: date(),
+  disposalNote: text(),
+  disposalApprovalId: uuid(),
+  createdById: uuid(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex().on(t.amcosId, t.assetNo)]);
+
+export const depreciationRuns = pgTable('depreciation_runs', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  period: text().notNull(),               // YYYY-MM
+  total: money().notNull(),
+  createdById: uuid(),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex().on(t.amcosId, t.period)]);
+
+export const depreciationLines = pgTable('depreciation_lines', {
+  id: id(),
+  runId: uuid().notNull().references(() => depreciationRuns.id),
+  assetId: uuid().notNull().references(() => fixedAssets.id),
+  amount: money().notNull(),
+}, (t) => [uniqueIndex().on(t.runId, t.assetId), index().on(t.assetId)]);
+
+// ------------------------------ USULUHISHO WA BENKI ------------------------------
+export const bankReconciliations = pgTable('bank_reconciliations', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  accountId: uuid().notNull().references(() => financeAccounts.id),
+  statementDate: date().notNull(),
+  statementBalance: money().notNull(),
+  bookBalance: money().notNull(),
+  clearedBalance: money().notNull(),
+  unclearedIn: money().notNull(),
+  unclearedOut: money().notNull(),
+  notes: text(),
+  createdById: uuid(),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.amcosId, t.accountId, t.statementDate)]);
+
+export const bankReconciliationItems = pgTable('bank_reconciliation_items', {
+  id: id(),
+  reconciliationId: uuid().notNull().references(() => bankReconciliations.id),
+  financeTxnId: uuid().notNull().unique().references(() => financeTransactions.id), // muamala unasuluhishwa mara moja tu
 });
 
 // ---------------------------------------------------------------------

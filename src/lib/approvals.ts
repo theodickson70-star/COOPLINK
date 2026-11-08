@@ -15,6 +15,10 @@ import { D, fmt2 } from './money';
 import * as ledger from './ledger';
 import { lockItems, stockBalance } from './stock';
 import { nextTxnNo } from './finance';
+import { assertManualAllowed, glMap, postJournal } from './gl';
+import { onPaymentBatch, onTobaccoSale } from './tobacco';
+import { onPayroll } from './payroll';
+import { onAssetDisposal } from './assets';
 
 type ApprovalType = (typeof schema.approvalTypeEnum.enumValues)[number];
 type Approval = typeof schema.approvalRequests.$inferSelect;
@@ -29,6 +33,12 @@ export const APPROVAL_LABEL: Record<ApprovalType, string> = {
   STOCK_ADJUSTMENT: 'Marekebisho ya stoo',
   INPUT_ISSUE: 'Ugawaji wa pembejeo',
   REVERSAL: 'Kusahihisha muamala (reversal)',
+  JOURNAL: 'Journal ya daftari kuu',
+  TOBACCO_SALE: 'Mauzo ya tumbaku na makato',
+  PAYMENT_BATCH: 'Orodha ya malipo ya wakulima',
+  TRANSFER: 'Uhamisho kati ya akaunti',
+  PAYROLL: 'Mishahara',
+  ASSET_DISPOSAL: 'Kuondoa mali ya chama',
 };
 
 export async function createApproval(tx: Tx, req: Request, a: {
@@ -146,8 +156,17 @@ async function onInputIssue(tx: Tx, req: Request, a: Approval, o: Outcome, note:
 async function onReversal(tx: Tx, req: Request, a: Approval, o: Outcome, note: string) {
   if (o !== 'APPROVED') return;
   const T = schema.financeTransactions;
-  const orig = await tx.query.financeTransactions.findFirst({ where: eq(T.id, a.entityId!) });
-  if (!orig || orig.status !== 'POSTED' || orig.kind === 'REVERSAL') throw conflict('Muamala huu hauwezi kusahihishwa');
+  const first = await tx.query.financeTransactions.findFirst({ where: eq(T.id, a.entityId!) });
+  if (!first || first.status !== 'POSTED' || first.kind === 'REVERSAL') throw conflict('Muamala huu hauwezi kusahihishwa');
+  // Uhamisho: pande zote mbili zinasahihishwa pamoja
+  const group = first.kind === 'TRANSFER' && first.transferGroupId
+    ? await tx.select().from(T).where(and(eq(T.transferGroupId, first.transferGroupId), eq(T.status, 'POSTED'), eq(T.kind, 'TRANSFER')))
+    : [first];
+  for (const orig of group) await reverseOne(tx, req, a, orig, note);
+}
+
+async function reverseOne(tx: Tx, req: Request, a: Approval, orig: typeof schema.financeTransactions.$inferSelect, note: string) {
+  const T = schema.financeTransactions;
   const dup = await tx.query.financeTransactions.findFirst({ where: eq(T.reversalOfId, orig.id) });
   if (dup) throw conflict('Muamala huu tayari umesahihishwa');
   const amcos = (await tx.query.amcos.findFirst({ where: eq(schema.amcos.id, a.amcosId) }))!;
@@ -156,6 +175,7 @@ async function onReversal(tx: Tx, req: Request, a: Approval, o: Outcome, note: s
     direction: orig.direction === 'IN' ? 'OUT' : 'IN', category: orig.category, accountId: orig.accountId, amount: orig.amount,
     txnDate: new Date().toISOString().slice(0, 10), description: `Kusahihisha ${orig.txnNo}: ${a.reason ?? ''}`.trim(),
     reference: orig.txnNo, payee: orig.payee, memberId: orig.memberId, supplierId: orig.supplierId, purchaseRequestId: orig.purchaseRequestId,
+    contraGlAccountId: orig.contraGlAccountId, transferGroupId: orig.transferGroupId,
     status: 'POSTED', approvalId: a.id, reversalOfId: orig.id, createdById: a.requestedById, postedById: req.auth!.userId, postedAt: new Date(),
   }).returning();
   const entries = await tx.select().from(schema.memberLedgerEntries).where(and(
@@ -163,6 +183,14 @@ async function onReversal(tx: Tx, req: Request, a: Approval, o: Outcome, note: s
     sql`${schema.memberLedgerEntries.type} <> 'REVERSAL'`,
   ));
   for (const e of entries) await ledger.reverse(tx, e.id, `Kusahihisha ${orig.txnNo}`, req.auth!.userId);
+  // Malipo ya mkulima kutoka orodha ya malipo -> yanarudi kusubiri; mishahara -> inarudi "imeidhinishwa, haijalipwa"
+  const P = schema.payments;
+  const pays = await tx.update(P).set({ status: 'FAILED', failureReason: `Imesahihishwa (${orig.txnNo})`, financeTxnId: null }).where(eq(P.financeTxnId, orig.id)).returning();
+  for (const p of pays) {
+    if (p.settlementId) await tx.update(schema.settlements).set({ status: 'APPROVED' }).where(eq(schema.settlements.id, p.settlementId));
+    if (p.batchId) await tx.update(schema.paymentBatches).set({ status: 'PARTIAL' }).where(eq(schema.paymentBatches.id, p.batchId));
+  }
+  await tx.update(schema.payrollRuns).set({ status: 'APPROVED', paidTxnId: null }).where(eq(schema.payrollRuns.paidTxnId, orig.id));
   if (orig.category === 'MEMBER_FEES' && orig.memberId) {
     const M = schema.members;
     const [mem] = await tx.update(M).set({ entryFeePaid: false, entryFeePaidAt: null, entryFeeReference: null })
@@ -170,6 +198,36 @@ async function onReversal(tx: Tx, req: Request, a: Approval, o: Outcome, note: s
     if (mem) await audit(tx, req, { action: 'MEMBER_ENTRY_FEE_REVERSED', entity: 'Member', entityId: mem.id, amcosId: a.amcosId, after: { entryFeePaid: false, reversedTxn: orig.txnNo } });
   }
   await audit(tx, req, { action: 'FINANCE_TXN_REVERSED', entity: 'FinanceTransaction', entityId: orig.id, amcosId: a.amcosId, after: { reversal: rev, note } });
+}
+
+interface JournalPayload { date: string; description: string; reference?: string | null; lines: { glAccountId: string; debit?: string; credit?: string; memo?: string | null }[] }
+
+/** Journal ya mkono (marekebisho, salio la kuanzia n.k.) — inaandikwa daftari kuu baada ya idhini tu. */
+async function onJournal(tx: Tx, req: Request, a: Approval, o: Outcome, note: string) {
+  if (o !== 'APPROVED') return;
+  const p = a.payload as JournalPayload;
+  const m = await glMap(tx, a.amcosId);
+  for (const l of p.lines) {
+    const acc = m.byId.get(l.glAccountId);
+    if (!acc) throw badRequest('Akaunti ya journal haipo tena');
+    assertManualAllowed(acc);
+  }
+  const entry = await postJournal(tx, {
+    amcosId: a.amcosId, date: p.date, description: p.description, source: 'MANUAL', sourceId: a.id, reference: p.reference ?? a.requestNo,
+    approvalId: a.id, createdById: a.requestedById, lines: p.lines,
+  }, m);
+  await audit(tx, req, { action: 'JOURNAL_POSTED', entity: 'JournalEntry', entityId: entry?.id ?? null, amcosId: a.amcosId, after: { entryNo: entry?.entryNo, note } });
+}
+
+/** Uhamisho kati ya akaunti za chama: pande mbili zinaidhinishwa pamoja. */
+async function onTransfer(tx: Tx, req: Request, a: Approval, o: Outcome, note: string) {
+  const T = schema.financeTransactions;
+  const first = await tx.query.financeTransactions.findFirst({ where: eq(T.id, a.entityId!) });
+  if (!first?.transferGroupId) throw conflict('Uhamisho haupo');
+  const status = o === 'APPROVED' ? 'APPROVED' : o === 'REJECTED' ? 'REJECTED' : 'CANCELLED';
+  const rows = await tx.update(T).set({ status }).where(and(eq(T.transferGroupId, first.transferGroupId), eq(T.status, 'PENDING_APPROVAL'))).returning();
+  if (rows.length !== 2) throw conflict('Uhamisho huu hausubiri tena idhini');
+  await audit(tx, req, { action: `TRANSFER_${status}`, entity: 'FinanceTransaction', entityId: first.id, amcosId: a.amcosId, after: { status, note } });
 }
 
 const HANDLERS: Record<ApprovalType, (tx: Tx, req: Request, a: Approval, o: Outcome, note: string) => Promise<void>> = {
@@ -181,6 +239,12 @@ const HANDLERS: Record<ApprovalType, (tx: Tx, req: Request, a: Approval, o: Outc
   STOCK_ADJUSTMENT: onStockAdjustment,
   INPUT_ISSUE: onInputIssue,
   REVERSAL: onReversal,
+  JOURNAL: onJournal,
+  TOBACCO_SALE: onTobaccoSale,
+  PAYMENT_BATCH: onPaymentBatch,
+  TRANSFER: onTransfer,
+  PAYROLL: onPayroll,
+  ASSET_DISPOSAL: onAssetDisposal,
 };
 
 /** Meneja anaidhinisha au anakataa. Lazima awe wa chama hicho na asiwe aliyeanzisha ombi. */

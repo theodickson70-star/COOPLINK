@@ -23,6 +23,13 @@ const I = {
   check: <><path d="M9 11l3 3 8-8" /><path d="M20 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></>,
   cart: <><circle cx="9" cy="20" r="1.5" /><circle cx="18" cy="20" r="1.5" /><path d="M2 3h3l2.7 12.2a1 1 0 0 0 1 .8h9.6a1 1 0 0 0 1-.8L21 7H6.2" /></>,
   wallet: <><path d="M3 7a2 2 0 0 1 2-2h13v4" /><rect x="3" y="7" width="18" height="13" rx="2" /><circle cx="16" cy="13.5" r="1.3" /></>,
+  gauge: <><path d="M4 18a8 8 0 1 1 16 0" /><path d="M12 18l4-6" /><circle cx="12" cy="18" r="1.4" /></>,
+  leaf: <><path d="M5 19c0-8 5-14 15-15-1 10-7 15-15 15z" /><path d="M5 19l8-8" /></>,
+  book: <><path d="M4 4h6a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4z" /><path d="M20 4h-6a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h7z" /></>,
+  bank: <><path d="M3 10l9-6 9 6" /><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 21h18" /></>,
+  payroll: <><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="11" r="2.2" /><path d="M5.5 16.5c.6-1.8 2-2.6 3.5-2.6s2.9.8 3.5 2.6M15 10h3M15 13.5h3" /></>,
+  building: <><rect x="4" y="3" width="16" height="18" rx="1" /><path d="M8 7h2M14 7h2M8 11h2M14 11h2M8 15h2M14 15h2M10 21v-3h4v3" /></>,
+  report: <><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z" /><path d="M14 3v5h5" /><path d="M9 17v-3M12 17v-6M15 17v-4" /></>,
 };
 
 function Icon({ d }: { d: ReactNode }) {
@@ -53,8 +60,18 @@ const NAV: { section?: string; items: NavItem[] }[] = [
     ],
   },
   {
-    section: 'Fedha',
-    items: [{ to: '/finance', label: 'Fedha za Chama', icon: I.wallet, perm: ['finance.read'] }],
+    // Mhasibu: uhasibu kamili · Meneja: ripoti tu (anaidhinisha kupitia Idhini)
+    section: 'Fedha na Uhasibu',
+    items: [
+      { to: '/accounting', label: 'Dashibodi ya fedha', icon: I.gauge, perm: ['accounting.manage'] },
+      { to: '/finance', label: 'Miamala na vocha', icon: I.wallet, perm: ['finance.record'] },
+      { to: '/sales', label: 'Mauzo ya tumbaku', icon: I.leaf, perm: ['sales.manage'] },
+      { to: '/ledger', label: 'Daftari kuu', icon: I.book, perm: ['accounting.manage'] },
+      { to: '/bank', label: 'Benki na usuluhishi', icon: I.bank, perm: ['accounting.manage'] },
+      { to: '/payroll', label: 'Mishahara', icon: I.payroll, perm: ['payroll.manage'] },
+      { to: '/fixed-assets', label: 'Mali za chama', icon: I.building, perm: ['accounting.manage'] },
+      { to: '/accounting/reports', label: 'Ripoti za fedha', icon: I.report, perm: ['accounting.read'] },
+    ],
   },
   {
     section: 'Usimamizi',
@@ -116,7 +133,7 @@ export function Layout() {
               <div key={i} style={{ display: 'contents' }}>
                 {g.section && <div className="nav-section">{g.section}</div>}
                 {items.map((it) => (
-                  <NavLink key={it.to} to={it.to} end={it.to === '/'} style={{ animationDelay: `${60 + n++ * 35}ms` }}>
+                  <NavLink key={it.to} to={it.to} end={it.to === '/' || it.to === '/accounting'} style={{ animationDelay: `${60 + n++ * 35}ms` }}>
                     <span className="nav-icon"><Icon d={it.icon} /></span>{it.to === '/approvals' && !decider ? 'Maombi yangu' : it.label}
                     {it.to === '/approvals' && decider && !!pending.data?.total && <span className="nav-count">{pending.data.total}</span>}
                   </NavLink>

@@ -9,6 +9,11 @@ import { Workspace } from './pages/Workspace';
 import { Approvals } from './pages/Approvals';
 import { Finance } from './pages/Finance';
 import { Purchases, PurchaseDetail } from './pages/Purchases';
+import { AccountingHome, FinancialReports, Ledger } from './pages/Accounting';
+import { Bank, Voucher } from './pages/Bank';
+import { BatchDetail, MarketDetail, Sales, SettlementStatement } from './pages/Sales';
+import { Payroll, PayrollRunDetail } from './pages/Payroll';
+import { Assets } from './pages/Assets';
 import { Members, MemberNew } from './pages/Members';
 import { MemberDetail } from './pages/MemberDetail';
 import { Estimates } from './pages/Estimates';
@@ -109,6 +114,18 @@ export default function App() {
             <Route index element={<Workspace />} />
             <Route path="approvals" element={<Need p={['approvals.read']}><Approvals /></Need>} />
             <Route path="finance" element={<Need p={['finance.read']}><Finance /></Need>} />
+            <Route path="accounting" element={<Need p={['accounting.read']}><AccountingHome /></Need>} />
+            <Route path="accounting/reports" element={<Need p={['accounting.read']}><FinancialReports /></Need>} />
+            <Route path="ledger" element={<Need p={['accounting.read']}><Ledger /></Need>} />
+            <Route path="bank" element={<Need p={['accounting.read']}><Bank /></Need>} />
+            <Route path="vouchers/:id" element={<Need p={['finance.read']}><Voucher /></Need>} />
+            <Route path="sales" element={<Need p={['sales.read']}><Sales /></Need>} />
+            <Route path="sales/markets/:id" element={<Need p={['sales.read']}><MarketDetail /></Need>} />
+            <Route path="sales/batches/:id" element={<Need p={['sales.read']}><BatchDetail /></Need>} />
+            <Route path="sales/settlements/:id" element={<Need p={['sales.read']}><SettlementStatement /></Need>} />
+            <Route path="payroll" element={<Need p={['payroll.read']}><Payroll /></Need>} />
+            <Route path="payroll/runs/:id" element={<Need p={['payroll.read']}><PayrollRunDetail /></Need>} />
+            <Route path="fixed-assets" element={<Need p={['accounting.read']}><Assets /></Need>} />
             <Route path="purchases" element={<Need p={['stock.read', 'finance.read']}><Purchases /></Need>} />
             <Route path="purchases/:id" element={<Need p={['stock.read', 'finance.read']}><PurchaseDetail /></Need>} />
             <Route path="members" element={<Members />} />

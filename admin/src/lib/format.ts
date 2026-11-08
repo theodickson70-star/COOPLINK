@@ -33,7 +33,8 @@ export const STATUS_LABEL: Record<string, string> = {
   ACTIVE: 'Hai', SUSPENDED: 'Amesimamishwa', EXITED: 'Ametoka', DECEASED: 'Marehemu',
   DRAFT: 'Rasimu', APPROVED: 'Imeidhinishwa', REJECTED: 'Imekataliwa',
   ISSUED: 'Imetolewa', CANCELLED: 'Imefutwa', PENDING: 'Inasubiri uthibitisho', PENDING_APPROVAL: 'Inasubiri idhini',
-  POSTED: 'Imekamilika', PARTIALLY_RECEIVED: 'Imepokelewa sehemu', RECEIVED: 'Imepokelewa',
+  POSTED: 'Imekamilika', PAID: 'Imelipwa', OPEN: 'Wazi', COMPLETED: 'Imekamilika', PARTIAL: 'Sehemu', PROCESSING: 'Inalipwa',
+  SUCCESS: 'Imelipwa', FAILED: 'Imeshindwa', SOLD: 'Limeuzwa', DISPOSED: 'Imeondolewa', DISPOSAL_PENDING: 'Inasubiri kuondolewa', PARTIALLY_RECEIVED: 'Imepokelewa sehemu', RECEIVED: 'Imepokelewa',
   PLANNING: 'Maandalizi', MARKETING: 'Masoko', CLOSED: 'Umefungwa',
 };
 
@@ -55,15 +56,18 @@ export const MOVE_LABEL: Record<string, string> = {
 
 export const STAFF_TITLE: Record<string, string> = { AMCOS_ADMIN: 'Meneja', ACCOUNTANT: 'Mhasibu', CLERK: 'Stokipa' };
 export const STAFF_DUTY: Record<string, string> = {
-  AMCOS_ADMIN: 'Anaidhinisha matumizi, malipo, manunuzi, marekebisho ya stoo na ugawaji wa pembejeo',
-  ACCOUNTANT: 'Anasimamia mapato, matumizi, malipo, akaunti na ripoti za fedha',
+  AMCOS_ADMIN: 'Anaidhinisha matumizi, malipo, mauzo, mishahara, journal, manunuzi na ugawaji wa pembejeo; anaona ripoti za fedha',
+  ACCOUNTANT: 'Anasimamia daftari kuu, mauzo ya tumbaku na makato, vocha na benki, mishahara, mali za chama na ripoti za fedha',
   CLERK: 'Anasimamia bidhaa, kupokea mzigo, ugawaji wa pembejeo na manunuzi',
 };
 export const APPROVAL_TYPE_LABEL: Record<string, string> = {
   MEMBER_REGISTRATION: 'Usajili wa mkulima', EXPENSE: 'Matumizi', FARMER_PAYMENT: 'Malipo kwa mkulima', SUPPLIER_PAYMENT: 'Malipo kwa mzabuni',
   PURCHASE: 'Manunuzi', STOCK_ADJUSTMENT: 'Marekebisho ya stoo', INPUT_ISSUE: 'Ugawaji wa pembejeo', REVERSAL: 'Kusahihisha muamala',
+  JOURNAL: 'Journal ya daftari kuu', TOBACCO_SALE: 'Mauzo ya tumbaku', PAYMENT_BATCH: 'Orodha ya malipo ya wakulima', TRANSFER: 'Uhamisho kati ya akaunti',
+  PAYROLL: 'Mishahara', ASSET_DISPOSAL: 'Kuondoa mali ya chama',
 };
 export const TXN_KIND_LABEL: Record<string, string> = {
   INCOME: 'Mapato', EXPENSE: 'Matumizi', FARMER_PAYMENT: 'Malipo kwa mkulima', SUPPLIER_PAYMENT: 'Malipo kwa mzabuni', REVERSAL: 'Kusahihisha',
+  TRANSFER: 'Uhamisho',
 };
 export const ACCOUNT_KIND_LABEL: Record<string, string> = { CASH: 'Fedha taslimu', BANK: 'Benki', MOBILE_MONEY: 'Simu (M-Pesa n.k.)' };

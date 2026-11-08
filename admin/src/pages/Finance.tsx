@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api, apiDownload, type Paged } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
 import { ACCOUNT_KIND_LABEL, APPROVAL_TYPE_LABEL, date, dateTime, num, TXN_KIND_LABEL, tsh } from '../lib/format';
 import { Alert, Badge, Button, Empty, Loading, MemberPicker, Modal, PageHead, Pager, Select, SelectField, TextField, type MemberLite } from '../components/ui';
 import { Kpi, Section, Tabs } from '../components/owner-ui';
+import { GlSelect, useChart } from './acc-common';
 
 interface Txn {
   id: string; txnNo: string; kind: string; direction: 'IN' | 'OUT'; category: string; accountId: string | null; accountName: string | null;
@@ -110,6 +111,9 @@ function TxnForm({ kind, onClose, onDone }: { kind: 'INCOME' | 'EXPENSE' | 'FARM
   const [member, setMember] = useState<MemberLite | null>(null);
   const [supplierId, setSupplierId] = useState('');
   const [prId, setPrId] = useState('');
+  const [contra, setContra] = useState('');
+  const { may } = useAuth();
+  const chart = useChart((kind === 'EXPENSE' || kind === 'INCOME') && may('accounting.read'));
   const { busy, error, run } = useAction();
   const catMap = kind === 'INCOME' ? cats.data?.income : kind === 'EXPENSE' ? cats.data?.expense : kind === 'FARMER_PAYMENT' ? cats.data?.farmerPayment : null;
   const needsMember = kind === 'FARMER_PAYMENT' || (kind === 'INCOME' && category === 'FARMER_REPAYMENT');
@@ -123,6 +127,7 @@ function TxnForm({ kind, onClose, onDone }: { kind: 'INCOME' | 'EXPENSE' | 'FARM
       amount, txnDate, description, reference: reference || null, payee: payee || null, accountId: accountId || null,
       ...(kind === 'SUPPLIER_PAYMENT' ? { supplierId, purchaseRequestId: prId || null } : { category }),
       ...(needsMember && member ? { memberId: member.id } : {}),
+      ...(contra && (kind === 'EXPENSE' || (kind === 'INCOME' && !['FARMER_REPAYMENT', 'MEMBER_FEES'].includes(category))) ? { contraGlAccountId: contra } : {}),
     };
     const r = await run(() => api<{ transaction: { txnNo: string; status: string } }>(path, { method: 'POST', body }));
     if (r) onDone(r.transaction.status === 'POSTED' ? `${r.transaction.txnNo} imerekodiwa` : r.transaction.status === 'APPROVED' ? `${r.transaction.txnNo} iko tayari kukamilishwa (manunuzi yameshaidhinishwa)` : `${r.transaction.txnNo} imetumwa kwa Meneja kwa idhini`);
@@ -145,6 +150,10 @@ function TxnForm({ kind, onClose, onDone }: { kind: 'INCOME' | 'EXPENSE' | 'FARM
         <TextField label="Namba ya risiti / kumbukumbu" value={reference} onChange={setReference} />
       </div>
       {needsMember && <MemberPicker label="Mkulima *" value={member} onChange={setMember} />}
+      {chart.data && (kind === 'EXPENSE' || (kind === 'INCOME' && !['FARMER_REPAYMENT', 'MEMBER_FEES'].includes(category))) && (
+        <GlSelect label="Akaunti ya daftari kuu (hiari)" value={contra} onChange={setContra} accounts={chart.data.data} placeholder="Kwa kundi (kiotomatiki)"
+          help={kind === 'EXPENSE' ? 'mf. 1500 kununua mali, 2410 kulipa PAYE, 2420 NSSF, 2300 ushuru wa Chama Kikuu, 2150 deni la pembejeo' : 'mf. 2500 mkopo uliopokelewa, 1250 marejesho ya madeni mengine'} />
+      )}
       <TextField label="Maelezo *" value={description} onChange={setDescription} />
     </Modal>
   );
@@ -162,7 +171,7 @@ function TxnDetail({ id, onClose, onChanged }: { id: string; onClose: () => void
   useEffect(() => { if (data?.transaction.accountId) setAccountId(data.transaction.accountId); }, [data]);
   if (loading || !data) return <Modal open title="Muamala" onClose={onClose}><Loading /></Modal>;
   const t = data.transaction;
-  const canPost = t.status === 'APPROVED' && may('finance.post');
+  const canPost = t.status === 'APPROVED' && may('finance.post') && !(t.kind === 'TRANSFER' && t.direction === 'IN');
   const canReverse = t.status === 'POSTED' && t.kind !== 'REVERSAL' && !t.reversed && !t.reversalPending && may('finance.record');
   return (
     <Modal open title={`${t.txnNo} · ${TXN_KIND_LABEL[t.kind]}`} onClose={onClose}
@@ -183,7 +192,9 @@ function TxnDetail({ id, onClose, onChanged }: { id: string; onClose: () => void
         {t.reference && <><dt>Kumbukumbu</dt><dd>{t.reference}</dd></>}
         <dt>Aliandaa</dt><dd>{t.createdBy}</dd>
         {t.postedAt && <><dt>Imekamilishwa</dt><dd>{dateTime(t.postedAt)}</dd></>}
+        <dt>{t.direction === 'IN' ? 'Risiti' : 'Vocha'}</dt><dd><Link to={`/vouchers/${t.id}`} onClick={onClose}>{t.direction === 'IN' ? 'Chapisha risiti →' : 'Chapisha vocha ya malipo →'}</Link></dd>
       </dl>
+      {t.kind === 'TRANSFER' && t.direction === 'IN' && t.status === 'APPROVED' && <Alert kind="warn">Huu ni upande wa kupokea wa uhamisho. Kamilisha upande wa kutoa fedha — pande zote mbili zitakamilika pamoja.</Alert>}
       {data.approvals.length > 0 && (
         <div className="table-wrap"><table className="table"><tbody>{data.approvals.map((a) => (
           <tr key={a.id}><td>{a.requestNo}</td><td>{APPROVAL_TYPE_LABEL[a.type]}</td><td><Badge status={a.status === 'PENDING' ? 'DRAFT' : a.status} label={a.status === 'PENDING' ? 'Inasubiri' : undefined} /></td><td className="muted">{a.decisionNote ?? ''}</td></tr>
