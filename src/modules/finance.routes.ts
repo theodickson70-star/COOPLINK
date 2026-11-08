@@ -39,7 +39,7 @@ const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Tarehe iwe YYYY-MM-DD')
 const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Dar_es_Salaam' });
 
 financeRouter.get('/categories', requireAmcosPerm('finance.read'), (_req, res) => {
-  res.json({ income: INCOME_CATEGORIES, expense: EXPENSE_CATEGORIES, farmerPayment: FARMER_PAYMENT_CATEGORIES, supplierPayment: SUPPLIER_PAYMENT_CATEGORIES });
+  res.json({ income: INCOME_CATEGORIES, expense: EXPENSE_CATEGORIES, farmerPayment: { PAYMENT: FARMER_PAYMENT_CATEGORIES.PAYMENT }, supplierPayment: SUPPLIER_PAYMENT_CATEGORIES });
 });
 
 // ------------------------------ AKAUNTI ------------------------------
@@ -269,6 +269,8 @@ financeRouter.post('/expenses', requireAmcosPerm('finance.record'), ah(async (re
 
 financeRouter.post('/farmer-payments', requireAmcosPerm('finance.record'), ah(async (req, res) => {
   const body = baseTxn.extend({ category: z.enum(['PAYMENT', 'CASH_LOAN']).default('PAYMENT'), memberId: z.string().uuid() }).parse(req.body);
+  // Mikopo ya fedha ina njia moja tu: Pesa ya kuni (kikomo kwa ekari, riba, orodha kwa idhini)
+  if (body.category === 'CASH_LOAN') throw badRequest('Mikopo ya fedha kwa wakulima inatolewa kupitia "Pesa ya kuni"');
   const member = await findMemberScoped(req, body.memberId);
   if (member.status !== 'ACTIVE') throw badRequest('Mkulima hayuko hai (ACTIVE)');
   const payee = `${member.firstName} ${member.lastName} (${member.memberNo})`;
@@ -487,7 +489,11 @@ financeRouter.get('/farmers', requireAmcosPerm('finance.read'), ah(async (req, r
   const sums = db.select({
     memberId: MLE.memberId,
     inputs: sql<string>`coalesce(sum(case when ${MLE.referenceType} = 'INPUT_ISSUE' then ${MLE.debit} - ${MLE.credit} else 0 end), 0)`.as('inputs'),
-    loans: sql<string>`coalesce(sum(case when ${MLE.type} = 'CASH_LOAN' then ${MLE.debit} else 0 end), 0)`.as('loans'),
+    // Pesa ya kuni na riba yake ni NETI: marekebisho (REVERSAL) ya mkopo/riba yanatolewa
+    loans: sql<string>`coalesce(sum(case when ${MLE.type} = 'CASH_LOAN' then ${MLE.debit}
+      when ${MLE.type} = 'REVERSAL' and ${MLE.referenceType} = 'FINANCE_TXN' and exists (select 1 from member_ledger_entries c where c.type = 'CASH_LOAN' and c.reference_id = ${MLE.referenceId}) then -${MLE.credit} else 0 end), 0)`.as('loans'),
+    interest: sql<string>`coalesce(sum(case when ${MLE.type} = 'LOAN_INTEREST' then ${MLE.debit}
+      when ${MLE.type} = 'REVERSAL' and ${MLE.referenceType} = 'KUNI_LOAN' then -${MLE.credit} else 0 end), 0)`.as('interest'),
     sales: sql<string>`coalesce(sum(case when ${MLE.type} = 'TOBACCO_SALE' then ${MLE.credit} else 0 end), 0)`.as('sales'),
     deductions: sql<string>`coalesce(sum(case when ${MLE.type} = 'DEDUCTION' then ${MLE.debit} else 0 end), 0)`.as('deductions'),
     repaid: sql<string>`coalesce(sum(case when ${MLE.type} = 'REPAYMENT' then ${MLE.credit} else 0 end), 0)`.as('repaid'),
@@ -502,7 +508,7 @@ financeRouter.get('/farmers', requireAmcosPerm('finance.read'), ah(async (req, r
   );
   const base = db.select({ id: M.id, memberNo: M.memberNo, firstName: M.firstName, lastName: M.lastName, village: M.village, status: M.status,
     groupName: sql<string | null>`(select g.name from member_group_members x join member_groups g on g.id = x.group_id where x.member_id = "members"."id" and x.left_at is null and g.status = 'ACTIVE' limit 1)`,
-    inputs: sums.inputs, loans: sums.loans, sales: sums.sales, deductions: sums.deductions, repaid: sums.repaid, paid: sums.paid, balance: sums.balance, lastAt: sums.lastAt })
+    inputs: sums.inputs, loans: sums.loans, interest: sums.interest, sales: sums.sales, deductions: sums.deductions, repaid: sums.repaid, paid: sums.paid, balance: sums.balance, lastAt: sums.lastAt })
     .from(M).innerJoin(sums, eq(sums.memberId, M.id)).where(where);
   const [rows, [tot]] = await Promise.all([
     base.orderBy(asc(sql`${sums.balance}`), asc(M.memberNo)).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
@@ -511,7 +517,7 @@ financeRouter.get('/farmers', requireAmcosPerm('finance.read'), ah(async (req, r
       .from(M).innerJoin(sums, eq(sums.memberId, M.id)).where(where),
   ]);
   res.json({
-    ...paged(rows.map((r) => ({ ...r, inputs: fmt2(r.inputs), loans: fmt2(r.loans), sales: fmt2(r.sales), deductions: fmt2(r.deductions), repaid: fmt2(r.repaid), paid: fmt2(r.paid), balance: fmt2(r.balance), amountOwed: fmt2(D(r.balance).lt(0) ? D(r.balance).neg() : 0) })), tot.n, q.page, q.pageSize),
+    ...paged(rows.map((r) => ({ ...r, inputs: fmt2(r.inputs), loans: fmt2(r.loans), interest: fmt2(r.interest), sales: fmt2(r.sales), deductions: fmt2(r.deductions), repaid: fmt2(r.repaid), paid: fmt2(r.paid), balance: fmt2(r.balance), amountOwed: fmt2(D(r.balance).lt(0) ? D(r.balance).neg() : 0) })), tot.n, q.page, q.pageSize),
     totals: { farmersOwing: fmt2(tot.owing), owedToFarmers: fmt2(tot.owed), inputs: fmt2(tot.inputs) },
   });
 }));

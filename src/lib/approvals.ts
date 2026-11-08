@@ -21,6 +21,7 @@ import { onPayroll } from './payroll';
 import { onAssetDisposal } from './assets';
 import { onOpeningBalance, onPeriodClose, onYearEndClose } from './closing';
 import { onGroupChange, onGroupRegistration } from './groups';
+import { onKuniBatch, reverseKuniPayment } from './kuni';
 
 type ApprovalType = (typeof schema.approvalTypeEnum.enumValues)[number];
 type Approval = typeof schema.approvalRequests.$inferSelect;
@@ -47,6 +48,7 @@ export const APPROVAL_LABEL: Record<ApprovalType, string> = {
   STOCK_RECEIPT: 'Mzigo wa pembejeo (idadi na bei)',
   GROUP_REGISTRATION: 'Usajili wa kikundi cha wakulima',
   GROUP_CHANGE: 'Mabadiliko ya wanakikundi',
+  KUNI_BATCH: 'Pesa ya kuni (mikopo ya wakulima)',
 };
 
 /** Marekebisho ya Meneja wakati wa kuidhinisha mzigo wa pembejeo (idadi na bei). */
@@ -202,6 +204,7 @@ async function reverseOne(tx: Tx, req: Request, a: Approval, orig: typeof schema
     if (p.batchId) await tx.update(schema.paymentBatches).set({ status: 'PARTIAL' }).where(eq(schema.paymentBatches.id, p.batchId));
   }
   await tx.update(schema.payrollRuns).set({ status: 'APPROVED', paidTxnId: null }).where(eq(schema.payrollRuns.paidTxnId, orig.id));
+  await reverseKuniPayment(tx, orig.id, req.auth!.userId, orig.txnNo);
   if (orig.category === 'MEMBER_FEES' && orig.memberId) {
     const M = schema.members;
     const [mem] = await tx.update(M).set({ entryFeePaid: false, entryFeePaidAt: null, entryFeeReference: null })
@@ -316,6 +319,7 @@ const HANDLERS: Record<ApprovalType, (tx: Tx, req: Request, a: Approval, o: Outc
   STOCK_RECEIPT: onStockReceipt,
   GROUP_REGISTRATION: onGroupRegistration,
   GROUP_CHANGE: onGroupChange,
+  KUNI_BATCH: onKuniBatch,
 };
 
 /** Meneja anaidhinisha au anakataa. Lazima awe wa chama hicho na asiwe aliyeanzisha ombi. */

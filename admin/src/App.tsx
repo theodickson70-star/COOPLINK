@@ -17,6 +17,7 @@ import { Assets } from './pages/Assets';
 import { Payables, Periods } from './pages/Periods';
 import { FarmerDebtDetail, FarmerDebts } from './pages/FarmerDebts';
 import { GroupDetail, Groups } from './pages/Groups';
+import { Kuni, KuniBatch } from './pages/Kuni';
 import { Members, MemberNew } from './pages/Members';
 import { MemberDetail } from './pages/MemberDetail';
 import { Estimates } from './pages/Estimates';
@@ -131,6 +132,8 @@ export default function App() {
             <Route path="accounting/periods" element={<Need p={['accounting.read']}><Periods /></Need>} />
             <Route path="groups" element={<Need p={['members.read']}><Groups /></Need>} />
             <Route path="groups/:id" element={<Need p={['members.read', 'finance.read']}><GroupDetail /></Need>} />
+            <Route path="kuni" element={<Need p={['finance.read']}><Kuni /></Need>} />
+            <Route path="kuni/batches/:id" element={<Need p={['finance.read']}><KuniBatch /></Need>} />
             <Route path="farmer-debts" element={<Need p={['finance.read']}><FarmerDebts /></Need>} />
             <Route path="farmer-debts/:id" element={<Need p={['finance.read']}><FarmerDebtDetail /></Need>} />
             <Route path="payables" element={<Need p={['accounting.read']}><Payables /></Need>} />

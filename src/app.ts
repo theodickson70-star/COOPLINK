@@ -29,6 +29,7 @@ import { salesRouter } from './modules/sales.routes';
 import { payrollRouter } from './modules/payroll.routes';
 import { assetsRouter } from './modules/assets.routes';
 import { groupsRouter } from './modules/groups.routes';
+import { kuniRouter } from './modules/kuni.routes';
 import { startupState } from './lib/startup';
 import { superAdminStatus } from './lib/super-admin';
 
@@ -79,6 +80,7 @@ export function createApp() {
   api.use('/seasons', seasonsRouter);
   api.use('/buyers', buyersRouter);
   api.use('/members', membersRouter);
+  api.use('/kuni', kuniRouter);                 // Pesa ya kuni (mikopo ya fedha kwa wakulima)
   api.use('/groups', groupsRouter);              // Vikundi vya wakulima (dhamana ya pamoja)
   api.use('/estimates', estimatesRouter);
   api.use('/inputs', inputsRouter);

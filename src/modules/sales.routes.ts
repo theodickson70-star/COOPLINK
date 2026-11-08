@@ -21,6 +21,7 @@ import { createApproval } from '../lib/approvals';
 import { accountBalance, lockAccount, nextTxnNo } from '../lib/finance';
 import { computeSettlement, memberDebts, ruleGlCode } from '../lib/tobacco';
 import { activeGroups, groupMembers } from '../lib/groups';
+import { destinationOf } from '../lib/payout';
 import { currentSeason } from './seasons.routes';
 import { todayStr } from './accounting.routes';
 import { toCsv } from './owner/common';
@@ -401,11 +402,6 @@ salesRouter.get('/settlements/:id', requireAmcosPerm('sales.read'), ah(async (re
 }));
 
 // ------------------------------ ORODHA YA MALIPO (PAYMENT SHEET) ------------------------------
-function destinationOf(m: typeof M.$inferSelect): { method: 'MOBILE_MONEY' | 'BANK' | 'CASH'; destination: string; provider: string | null } {
-  if (m.preferredPayment === 'BANK' && m.bankAccountNumber) return { method: 'BANK', destination: `${m.bankName ?? ''} ${m.bankAccountNumber}`.trim(), provider: m.bankName };
-  if (m.preferredPayment !== 'CASH' && m.mobileMoneyNumber) return { method: 'MOBILE_MONEY', destination: m.mobileMoneyNumber, provider: m.mobileMoneyProvider };
-  return { method: 'CASH', destination: 'Taslimu', provider: null };
-}
 
 salesRouter.post('/markets/:id/payment-batch', requireAmcosPerm('sales.manage'), ah(async (req, res) => {
   const { id } = uuidParam.parse(req.params);

@@ -64,6 +64,13 @@
       "when": 1794142808267,
       "tag": "0008_member_groups",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794164399733,
+      "tag": "0009_pesa_ya_kuni",
+      "breakpoints": true
     }
   ]
 }

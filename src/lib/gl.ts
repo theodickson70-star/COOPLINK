@@ -52,6 +52,7 @@ export const DEFAULT_CHART: ChartRow[] = [
   { code: '4200', name: 'Ada na viingilio vya wanachama', type: 'INCOME' },
   { code: '4300', name: 'Ruzuku na misaada', type: 'INCOME' },
   { code: '4400', name: 'Riba ya benki', type: 'INCOME' },
+  { code: '4450', name: 'Riba ya pesa ya kuni (mikopo ya wakulima)', type: 'INCOME' },
   { code: '4600', name: 'Faida ya pembejeo zilizogawiwa', type: 'INCOME' },
   { code: '4900', name: 'Mapato mengine', type: 'INCOME' },
   // MATUMIZI (EXPENSES)

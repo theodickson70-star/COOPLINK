@@ -11,7 +11,7 @@ import { Badge, Empty, Loading, PageHead, Pager } from '../components/ui';
 import { Kpi, Section, Tabs } from '../components/owner-ui';
 import { Amt, DocHead, PrintButton, Signatures } from './acc-common';
 
-interface Row { id: string; groupName: string | null; memberNo: string; firstName: string; lastName: string; village: string | null; status: string; inputs: string; loans: string; sales: string; deductions: string; repaid: string; paid: string; balance: string; amountOwed: string; lastAt: string }
+interface Row { id: string; groupName: string | null; interest: string; memberNo: string; firstName: string; lastName: string; village: string | null; status: string; inputs: string; loans: string; sales: string; deductions: string; repaid: string; paid: string; balance: string; amountOwed: string; lastAt: string }
 
 export function FarmerDebts() {
   const [params] = useSearchParams();
@@ -53,12 +53,12 @@ export function FarmerDebts() {
         <div className="toolbar"><input className="input" placeholder="Tafuta jina, namba au kijiji…" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} aria-label="Tafuta mkulima" /></div>
         {loading && !data ? <Loading /> : !data?.data.length ? <Empty>Hakuna mkulima kwenye orodha hii.</Empty> : (
           <div className="table-wrap"><table className="table">
-            <thead><tr><th>Mkulima</th><th className="num">Pembejeo</th><th className="num">Mikopo ya fedha</th><th className="num">Mauzo</th><th className="num">Makato</th><th className="num">Malipo / marejesho</th><th className="num">Salio</th></tr></thead>
+            <thead><tr><th>Mkulima</th><th className="num">Pembejeo</th><th className="num">Pesa ya kuni (+riba)</th><th className="num">Mauzo</th><th className="num">Makato</th><th className="num">Malipo / marejesho</th><th className="num">Salio</th></tr></thead>
             <tbody>{data.data.map((r) => (
               <tr key={r.id} onClick={() => nav(`/farmer-debts/${r.id}`)} style={{ cursor: 'pointer' }}>
                 <td><strong>{r.firstName} {r.lastName}</strong><div className="muted" style={{ fontSize: 12 }}>{r.memberNo}{r.village ? ` · ${r.village}` : ''}{r.groupName ? ` · Kikundi ${r.groupName}` : ''}</div></td>
                 <td className="num">{Number(r.inputs) ? tsh(r.inputs) : '—'}</td>
-                <td className="num">{Number(r.loans) ? tsh(r.loans) : '—'}</td>
+                <td className="num">{Number(r.loans) ? tsh(r.loans) : '—'}{Number(r.interest) > 0 && <div className="muted" style={{ fontSize: 12 }}>+ riba {tsh(r.interest)}</div>}</td>
                 <td className="num">{Number(r.sales) ? tsh(r.sales) : '—'}</td>
                 <td className="num">{Number(r.deductions) ? tsh(r.deductions) : '—'}</td>
                 <td className="num">{Number(r.paid) + Number(r.repaid) ? tsh(Number(r.paid) + Number(r.repaid)) : '—'}</td>

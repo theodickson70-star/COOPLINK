@@ -28,6 +28,7 @@ export function entityLink(a: Pick<Approval, 'entityType' | 'entityId'>) {
   if (a.entityType === 'PayrollRun') return `/payroll/runs/${a.entityId}`;
   if (a.entityType === 'FixedAsset') return '/fixed-assets';
   if (a.entityType === 'MemberGroup') return `/groups/${a.entityId}`;
+  if (a.entityType === 'KuniBatch') return `/kuni/batches/${a.entityId}`;
   return null;
 }
 
@@ -147,6 +148,10 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
         <dl className="dl"><dt>Hadi tarehe</dt><dd>{p.closeDate}</dd><dt>Mapato</dt><dd>{tsh(p.totals.income)}</dd><dt>Matumizi</dt><dd>{tsh(p.totals.expense)}</dd><dt>Ziada → 3200</dt><dd><strong>{tsh(p.totals.surplus)}</strong></dd></dl>
       )}
       {(a.type === 'PERIOD_CLOSE' || a.type === 'YEAR_END_CLOSE') && <Alert kind="warn">Ukiidhinisha, vitabu vitafungwa hadi {p?.lockedThrough ?? p?.closeDate}: hakuna muamala wala journal wa tarehe hiyo au kabla yake utakaoruhusiwa. Haitenguliwi.{p?.openTransactions ? ` Miamala ${p.openTransactions} ya kipindi hicho bado haijakamilika.` : ''}</Alert>}
+      {a.type === 'KUNI_BATCH' && a.payload && (() => { const k = a.payload as { farmers: number; total: string; interest: string; rate: string; amountPerAcre: string }; return (
+        <dl className="dl"><dt>Wakulima</dt><dd>{k.farmers}</dd><dt>Pesa ya kuni</dt><dd><strong>{tsh(k.total)}</strong></dd><dt>Riba ({Number(k.rate)}%)</dt><dd>{tsh(k.interest)}</dd><dt>Kikomo kwa ekari</dt><dd>{tsh(k.amountPerAcre)}</dd></dl>
+      ); })()}
+      {a.type === 'KUNI_BATCH' && <Alert kind="warn">Ukiidhinisha, Mhasibu atatuma pesa kwenye akaunti za wakulima. Mkopo na riba vitakatwa kwenye mauzo ya tumbaku pamoja na deni la pembejeo.</Alert>}
       {a.type === 'GROUP_REGISTRATION' && p?.members && (
         <div className="table-wrap"><table className="table"><tbody>{p.members.map((m) => <tr key={m.memberNo}><td>{m.name}</td><td className="muted">{m.memberNo}</td></tr>)}</tbody></table></div>
       )}

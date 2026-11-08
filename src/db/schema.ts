@@ -57,6 +57,7 @@ export const ledgerEntryTypeEnum = pgEnum('ledger_entry_type', [
   'OPENING_BALANCE',
   'REPAYMENT',       // Mkulima amerejesha deni kwa fedha taslimu (credit)
   'GROUP_GUARANTEE', // Deni limelipwa na wanakikundi wenzake (credit kwa mdaiwa)
+  'LOAN_INTEREST',   // Riba ya pesa ya kuni (debit)
 ]);
 export const marketStatusEnum = pgEnum('market_status', ['SCHEDULED', 'OPEN', 'CLOSED', 'CANCELLED']);
 export const baleStatusEnum = pgEnum('bale_status', ['REGISTERED', 'GRADED', 'SOLD', 'REJECTED']);
@@ -568,6 +569,7 @@ export const approvalTypeEnum = pgEnum('approval_type', [
   'OPENING_BALANCE', 'PERIOD_CLOSE', 'YEAR_END_CLOSE',
   'STOCK_RECEIPT',
   'GROUP_REGISTRATION', 'GROUP_CHANGE',
+  'KUNI_BATCH',
 ]);
 export const approvalStatusEnum = pgEnum('approval_status', ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']);
 export const financeAccountKindEnum = pgEnum('finance_account_kind', ['CASH', 'BANK', 'MOBILE_MONEY']);
@@ -1137,6 +1139,60 @@ export const memberGroupMembers = pgTable('member_group_members', {
   // mkulima mmoja yuko kwenye kikundi kimoja tu kwa wakati mmoja
   uniqueIndex('member_one_active_group').on(t.memberId).where(sql`left_at is null`),
 ]);
+
+// =====================================================================
+//  PESA YA KUNI — mikopo ya fedha kwa wakulima (kuandaa kuni za kukaushia tumbaku)
+//  Kikomo: ekari za makisio yaliyoidhinishwa x kiasi kwa ekari. Riba: asilimia moja kwa msimu.
+//  Mhasibu anaandaa orodha -> Meneja anaidhinisha -> pesa zinatumwa kwenye akaunti za wakulima
+//  -> Mhasibu anathibitisha waliolipwa. Deni (mkopo + riba) linakatwa kwenye mauzo pamoja na pembejeo.
+// =====================================================================
+export const kuniSettings = pgTable('kuni_settings', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  seasonId: uuid().notNull().references(() => seasons.id),
+  interestRate: numeric({ precision: 6, scale: 3 }).notNull().default('0'), // % kwa msimu
+  amountPerAcre: money().notNull().default('0'),                           // kikomo: TZS kwa ekari
+  isOpen: boolean().notNull().default(true),
+  updatedById: uuid(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex().on(t.amcosId, t.seasonId)]);
+
+export const kuniBatches = pgTable('kuni_batches', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  seasonId: uuid().notNull().references(() => seasons.id),
+  batchNo: text().notNull(),
+  status: paymentBatchStatusEnum().notNull().default('DRAFT'),
+  interestRate: numeric({ precision: 6, scale: 3 }).notNull(),
+  totalAmount: money().notNull(),
+  totalInterest: money().notNull(),
+  approvalId: uuid(),
+  notes: text(),
+  createdById: uuid(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex().on(t.amcosId, t.batchNo)]);
+
+export const kuniLoans = pgTable('kuni_loans', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  batchId: uuid().notNull().references(() => kuniBatches.id),
+  seasonId: uuid().notNull().references(() => seasons.id),
+  memberId: uuid().notNull().references(() => members.id),
+  amount: money().notNull(),     // mkopo (principal)
+  interest: money().notNull(),   // riba (inaongezwa kwenye deni pesa zikitumwa)
+  method: paymentMethodEnum().notNull(),
+  provider: text(),
+  destination: text().notNull(),
+  status: paymentStatusEnum().notNull().default('PENDING'),
+  financeTxnId: uuid(),
+  providerRef: text(),
+  paidAt: timestamp({ withTimezone: true }),
+  failureReason: text(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [index().on(t.batchId), index().on(t.amcosId, t.seasonId, t.memberId)]);
 
 // ---------------------------------------------------------------------
 //  RELATIONS (kwa db.query.*)

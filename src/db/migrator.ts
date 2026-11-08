@@ -66,6 +66,10 @@ const MARKERS: Record<string, string[]> = {
     "select to_regclass('public.member_group_members') is not null",
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'settlement_lines' and column_name = 'beneficiary_member_id')",
   ],
+  '0009_pesa_ya_kuni': [
+    "select to_regclass('public.kuni_settings') is not null",
+    "select to_regclass('public.kuni_loans') is not null",
+  ],
 };
 
 interface JournalEntry { tag: string; when: number }
