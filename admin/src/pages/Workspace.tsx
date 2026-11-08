@@ -134,41 +134,6 @@ function Manager({ d }: { d: Summary }) {
   );
 }
 
-function Accountant({ d }: { d: Summary }) {
-  const f = d.finance!;
-  const budgetPct = f.budget && Number(f.budget.total) > 0 ? Math.round((Number(f.budget.spent) / Number(f.budget.total)) * 100) : null;
-  return (
-    <div className="stack">
-      <div className="grid grid-kpi">
-        <Kpi tone="dark" label="Fedha zilizopo (akaunti zote)" value={tsh(f.cashTotal)} />
-        <Kpi label="Mapato ya msimu" value={tsh(f.seasonIncome)} />
-        <Kpi label="Matumizi na malipo ya msimu" value={tsh(f.seasonOut)} />
-        <Kpi tone={f.toPost ? 'gold' : undefined} label="Yameidhinishwa — kamilisha" value={num(f.toPost)} hint={tsh(f.toPostAmount)} />
-        <Kpi tone={f.awaitingApproval ? 'warn' : undefined} label="Yanasubiri idhini ya Meneja" value={num(f.awaitingApproval)} hint={tsh(f.awaitingApprovalAmount)} />
-        <Kpi label="Madeni ya wakulima" value={tsh(f.farmerDebts)} hint={`Wakulima ${num(f.farmersOwing)} · chama kinadaiwa ${tsh(f.owedToFarmers)}`} />
-      </div>
-      <div className="grid grid-2">
-        <Section pad={false} title="Akaunti (cash & bank)" actions={<Link to="/finance">Cashbook →</Link>}>
-          {f.accounts.length === 0 ? <Empty>Ongeza akaunti kwenye Fedha → Akaunti.</Empty> : (
-            <div className="table-wrap"><table className="table"><tbody>{f.accounts.map((a) => (
-              <tr key={a.id}><td>{a.name}</td><td className="num"><strong>{tsh(a.balance)}</strong></td></tr>
-            ))}</tbody></table></div>
-          )}
-        </Section>
-        <Section title="Bajeti ya msimu">
-          {f.budget && Number(f.budget.total) > 0 ? (
-            <>
-              <div className="progress" style={{ height: 12 }}><span style={{ width: `${Math.min(100, budgetPct ?? 0)}%`, background: (budgetPct ?? 0) > 100 ? '#B4413C' : 'var(--green)' }} /></div>
-              <p style={{ marginBottom: 0 }}>{tsh(f.budget.spent)} kati ya {tsh(f.budget.total)} ({budgetPct}%)</p>
-            </>
-          ) : <p className="muted" style={{ margin: 0 }}>Bajeti haijawekwa. Iweke kwenye Fedha → Bajeti.</p>}
-        </Section>
-      </div>
-      <Pending d={d} title="Maombi yangu" />
-    </div>
-  );
-}
-
 function Storekeeper({ d }: { d: Summary }) {
   const s = d.stock!;
   return (

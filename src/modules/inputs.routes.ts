@@ -53,6 +53,7 @@ const itemBody = z.object({
 
 inputsRouter.get(
   '/items',
+  requireAmcosPerm('stock.read'),
   ah(async (req, res) => {
     const { active } = z.object({ active: z.enum(['true', 'false']).optional() }).parse(req.query);
     const rows = await db.select().from(items)
@@ -96,6 +97,7 @@ inputsRouter.patch(
 // ------------------------------ BEI KWA MSIMU ------------------------------
 inputsRouter.get(
   '/prices',
+  requireAmcosPerm('stock.read'),
   ah(async (req, res) => {
     const { seasonId } = z.object({ seasonId: z.string().uuid().optional() }).parse(req.query);
     const season = seasonId ? { id: seasonId } : await currentSeason();
@@ -134,6 +136,7 @@ inputsRouter.put(
 // ------------------------------ STOO ------------------------------
 inputsRouter.get(
   '/stock',
+  requireAmcosPerm('stock.read'),
   ah(async (req, res) => {
     const { seasonId } = z.object({ seasonId: z.string().uuid().optional() }).parse(req.query);
     const season = seasonId ? { id: seasonId } : await currentSeason();
@@ -165,6 +168,7 @@ inputsRouter.get(
 
 inputsRouter.get(
   '/stock/movements',
+  requireAmcosPerm('stock.read'),
   ah(async (req, res) => {
     const q = paginationQuery.extend({ seasonId: z.string().uuid().optional(), inputItemId: z.string().uuid().optional() }).parse(req.query);
     const where = and(
@@ -256,6 +260,7 @@ async function loadIssue(id: string) {
 
 inputIssuesRouter.get(
   '/',
+  requireAmcosPerm('stock.read'),
   ah(async (req, res) => {
     const q = paginationQuery
       .extend({ seasonId: z.string().uuid().optional(), memberId: z.string().uuid().optional(), status: z.enum(schema.inputIssueStatusEnum.enumValues).optional() })
@@ -281,6 +286,7 @@ inputIssuesRouter.get(
 
 inputIssuesRouter.get(
   '/:id',
+  requireAmcosPerm('stock.read'),
   ah(async (req, res) => {
     const { id } = uuidParam.parse(req.params);
     const [scoped] = await db.select({ id: issues.id }).from(issues).where(and(eq(issues.id, id), amcosScope(req, issues.amcosId)));

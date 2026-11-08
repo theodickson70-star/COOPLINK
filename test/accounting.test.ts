@@ -104,6 +104,16 @@ test('Ruhusa: Mhasibu ndiye anaandika uhasibu; Meneja ripoti na idhini tu; Stoki
   assert.equal((await call('POST', '/api/v1/sales/markets', manager, { marketDate: today, buyerName: 'X', exchangeRate: '2500' })).status, 403);
   assert.equal((await call('POST', '/api/v1/payroll/employees', manager, { fullName: 'Juma', position: 'Mlinzi', basicSalary: '300000' })).status, 403);
   assert.equal((await call('POST', '/api/v1/assets', storekeeper, { name: 'Mizani', category: 'EQUIPMENT', acquisitionDate: today, cost: '100000', usefulLifeMonths: 12 })).status, 403);
+  // Mhasibu: fedha tu — hana wakulima, stoo wala kumbukumbu (v0.4.1)
+  for (const path of ['/api/v1/members', '/api/v1/estimates', '/api/v1/inputs/items', '/api/v1/inputs/stock', '/api/v1/input-issues', '/api/v1/audit-logs', '/api/v1/reports/member-balances']) {
+    assert.equal((await call('GET', path, accountant)).status, 403, `Mhasibu hazuiwi: ${path}`);
+  }
+  assert.equal((await call('POST', '/api/v1/members', accountant, { firstName: 'X', lastName: 'Y', gender: 'MALE' })).status, 403);
+  const look = await call('GET', '/api/v1/members/lookup?search=a', accountant);
+  assert.equal(look.status, 200, 'Mhasibu anatafuta mkulima kwa malipo');
+  assert.ok(look.body.data.every((x: any) => x.nidaNumber === undefined && x.phone === undefined), 'Taarifa binafsi hazitoki');
+  assert.equal((await call('GET', '/api/v1/audit-logs', manager)).status, 403, 'Kumbukumbu ni ya Super Admin pekee');
+  assert.equal((await call('GET', '/api/v1/audit-logs', owner)).status, 200);
   const me = (await call('GET', '/api/v1/auth/me', manager)).body.user;
   assert.ok(me.amcosPermissions.includes('accounting.read') && !me.amcosPermissions.includes('accounting.manage'));
 });
@@ -230,7 +240,7 @@ test('Mauzo ya tumbaku: mabelo -> makato -> idhini -> ledger + daftari kuu -> or
   assert.equal(bal(rows, '2300'), '11500.00');
   assert.equal(bal(rows, '4100'), '10000.00');
   assert.equal(bal(rows, '1200'), '0.00', 'Deni la pembejeo limerejeshwa kwa mauzo');
-  const memA = (await call('GET', `/api/v1/members/${farmerA.id}`, accountant)).body;
+  const memA = (await call('GET', `/api/v1/members/${farmerA.id}`, manager)).body;
   assert.equal(memA.balance.balance, '504500.00', 'Ledger ya mkulima: anadai malipo halisi');
   await assertBooksBalance();
 
@@ -258,7 +268,7 @@ test('Mauzo ya tumbaku: mabelo -> makato -> idhini -> ledger + daftari kuu -> or
 
   rows = await gl();
   assert.equal(bal(rows, '2200'), '0.00', 'Wakulima wote wamelipwa');
-  assert.equal((await call('GET', `/api/v1/members/${farmerA.id}`, accountant)).body.balance.balance, '0.00');
+  assert.equal((await call('GET', `/api/v1/members/${farmerA.id}`, manager)).body.balance.balance, '0.00');
   const market = (await call('GET', `/api/v1/sales/markets/${marketId}`, manager)).body;
   assert.ok(market.settlements.every((s: any) => s.status === 'PAID'));
   // Mnunuzi analipa chama

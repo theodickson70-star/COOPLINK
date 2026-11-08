@@ -13,7 +13,7 @@ export type Permission =
 
 /** Ruhusa za watumishi wa AMCOS (zinatoka backend kwenye /auth/me; backend inazikagua tena kila ombi). */
 export type AmcosPermission =
-  | 'members.read' | 'members.write' | 'members.approve' | 'estimates.write' | 'estimates.approve' | 'ledger.read'
+  | 'members.read' | 'members.lookup' | 'members.write' | 'members.approve' | 'estimates.write' | 'estimates.approve' | 'ledger.read'
   | 'stock.read' | 'products.manage' | 'prices.manage' | 'stock.receive' | 'stock.adjust.request' | 'issues.request' | 'issues.cancel'
   | 'suppliers.manage' | 'purchases.request' | 'purchases.receive'
   | 'finance.read' | 'finance.record' | 'finance.post' | 'finance.accounts'

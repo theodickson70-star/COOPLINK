@@ -10,6 +10,7 @@ import type { Role } from '../middleware/auth';
 export const AMCOS_PERMISSIONS = {
   // Wakulima
   'members.read': 'Kuona wakulima',
+  'members.lookup': 'Kutafuta mkulima (jina na namba tu) kwa ajili ya malipo',
   'members.write': 'Kusajili na kuhariri wakulima',
   'members.approve': 'Kuthibitisha wakulima na kubadilisha hali yao',
   'estimates.write': 'Kuandika makisio',
@@ -43,7 +44,7 @@ export const AMCOS_PERMISSIONS = {
   'approvals.decide': 'Kuidhinisha au kukataa maombi',
   // Usimamizi
   'staff.read': 'Kuona watumishi wa chama',
-  'audit.read': 'Kuona audit log ya chama',
+  'audit.read': 'Kuona kumbukumbu (audit log) — Super Admin pekee',
   'reports.finance': 'Ripoti za fedha',
   'reports.stock': 'Ripoti za stoo',
 } as const;
@@ -55,31 +56,31 @@ export type AmcosStaffRole = (typeof AMCOS_STAFF_ROLES)[number];
 export const STAFF_TITLE: Record<AmcosStaffRole, string> = { AMCOS_ADMIN: 'Meneja', ACCOUNTANT: 'Mhasibu', CLERK: 'Stokipa' };
 export const isAmcosStaff = (r: Role): r is AmcosStaffRole => (AMCOS_STAFF_ROLES as readonly Role[]).includes(r);
 
-const READ: AmcosPermission[] = ['members.read', 'ledger.read', 'stock.read', 'finance.read', 'approvals.read', 'staff.read', 'audit.read', 'reports.finance', 'reports.stock', 'accounting.read', 'sales.read', 'payroll.read'];
+const READ: AmcosPermission[] = ['members.read', 'members.lookup', 'ledger.read', 'stock.read', 'finance.read', 'approvals.read', 'staff.read', 'reports.finance', 'reports.stock', 'accounting.read', 'sales.read', 'payroll.read'];
 
 export const AMCOS_ROLE_PERMISSIONS: Partial<Record<Role, AmcosPermission[]>> = {
   AMCOS_ADMIN: [
-    'members.read', 'members.write', 'members.approve', 'estimates.write', 'estimates.approve', 'ledger.read',
+    'members.read', 'members.lookup', 'members.write', 'members.approve', 'estimates.write', 'estimates.approve', 'ledger.read',
     'stock.read', 'prices.manage', 'issues.cancel',
-    'finance.read', 'approvals.read', 'approvals.decide', 'staff.read', 'audit.read', 'reports.finance', 'reports.stock',
+    'finance.read', 'approvals.read', 'approvals.decide', 'staff.read', 'reports.finance', 'reports.stock',
     // Meneja: ripoti na idhini tu — haandiki journal, vocha wala mishahara
     'accounting.read', 'sales.read', 'payroll.read',
   ],
+  // Mhasibu: fedha na uhasibu TU (hana wakulima, stoo wala kumbukumbu). Anatafuta mkulima kwa malipo kupitia members.lookup.
   ACCOUNTANT: [
-    'members.read', 'members.write', 'estimates.write', 'ledger.read',
-    'stock.read',
+    'members.lookup',
     'finance.read', 'finance.record', 'finance.post', 'finance.accounts',
     'accounting.read', 'accounting.manage', 'sales.read', 'sales.manage', 'payroll.read', 'payroll.manage',
-    'approvals.read', 'audit.read', 'reports.finance', 'reports.stock',
+    'approvals.read', 'reports.finance',
   ],
   CLERK: [
-    'members.read', 'members.write', 'estimates.write',
+    'members.read', 'members.lookup', 'members.write', 'estimates.write',
     'stock.read', 'products.manage', 'stock.receive', 'stock.adjust.request', 'issues.request',
     'suppliers.manage', 'purchases.request', 'purchases.receive',
     'approvals.read', 'reports.stock',
   ],
   // Kusoma tu: Owner (anaangalia vyama vyote), Chama Kikuu, na watazamaji wa zamani
-  SUPER_ADMIN: READ,
+  SUPER_ADMIN: [...READ, 'audit.read'], // kumbukumbu (audit) ni ya Super Admin pekee
   UNION_ADMIN: READ,
   UNION_VIEWER: READ,
   AMCOS_VIEWER: READ,

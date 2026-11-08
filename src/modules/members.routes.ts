@@ -77,8 +77,27 @@ export async function findMemberScoped(req: Request, id: string) {
   return row;
 }
 
+/** Kutafuta mkulima kwa malipo (Mhasibu): jina, namba na kijiji tu — hakuna taarifa binafsi. */
+membersRouter.get(
+  '/lookup',
+  requireAmcosPerm('members.lookup'),
+  ah(async (req, res) => {
+    const q = paginationQuery.extend({ search: z.string().trim().optional(), status: z.enum(schema.memberStatusEnum.enumValues).optional() }).parse(req.query);
+    const s = q.search ? `%${q.search}%` : null;
+    const where = and(amcosScope(req, m.amcosId), q.status ? eq(m.status, q.status) : undefined,
+      s ? or(ilike(m.firstName, s), ilike(m.lastName, s), ilike(m.memberNo, s), ilike(m.phone, s)) : undefined);
+    const cols = { id: m.id, memberNo: m.memberNo, firstName: m.firstName, lastName: m.lastName, village: m.village, status: m.status };
+    const [rows, [{ total }]] = await Promise.all([
+      db.select(cols).from(m).where(where).orderBy(asc(m.lastName), asc(m.firstName)).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
+      db.select({ total: count() }).from(m).where(where),
+    ]);
+    res.json(paged(rows, total, q.page, q.pageSize));
+  }),
+);
+
 membersRouter.get(
   '/',
+  requireAmcosPerm('members.read'),
   ah(async (req, res) => {
     const q = paginationQuery
       .extend({
@@ -143,6 +162,7 @@ membersRouter.post(
 
 membersRouter.get(
   '/:id',
+  requireAmcosPerm('members.read'),
   ah(async (req, res) => {
     const { id } = uuidParam.parse(req.params);
     const member = await findMemberScoped(req, id);
@@ -273,6 +293,7 @@ membersRouter.get(
 // Rekodi za karibuni za mwanachama (kwa ukurasa wa mwanachama)
 membersRouter.get(
   '/:id/activity',
+  requireAmcosPerm('members.read'),
   ah(async (req, res) => {
     const { id } = uuidParam.parse(req.params);
     const member = await findMemberScoped(req, id);
@@ -290,6 +311,7 @@ const MAX_PHOTO = 400 * 1024; // baada ya kupunguzwa kwenye kifaa, picha ni ~30-
 
 membersRouter.get(
   '/:id/photo',
+  requireAmcosPerm('members.read'),
   ah(async (req, res) => {
     const { id } = uuidParam.parse(req.params);
     await findMemberScoped(req, id);

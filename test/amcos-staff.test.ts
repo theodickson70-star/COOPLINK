@@ -148,7 +148,7 @@ test('Kila cheo kina ruhusa zake tu (backend)', async () => {
   const ws = async (t: string) => (await call('GET', '/api/v1/workspace/summary', t)).body;
   const [m, a, s] = [await ws(A.manager), await ws(A.accountant), await ws(A.storekeeper)];
   assert.equal(m.title, 'Meneja'); assert.ok(m.finance && m.stock && m.approvals);
-  assert.equal(a.title, 'Mhasibu'); assert.ok(a.finance && a.stock);
+  assert.equal(a.title, 'Mhasibu'); assert.ok(a.finance); assert.equal(a.stock, undefined, 'Mhasibu haoni stoo');
   assert.equal(s.title, 'Stokipa'); assert.equal(s.finance, undefined); assert.ok(s.stock);
 });
 
@@ -228,7 +228,7 @@ test('Stokipa hawezi kuidhinisha marekebisho; stoo haibadiliki kabla ya idhini',
   const iAp = await pendingFor(A.manager, iss.body.issue.id);
   assert.equal((await call('POST', `/api/v1/approvals/${iAp.id}/decide`, A.manager, { decision: 'APPROVED', note: 'Kulingana na makisio' })).status, 200);
   assert.equal(await stockOf(A.storekeeper, itemId), '35.00');
-  assert.equal((await call('GET', `/api/v1/members/${mem.body.member.id}`, A.accountant)).body.balance.amountOwed, '160000.00');
+  assert.equal((await call('GET', `/api/v1/members/${mem.body.member.id}`, A.manager)).body.balance.amountOwed, '160000.00');
 });
 
 // 5 ------------------------------------------------------------------

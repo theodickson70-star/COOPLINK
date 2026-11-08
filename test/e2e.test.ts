@@ -186,7 +186,8 @@ test('pembejeo: mkopo -> ledger, stoo, idempotency, kufuta kwa REVERSAL', async 
   bal = (await call('GET', `/api/v1/members/${memberId}`, katibu)).body.balance;
   assert.equal(bal.balance, '0.00');
   assert.equal((await call('GET', `/api/v1/members/${memberId}/statement`, clerk)).status, 403);
-  const st = await call('GET', `/api/v1/members/${memberId}/statement`, accountant);
+  assert.equal((await call('GET', `/api/v1/members/${memberId}/statement`, accountant)).status, 403, 'Mhasibu haoni wakulima');
+  const st = await call('GET', `/api/v1/members/${memberId}/statement`, katibu);
   assert.deepEqual(st.body.entries.map((e: any) => e.type), ['INPUT_LOAN', 'REVERSAL'], 'Historia inabaki');
   assert.equal(st.body.entries[1].runningBalance, '0.00');
   const stockFinal = (await call('GET', '/api/v1/inputs/stock', clerk)).body.data.find((s: any) => s.inputItemId === npk.id).balance;
@@ -246,17 +247,21 @@ test('ripoti na audit log', async () => {
   const s = await call('GET', '/api/v1/reports/season-summary', katibu);
   assert.equal(s.status, 200);
   assert.ok(Number(s.body.inputs.value) > 0);
-  const b = await call('GET', '/api/v1/reports/member-balances?onlyOwing=true', accountant);
+  const b = await call('GET', '/api/v1/reports/member-balances?onlyOwing=true', katibu);
   assert.equal(b.status, 200);
   assert.ok(b.body.data.every((r: any) => Number(r.balance) < 0));
   const u = await call('GET', '/api/v1/reports/season-summary', unionAdmin);
   assert.equal(u.status, 200);
 
-  const logs = await call('GET', `/api/v1/audit-logs?entity=InputIssue`, katibu);
+  // Kumbukumbu (audit) ni ya Super Admin pekee (v0.4.1)
+  const logs = await call('GET', `/api/v1/audit-logs?entity=InputIssue&pageSize=100`, superT);
+  assert.equal(logs.status, 200);
   assert.ok(logs.body.data.some((l: any) => l.action === 'INPUT_ISSUE_CANCEL'));
   assert.equal((await call('GET', '/api/v1/audit-logs', clerk)).status, 403);
-  // Audit ya chama kingine haionekani
-  const other = await call('GET', '/api/v1/audit-logs', otherAdmin);
+  assert.equal((await call('GET', '/api/v1/audit-logs', katibu)).status, 403);
+  assert.equal((await call('GET', '/api/v1/audit-logs', accountant)).status, 403);
+  assert.equal((await call('GET', '/api/v1/audit-logs', otherAdmin)).status, 403);
+  const other = await call('GET', `/api/v1/audit-logs?amcosId=${otherAmcosId}`, superT);
   assert.ok(other.body.data.every((l: any) => l.amcosId === otherAmcosId));
 });
 

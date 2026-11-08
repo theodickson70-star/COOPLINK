@@ -28,6 +28,7 @@ async function findEstimateScoped(req: Request, id: string) {
 
 estimatesRouter.get(
   '/',
+  requireAmcosPerm('members.read'),
   ah(async (req, res) => {
     const q = paginationQuery
       .extend({ seasonId: z.string().uuid().optional(), status: z.enum(schema.estimateStatusEnum.enumValues).optional(), memberId: z.string().uuid().optional() })
@@ -53,6 +54,7 @@ estimatesRouter.get(
 
 estimatesRouter.get(
   '/summary',
+  requireAmcosPerm('members.read'),
   ah(async (req, res) => {
     const { seasonId } = z.object({ seasonId: z.string().uuid().optional() }).parse(req.query);
     const season = await resolveSeason(seasonId);

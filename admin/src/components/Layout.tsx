@@ -56,7 +56,7 @@ const NAV: { section?: string; items: NavItem[] }[] = [
     items: [
       { to: '/inputs', label: 'Bidhaa na Stoo', icon: I.inputs, perm: ['stock.read'] },
       { to: '/input-issues', label: 'Ugawaji wa Pembejeo', icon: I.issue, perm: ['stock.read'] },
-      { to: '/purchases', label: 'Manunuzi na Wazabuni', icon: I.cart, perm: ['purchases.request', 'purchases.receive', 'finance.read'] },
+      { to: '/purchases', label: 'Manunuzi na Wazabuni', icon: I.cart, perm: ['purchases.request', 'purchases.receive', 'approvals.decide'] },
     ],
   },
   {

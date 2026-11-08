@@ -142,7 +142,7 @@ export function MemberPicker({ value, onChange, label = 'Mwanachama' }: { value:
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const dq = useDebounced(q, 250);
-  const { data } = useFetch<Paged<MemberLite>>(open && dq.length >= 1 ? '/members' : null, { search: dq, status: 'ACTIVE', pageSize: 8 });
+  const { data } = useFetch<Paged<MemberLite>>(open && dq.length >= 1 ? '/members/lookup' : null, { search: dq, status: 'ACTIVE', pageSize: 8 });
 
   if (value) {
     return (
