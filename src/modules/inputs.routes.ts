@@ -192,51 +192,102 @@ const stockBody = z.object({
   notes: z.string().trim().optional(),
 });
 
-// Mzigo wa pembejeo usiotokana na ombi la manunuzi (mf. kutoka Chama Kikuu / kampuni ya tumbaku).
-// Stokipa anaingiza idadi na bei inayopendekezwa -> Meneja anaidhinisha idadi na bei -> ndipo stoo inaongezeka
-// na pembejeo zinaweza kutolewa kwa wakulima. (Mzigo wa manunuzi yaliyoidhinishwa unapokelewa kwenye Manunuzi.)
+// =====================================================================
+//  KUINGIZA PEMBEJEO STOO — NJIA MOJA TU
+//   Stokipa anaingiza mzigo (bidhaa iliyopo AU mpya; wa kawaida AU wa ombi la manunuzi lililoidhinishwa)
+//   pamoja na idadi na bei ya kumkopesha mkulima -> Meneja anaidhinisha idadi na bei
+//   -> ndipo stoo inaongezeka na pembejeo zinaweza kutolewa kwa wakulima.
+// =====================================================================
+const PRQ = schema.purchaseRequests;
+const PRL = schema.purchaseRequestLines;
+const APR = schema.approvalRequests;
+
+/** Kiasi cha mstari wa manunuzi kinachosubiri idhini kwenye mizigo mingine. */
+async function pendingOnLine(lineId: string) {
+  const [r] = await db.select({ v: sql<string>`coalesce(sum((${APR.payload}->>'quantity')::numeric), 0)` }).from(APR)
+    .where(and(eq(APR.type, 'STOCK_RECEIPT'), eq(APR.status, 'PENDING'), sql`${APR.payload}->>'purchaseLineId' = ${lineId}`));
+  return D(r.v);
+}
+
 inputsRouter.post(
   '/stock/receipts',
   requireAmcosPerm('stock.receive'),
   ah(async (req, res) => {
-    const body = stockBody.extend({
+    const body = z.object({
+      seasonId: z.string().uuid().optional(),
+      inputItemId: z.string().uuid().nullable().optional(),             // bidhaa iliyopo
+      newItem: itemBody.nullable().optional(),                          // AU bidhaa mpya (inasajiliwa Meneja akiidhinisha)
+      purchaseLineId: z.string().uuid().nullable().optional(),          // mzigo wa ombi la manunuzi lililoidhinishwa
       quantity: decimalSchema({ min: 0.01 }),
       reference: z.string().trim().min(2, 'Weka namba ya hati ya mzigo (delivery note)'),
-      unitPrice: decimalSchema({ min: 0.01 }).nullable().optional(),   // bei ya kumkopesha mkulima (kwa kipimo kimoja)
-      unitCost: decimalSchema({ min: 0 }).nullable().optional(),       // gharama ya chama (hiari)
-      source: z.string().trim().nullable().optional(),                 // mf. Chama Kikuu, mzabuni
+      unitPrice: decimalSchema({ min: 0.01 }).nullable().optional(),    // bei ya kumkopesha mkulima (kwa kipimo kimoja)
+      unitCost: decimalSchema({ min: 0 }).nullable().optional(),        // gharama ya chama (hiari)
+      source: z.string().trim().nullable().optional(),                  // mf. Chama Kikuu, mzabuni
       batchNo: z.string().trim().nullable().optional(),
       expiryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
       supplierId: z.string().uuid().nullable().optional(),
+      notes: z.string().trim().optional(),
     }).parse(req.body);
-    const item = await findItemScoped(req, body.inputItemId);
-    if (!item.isActive) throw badRequest('Bidhaa hii imesitishwa');
+    const amcosId = await resolveWriteAmcosId(req);
     const season = await resolveOpenSeason(body.seasonId);
-    const current = await db.query.inputPrices.findFirst({ where: and(eq(prices.seasonId, season.id), eq(prices.inputItemId, item.id)) });
-    if (!body.unitPrice && !current) throw badRequest('Weka bei ya kumkopesha mkulima — bidhaa hii haina bei msimu huu');
+
+    // 1) Chanzo: ombi la manunuzi (bidhaa na gharama zinatoka kwenye ombi)
+    let pr: typeof PRQ.$inferSelect | null = null;
+    let line: typeof PRL.$inferSelect | null = null;
+    if (body.purchaseLineId) {
+      [line] = await db.select().from(PRL).where(eq(PRL.id, body.purchaseLineId));
+      if (!line) throw notFound('Mstari wa ombi la manunuzi');
+      [pr] = await db.select().from(PRQ).where(and(eq(PRQ.id, line.purchaseRequestId), eq(PRQ.amcosId, amcosId)));
+      if (!pr) throw notFound('Ombi la manunuzi');
+      if (!['APPROVED', 'PARTIALLY_RECEIVED'].includes(pr.status)) throw badRequest(pr.status === 'PENDING_APPROVAL' ? 'Ombi hili la manunuzi bado halijaidhinishwa na Meneja' : 'Mzigo wa ombi hili hauwezi kupokelewa');
+      const left = D(line.quantity).minus(line.receivedQty).minus(await pendingOnLine(line.id));
+      if (D(body.quantity).gt(left)) throw badRequest(`Kiasi kinazidi kilichobaki kupokelewa kwenye ombi ${pr.prNo} (${fmt2(left)})`);
+    }
+
+    // 2) Bidhaa: iliyopo au mpya
+    let item: typeof items.$inferSelect | null = null;
+    const itemId = line?.inputItemId ?? body.inputItemId ?? null;
+    if (itemId) {
+      item = await findItemScoped(req, itemId);
+      if (!item.isActive) throw badRequest('Bidhaa hii imesitishwa');
+    } else if (body.newItem) {
+      const [dup] = await db.select({ id: items.id }).from(items).where(and(eq(items.amcosId, amcosId), sql`lower(${items.name}) = lower(${body.newItem.name})`));
+      if (dup) throw conflict('Bidhaa yenye jina hili tayari ipo — ichague kwenye orodha');
+      const [pend] = await db.select({ id: APR.id }).from(APR).where(and(eq(APR.amcosId, amcosId), eq(APR.type, 'STOCK_RECEIPT'), eq(APR.status, 'PENDING'),
+        sql`lower(${APR.payload}->'newItem'->>'name') = lower(${body.newItem.name})`));
+      if (pend) throw conflict('Bidhaa mpya yenye jina hili tayari inasubiri idhini');
+    } else throw badRequest('Chagua bidhaa au andika bidhaa mpya');
+
+    const current = item ? await db.query.inputPrices.findFirst({ where: and(eq(prices.seasonId, season.id), eq(prices.inputItemId, item.id)) }) : undefined;
+    if (!body.unitPrice && !current) throw badRequest('Weka bei ya kumkopesha mkulima');
     const unitPrice = body.unitPrice ?? current!.unitPrice;
-    const [dup] = await db.select({ id: schema.approvalRequests.id }).from(schema.approvalRequests).where(and(
-      eq(schema.approvalRequests.amcosId, item.amcosId), eq(schema.approvalRequests.type, 'STOCK_RECEIPT'), eq(schema.approvalRequests.status, 'PENDING'),
-      eq(schema.approvalRequests.entityId, item.id), sql`${schema.approvalRequests.payload}->>'reference' = ${body.reference}`));
-    if (dup) throw conflict('Mzigo wa hati hii tayari unasubiri idhini');
+    if (item) {
+      const [dup] = await db.select({ id: APR.id }).from(APR).where(and(eq(APR.amcosId, amcosId), eq(APR.type, 'STOCK_RECEIPT'), eq(APR.status, 'PENDING'),
+        eq(APR.entityId, item.id), sql`${APR.payload}->>'reference' = ${body.reference}`));
+      if (dup) throw conflict('Mzigo wa hati hii tayari unasubiri idhini');
+    }
+    const name = item?.name ?? body.newItem!.name;
+    const unit = item?.unit ?? body.newItem!.unit;
+    const unitCost = line?.unitCost ?? body.unitCost ?? null;
+    const source = pr ? `Manunuzi ${pr.prNo}` : body.source ?? null;
     const approval = await db.transaction(async (tx) => {
-      const value = D(body.quantity).times(unitPrice);
       const a = await createApproval(tx, req, {
-        amcosId: item.amcosId, type: 'STOCK_RECEIPT', entityType: 'InputItem', entityId: item.id, amount: fmt2(value),
-        title: `Mzigo wa ${item.name}: ${body.quantity} ${item.unit.toLowerCase()} × ${tshText(unitPrice)}${current && current.unitPrice !== unitPrice ? ` (bei ya sasa ${tshText(current.unitPrice)})` : ''}`,
-        reason: [body.source && `Kutoka: ${body.source}`, `Hati: ${body.reference}`, body.notes].filter(Boolean).join(' · '),
+        amcosId, type: 'STOCK_RECEIPT', entityType: 'InputItem', entityId: item?.id, amount: fmt2(D(body.quantity).times(unitPrice)),
+        title: `${item ? 'Mzigo' : 'Bidhaa mpya na mzigo'}: ${name} — ${body.quantity} ${unit.toLowerCase()} × ${tshText(unitPrice)}${current && current.unitPrice !== unitPrice ? ` (bei ya sasa ${tshText(current.unitPrice)})` : ''}`,
+        reason: [source && `Kutoka: ${source}`, `Hati: ${body.reference}`, body.notes].filter(Boolean).join(' · '),
         payload: {
-          inputItemId: item.id, itemName: item.name, unit: item.unit, seasonId: season.id, quantity: body.quantity, unitPrice, currentPrice: current?.unitPrice ?? null,
-          unitCost: body.unitCost ?? null, reference: body.reference, source: body.source ?? null, batchNo: body.batchNo ?? null, expiryDate: body.expiryDate ?? null,
-          supplierId: body.supplierId ?? null, notes: body.notes ?? null,
+          inputItemId: item?.id ?? null, newItem: item ? null : body.newItem, itemName: name, unit, seasonId: season.id, quantity: body.quantity, unitPrice,
+          currentPrice: current?.unitPrice ?? null, unitCost, reference: body.reference, source, batchNo: body.batchNo ?? null, expiryDate: body.expiryDate ?? null,
+          supplierId: pr?.supplierId ?? body.supplierId ?? null, purchaseRequestId: pr?.id ?? null, purchaseLineId: line?.id ?? null, prNo: pr?.prNo ?? null, notes: body.notes ?? null,
         },
       });
-      await audit(tx, req, { action: 'STOCK_RECEIPT_REQUEST', entity: 'InputItem', entityId: item.id, amcosId: item.amcosId, after: { approval: a.requestNo, quantity: body.quantity, unitPrice } });
+      await audit(tx, req, { action: 'STOCK_RECEIPT_REQUEST', entity: 'InputItem', entityId: item?.id ?? null, amcosId, after: { approval: a.requestNo, item: name, quantity: body.quantity, unitPrice, purchase: pr?.prNo ?? null } });
       return a;
     });
     res.status(202).json({ approval });
   }),
 );
+
 
 
 // Marekebisho ya stoo: Stokipa ANAOMBA, Meneja anaidhinisha. Stoo HAIBADILIKI kabla ya idhini.

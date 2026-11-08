@@ -252,7 +252,7 @@ test('Manunuzi: Stokipa anaomba -> Meneja anaidhinisha -> Mhasibu analipa -> Sto
   assert.equal(pr.body.purchase.totalAmount, '1400000.00');
   // Haiwezi kupokelewa wala kulipwa kabla ya idhini
   const lineId = (await call('GET', `/api/v1/store/purchases/${prId}`, A.storekeeper)).body.lines[0].id;
-  assert.equal((await call('POST', `/api/v1/store/purchases/${prId}/receive`, A.storekeeper, { reference: 'DN-P', lines: [{ lineId, quantity: 5 }] })).status, 400);
+  assert.equal((await call('POST', '/api/v1/inputs/stock/receipts', A.storekeeper, { purchaseLineId: lineId, quantity: 5, reference: 'DN-P' })).status, 400, 'Ombi halijaidhinishwa');
   assert.equal((await call('POST', '/api/v1/finance/supplier-payments', A.accountant, { supplierId: sup.body.supplier.id, purchaseRequestId: prId, amount: '100', description: 'malipo' })).status, 400);
 
   assert.equal((await call('POST', `/api/v1/approvals/${pr.body.approval.id}/decide`, A.manager, { decision: 'APPROVED', note: 'Bei imelinganishwa' })).status, 200);
@@ -269,14 +269,17 @@ test('Manunuzi: Stokipa anaomba -> Meneja anaidhinisha -> Mhasibu analipa -> Sto
   assert.equal(over.status, 400, 'Hawezi kulipa zaidi ya thamani ya ombi');
   assert.equal((await call('POST', `/api/v1/finance/transactions/${pay.body.transaction.id}/post`, A.accountant, {})).status, 200);
 
-  // Stokipa anapokea mzigo kwa awamu
-  const rec = await call('POST', `/api/v1/store/purchases/${prId}/receive`, A.storekeeper, { reference: 'DN-P1', lines: [{ lineId, quantity: 12, batchNo: 'B2' }] });
-  assert.equal(rec.status, 200);
-  assert.equal(rec.body.purchase.status, 'PARTIALLY_RECEIVED');
+  // Stokipa anaingiza mzigo wa manunuzi kwa awamu kupitia "Ingiza pembejeo" -> Meneja anaidhinisha
+  assert.equal((await call('POST', '/store/purchases/x/receive'.replace(/^/, '/api/v1'), A.storekeeper, {})).status, 404, 'Njia ya zamani imeondolewa');
+  const rec = await call('POST', '/api/v1/inputs/stock/receipts', A.storekeeper, { purchaseLineId: lineId, quantity: 12, reference: 'DN-P1', batchNo: 'B2' });
+  assert.equal(rec.status, 202, JSON.stringify(rec.body));
+  assert.equal((await call('POST', '/api/v1/inputs/stock/receipts', A.storekeeper, { purchaseLineId: lineId, quantity: 9, reference: 'DN-P2' })).status, 400, 'Kinachosubiri idhini kinahesabiwa');
+  assert.equal((await call('POST', `/api/v1/approvals/${rec.body.approval.id}/decide`, A.manager, { decision: 'APPROVED', note: 'Mzigo umehesabiwa' })).status, 200);
   assert.equal(await stockOf(A.storekeeper, itemId), '47.00');
-  assert.equal((await call('POST', `/api/v1/store/purchases/${prId}/receive`, A.storekeeper, { reference: 'DN-P2', lines: [{ lineId, quantity: 9 }] })).status, 400, 'haiwezi kupokea zaidi ya ombi');
-  const rec2 = await call('POST', `/api/v1/store/purchases/${prId}/receive`, A.storekeeper, { reference: 'DN-P2', lines: [{ lineId, quantity: 8 }] });
-  assert.equal(rec2.body.purchase.status, 'RECEIVED');
+  assert.equal((await call('GET', `/api/v1/store/purchases/${prId}`, A.manager)).body.purchase.status, 'PARTIALLY_RECEIVED');
+  const rec2 = await call('POST', '/api/v1/inputs/stock/receipts', A.storekeeper, { purchaseLineId: lineId, quantity: 8, reference: 'DN-P2' });
+  assert.equal((await call('POST', `/api/v1/approvals/${rec2.body.approval.id}/decide`, A.manager, { decision: 'APPROVED', note: 'Sawa' })).status, 200);
+  assert.equal((await call('GET', `/api/v1/store/purchases/${prId}`, A.manager)).body.purchase.status, 'RECEIVED');
   const payables = (await call('GET', '/api/v1/finance/reports/payables', A.accountant)).body;
   assert.equal(payables.data.find((p: any) => p.id === prId).owing, '700000.00');
 });

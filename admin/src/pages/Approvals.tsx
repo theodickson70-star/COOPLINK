@@ -82,7 +82,7 @@ export function Approvals() {
 export function DecideModal({ approval: a, onClose, onDone }: { approval: Approval; onClose: () => void; onDone: (msg: string) => void }) {
   const { user, may } = useAuth();
   const [note, setNote] = useState('');
-  const rp = a.type === 'STOCK_RECEIPT' ? (a.payload as { quantity: string; unitPrice: string; currentPrice: string | null; unitCost: string | null; unit: string; itemName: string; source: string | null; reference: string } | null) : null;
+  const rp = a.type === 'STOCK_RECEIPT' ? (a.payload as { quantity: string; unitPrice: string; currentPrice: string | null; unitCost: string | null; unit: string; itemName: string; source: string | null; reference: string; newItem: { name: string; category: string; unit: string } | null; prNo: string | null } | null) : null;
   const [qty, setQty] = useState(rp ? String(Number(rp.quantity)) : '');
   const [price, setPrice] = useState(rp ? String(Number(rp.unitPrice)) : '');
   const { busy, error, run } = useAction();
@@ -120,7 +120,7 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
       {rp && (
         <>
           <dl className="dl">
-            <dt>Bidhaa</dt><dd>{rp.itemName}</dd>
+            <dt>Bidhaa</dt><dd>{rp.itemName}{rp.newItem && <> <span className="badge badge-warn">Bidhaa mpya — itasajiliwa ukiidhinisha</span></>}</dd>
             {rp.source && <><dt>Kutoka</dt><dd>{rp.source} · hati {rp.reference}</dd></>}
             <dt>Bei ya sasa</dt><dd>{rp.currentPrice ? tsh(rp.currentPrice) : 'Haijawekwa'}</dd>
             {rp.unitCost && <><dt>Gharama ya chama</dt><dd>{tsh(rp.unitCost)} kwa kipimo</dd></>}

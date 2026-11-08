@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ReceiveInputsModal } from '../components/ReceiveInputs';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, type Paged } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
@@ -107,6 +108,7 @@ export function PurchaseDetail() {
     approval: { requestNo: string; status: string; decisionNote: string | null; decidedAt: string | null } | null;
   }>(`/store/purchases/${id}`);
   const [receive, setReceive] = useState(false);
+  const [ok, setOk] = useState<string | null>(null);
   if (loading && !data) return <Loading />;
   if (!data) return <Alert>{error}</Alert>;
   const p = data.purchase;
@@ -115,8 +117,9 @@ export function PurchaseDetail() {
     <>
       <PageHead title={`Manunuzi ${p.prNo}`} sub={<><Badge status={tone(p.status)} label={PR_STATUS[p.status]} /> · {p.supplierName ?? 'Mzabuni hajachaguliwa'} · aliomba {p.requestedBy}</>}>
         <Link className="btn btn-secondary" to="/purchases">← Orodha</Link>
-        {canReceive && <Button onClick={() => setReceive(true)}>Pokea mzigo</Button>}
+        {canReceive && <Button onClick={() => setReceive(true)}>Ingiza mzigo stoo</Button>}
       </PageHead>
+      <Alert kind="ok">{ok}</Alert>
       <div className="stack">
         <div className="grid grid-3">
           <section className="card kpi"><span className="label">Thamani ya ombi</span><span className="value">{tsh(p.totalAmount)}</span></section>
@@ -150,36 +153,11 @@ export function PurchaseDetail() {
           </Section>
         </div>
       </div>
-      {receive && <ReceiveModal lines={data.lines} prId={p.id} onClose={() => setReceive(false)} onDone={() => { setReceive(false); reload(); }} />}
+      {receive && <ReceiveInputsModal purchaseId={p.id} onClose={() => setReceive(false)} onDone={(no) => { setReceive(false); setOk(`Mzigo umetumwa kwa Meneja (${no}). Utaingia stoo baada ya idhini ya idadi na bei.`); reload(); }} />}
     </>
   );
 }
 
-function ReceiveModal({ lines, prId, onClose, onDone }: { lines: { id: string; quantity: string; receivedQty: string; inputItem: { name: string; unit: string } }[]; prId: string; onClose: () => void; onDone: () => void }) {
-  const open = lines.filter((l) => Number(l.receivedQty) < Number(l.quantity));
-  const [qty, setQty] = useState<Record<string, string>>(Object.fromEntries(open.map((l) => [l.id, String(Number(l.quantity) - Number(l.receivedQty))])));
-  const [batch, setBatch] = useState<Record<string, string>>({});
-  const [expiry, setExpiry] = useState<Record<string, string>>({});
-  const [reference, setReference] = useState('');
-  const { busy, error, run } = useAction();
-  const body = open.filter((l) => Number(qty[l.id]) > 0).map((l) => ({ lineId: l.id, quantity: qty[l.id], batchNo: batch[l.id] || null, expiryDate: expiry[l.id] || null }));
-  return (
-    <Modal open title="Pokea mzigo (goods received)" onClose={onClose}
-      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={!body.length || reference.trim().length < 2} onClick={async () => {
-        if (await run(() => api(`/store/purchases/${prId}/receive`, { method: 'POST', body: { reference, lines: body } }))) onDone();
-      }}>Pokea — ongeza stoo</Button></>}>
-      <Alert>{error}</Alert>
-      <TextField label="Namba ya hati ya mzigo (delivery note) *" value={reference} onChange={setReference} />
-      {open.map((l) => (
-        <div key={l.id} className="form-grid" style={{ alignItems: 'end' }}>
-          <TextField label={`${l.inputItem.name} (zimebaki ${num(Number(l.quantity) - Number(l.receivedQty))})`} type="number" min="0" value={qty[l.id] ?? ''} onChange={(v) => setQty({ ...qty, [l.id]: v })} />
-          <TextField label="Batch" value={batch[l.id] ?? ''} onChange={(v) => setBatch({ ...batch, [l.id]: v })} />
-          <TextField label="Muda unaisha" type="date" value={expiry[l.id] ?? ''} onChange={(v) => setExpiry({ ...expiry, [l.id]: v })} />
-        </div>
-      ))}
-    </Modal>
-  );
-}
 
 function Suppliers() {
   const { may } = useAuth();

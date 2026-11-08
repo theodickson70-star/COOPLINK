@@ -143,43 +143,9 @@ storeRouter.post('/purchases', requireAmcosPerm('purchases.request'), ah(async (
   res.status(201).json(result);
 }));
 
-/** Kupokea mzigo (goods received) dhidi ya ombi lililoidhinishwa. Stoo inaongezeka hapa. */
-storeRouter.post('/purchases/:id/receive', requireAmcosPerm('purchases.receive'), ah(async (req, res) => {
-  const { id } = uuidParam.parse(req.params);
-  const body = z.object({
-    reference: z.string().trim().min(2, 'Weka namba ya hati ya mzigo (delivery note)'),
-    lines: z.array(z.object({
-      lineId: z.string().uuid(), quantity: decimalSchema({ min: 0.01 }),
-      batchNo: z.string().trim().nullable().optional(), expiryDate: dateStr.nullable().optional(),
-    })).min(1),
-  }).parse(req.body);
-  const pr = await scopedPr(req, id);
-  if (!['APPROVED', 'PARTIALLY_RECEIVED'].includes(pr.status)) throw badRequest(pr.status === 'PENDING_APPROVAL' ? 'Ombi hili bado halijaidhinishwa na Meneja' : 'Mzigo wa ombi hili hauwezi kupokelewa');
-  const season = await openSeason();
-  const result = await db.transaction(async (tx) => {
-    await tx.execute(sql`select 1 from purchase_requests where id = ${id} for update`);
-    const prLines = await tx.select().from(PL).where(eq(PL.purchaseRequestId, id));
-    const byId = new Map(prLines.map((l) => [l.id, l]));
-    for (const l of body.lines) {
-      const line = byId.get(l.lineId);
-      if (!line) throw badRequest('Mstari wa ombi si sahihi');
-      const remaining = D(line.quantity).minus(line.receivedQty);
-      if (D(l.quantity).greaterThan(remaining)) throw badRequest(`Kiasi kinazidi kilichobaki kupokelewa (${fmt2(remaining)})`);
-      await tx.insert(moves).values({
-        amcosId: pr.amcosId, seasonId: season.id, inputItemId: line.inputItemId, type: 'RECEIPT', quantity: l.quantity,
-        reference: body.reference, notes: `Manunuzi ${pr.prNo}`, purchaseRequestId: pr.id, supplierId: pr.supplierId,
-        unitCost: line.unitCost, batchNo: l.batchNo ?? null, expiryDate: l.expiryDate ?? null, createdById: req.auth!.userId,
-      });
-      await tx.update(PL).set({ receivedQty: fmt2(D(line.receivedQty).plus(l.quantity)) }).where(eq(PL.id, line.id));
-      line.receivedQty = fmt2(D(line.receivedQty).plus(l.quantity));
-    }
-    const done = prLines.every((l) => D(l.receivedQty).gte(l.quantity));
-    const [upd] = await tx.update(P).set({ status: done ? 'RECEIVED' : 'PARTIALLY_RECEIVED' }).where(eq(P.id, id)).returning();
-    await audit(tx, req, { action: 'PURCHASE_GOODS_RECEIVED', entity: 'PurchaseRequest', entityId: id, amcosId: pr.amcosId, before: { status: pr.status }, after: { status: upd.status, reference: body.reference, lines: body.lines } });
-    return upd;
-  });
-  res.json({ purchase: result });
-}));
+// Mzigo wa ombi la manunuzi unaingizwa stoo kupitia "Ingiza pembejeo" (POST /inputs/stock/receipts, purchaseLineId)
+// — njia moja tu ya kuongeza stoo, na Meneja anaidhinisha idadi na bei ya mkulima.
+
 
 // ------------------------------ HESABU YA STOO (RECONCILIATION) ------------------------------
 /** Stokipa anaingiza hesabu halisi; tofauti zinakuwa maombi ya marekebisho kwa Meneja. Stoo haibadiliki sasa. */

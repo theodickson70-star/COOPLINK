@@ -242,7 +242,8 @@ async function onTransfer(tx: Tx, req: Request, a: Approval, o: Outcome, note: s
 }
 
 interface ReceiptPayload {
-  inputItemId: string; itemName: string; seasonId: string; quantity: string; unitPrice: string; currentPrice: string | null; unitCost: string | null;
+  inputItemId: string | null; newItem: { name: string; category: (typeof schema.inputCategoryEnum.enumValues)[number]; unit: (typeof schema.inputUnitEnum.enumValues)[number]; reorderLevel?: string | null } | null;
+  purchaseRequestId: string | null; purchaseLineId: string | null; prNo: string | null; itemName: string; seasonId: string; quantity: string; unitPrice: string; currentPrice: string | null; unitCost: string | null;
   reference: string; source: string | null; batchNo: string | null; expiryDate: string | null; supplierId: string | null; notes: string | null;
 }
 
@@ -252,20 +253,42 @@ async function onStockReceipt(tx: Tx, req: Request, a: Approval, o: Outcome, not
   const p = a.payload as ReceiptPayload;
   const season = await tx.query.seasons.findFirst({ where: eq(schema.seasons.id, p.seasonId) });
   if (!season || season.status === 'CLOSED') throw badRequest('Msimu wa mzigo huu umefungwa');
-  const item = await tx.query.inputItems.findFirst({ where: eq(schema.inputItems.id, p.inputItemId) });
+  let item = p.inputItemId ? await tx.query.inputItems.findFirst({ where: eq(schema.inputItems.id, p.inputItemId) }) : undefined;
+  if (!item && p.newItem) {
+    // Bidhaa mpya inasajiliwa sasa (Meneja ameidhinisha)
+    const [ex] = await tx.select().from(schema.inputItems).where(and(eq(schema.inputItems.amcosId, a.amcosId), sql`lower(${schema.inputItems.name}) = lower(${p.newItem.name})`));
+    if (ex) throw conflict(`Bidhaa "${p.newItem.name}" tayari imesajiliwa — Stokipa aingize mzigo kwa bidhaa iliyopo`);
+    [item] = await tx.insert(schema.inputItems).values({ amcosId: a.amcosId, name: p.newItem.name, category: p.newItem.category, unit: p.newItem.unit, reorderLevel: p.newItem.reorderLevel ?? null }).returning();
+    await audit(tx, req, { action: 'INPUT_ITEM_CREATE', entity: 'InputItem', entityId: item.id, amcosId: a.amcosId, after: { ...item, approval: a.requestNo } });
+  }
   if (!item || item.amcosId !== a.amcosId) throw conflict('Bidhaa haipo tena');
   const quantity = changes?.quantity ?? p.quantity;
+  if (p.purchaseLineId) {
+    // Mzigo wa manunuzi: kiasi kilichopokelewa kwenye ombi kinaongezeka
+    const PL = schema.purchaseRequestLines, PR = schema.purchaseRequests;
+    await tx.execute(sql`select 1 from purchase_requests where id = ${p.purchaseRequestId} for update`);
+    const [line] = await tx.select().from(PL).where(eq(PL.id, p.purchaseLineId));
+    const [pr] = await tx.select().from(PR).where(eq(PR.id, p.purchaseRequestId!));
+    if (!line || !pr || !['APPROVED', 'PARTIALLY_RECEIVED'].includes(pr.status)) throw conflict('Ombi la manunuzi haliko tayari kupokea mzigo');
+    const left = D(line.quantity).minus(line.receivedQty);
+    if (D(quantity).gt(left)) throw badRequest(`Kiasi kinazidi kilichobaki kwenye ombi ${pr.prNo} (${fmt2(left)})`);
+    await tx.update(PL).set({ receivedQty: fmt2(D(line.receivedQty).plus(quantity)) }).where(eq(PL.id, line.id));
+    const lines = await tx.select().from(PL).where(eq(PL.purchaseRequestId, pr.id));
+    const done = lines.every((l) => D(l.receivedQty).gte(l.quantity));
+    await tx.update(PR).set({ status: done ? 'RECEIVED' : 'PARTIALLY_RECEIVED' }).where(eq(PR.id, pr.id));
+    await audit(tx, req, { action: 'PURCHASE_GOODS_RECEIVED', entity: 'PurchaseRequest', entityId: pr.id, amcosId: a.amcosId, before: { status: pr.status }, after: { status: done ? 'RECEIVED' : 'PARTIALLY_RECEIVED', reference: p.reference, quantity, approval: a.requestNo } });
+  }
   const unitPrice = changes?.unitPrice ?? p.unitPrice;
   const adjusted = [quantity !== p.quantity && `idadi ${p.quantity} → ${quantity}`, unitPrice !== p.unitPrice && `bei ${p.unitPrice} → ${unitPrice}`].filter(Boolean).join(', ');
   const [mv] = await tx.insert(schema.stockMovements).values({
-    amcosId: a.amcosId, seasonId: p.seasonId, inputItemId: p.inputItemId, type: 'RECEIPT', quantity, reference: p.reference,
+    amcosId: a.amcosId, seasonId: p.seasonId, inputItemId: item.id, type: 'RECEIPT', quantity, reference: p.reference, purchaseRequestId: p.purchaseRequestId ?? null,
     notes: [p.source && `Kutoka: ${p.source}`, p.notes, `Idhini ${a.requestNo}: ${note}`, adjusted && `Meneja alirekebisha ${adjusted}`].filter(Boolean).join(' · '),
     batchNo: p.batchNo, expiryDate: p.expiryDate, supplierId: p.supplierId, unitCost: p.unitCost, approvalId: a.id, createdById: a.requestedById,
   }).returning();
   const P = schema.inputPrices;
-  const before = await tx.query.inputPrices.findFirst({ where: and(eq(P.seasonId, p.seasonId), eq(P.inputItemId, p.inputItemId)) });
+  const before = await tx.query.inputPrices.findFirst({ where: and(eq(P.seasonId, p.seasonId), eq(P.inputItemId, item.id)) });
   if (!before || before.unitPrice !== unitPrice) {
-    const [pr] = await tx.insert(P).values({ amcosId: a.amcosId, seasonId: p.seasonId, inputItemId: p.inputItemId, unitPrice })
+    const [pr] = await tx.insert(P).values({ amcosId: a.amcosId, seasonId: p.seasonId, inputItemId: item.id, unitPrice })
       .onConflictDoUpdate({ target: [P.seasonId, P.inputItemId], set: { unitPrice, updatedAt: new Date() } }).returning();
     await audit(tx, req, { action: 'INPUT_PRICE_SET', entity: 'InputPrice', entityId: pr.id, amcosId: a.amcosId, before: before ?? null, after: { ...pr, approval: a.requestNo } });
   }

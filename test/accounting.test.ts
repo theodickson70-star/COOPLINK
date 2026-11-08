@@ -559,3 +559,19 @@ test('Vikundi: kila mkulima deni lake, kikundi kinadhamini — salio la mwenzao 
   assert.equal(fl.groupName, 'Tumaini ' + RUN);
   await assertBooksBalance();
 });
+
+// 14 -----------------------------------------------------------------
+test('Ingiza pembejeo: bidhaa mpya inasajiliwa pamoja na mzigo, baada ya idhini ya Meneja', async () => {
+  const name = 'Urea ' + RUN;
+  const r = await call('POST', '/api/v1/inputs/stock/receipts', storekeeper, { newItem: { name, category: 'FERTILIZER', unit: 'BAG' }, quantity: 20, unitPrice: '70000', unitCost: '60000', source: 'Chama Kikuu', reference: 'DN-U-' + RUN });
+  assert.equal(r.status, 202, JSON.stringify(r.body));
+  assert.equal((await call('POST', '/api/v1/inputs/stock/receipts', storekeeper, { newItem: { name: name.toLowerCase(), category: 'FERTILIZER', unit: 'BAG' }, quantity: 1, unitPrice: '1', reference: 'DN-XX' })).status, 409, 'Jina moja linasubiri tayari');
+  assert.ok(!(await call('GET', '/api/v1/inputs/items', storekeeper)).body.data.some((i: any) => i.name === name), 'Haijasajiliwa kabla ya idhini');
+  assert.equal((await call('POST', `/api/v1/approvals/${r.body.approval.id}/decide`, manager, { decision: 'APPROVED', note: 'Mbolea mpya ya msimu' })).status, 200);
+  const item = (await call('GET', '/api/v1/inputs/items', storekeeper)).body.data.find((i: any) => i.name === name);
+  assert.ok(item);
+  const st = (await call('GET', '/api/v1/inputs/stock', storekeeper)).body.data.find((x: any) => x.inputItemId === item.id);
+  assert.equal(st.balance, '20.00');
+  assert.equal((await call('GET', '/api/v1/inputs/prices', storekeeper)).body.data.find((x: any) => x.inputItemId === item.id).unitPrice, '70000.00');
+  await assertBooksBalance();
+});
