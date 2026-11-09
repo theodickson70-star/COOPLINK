@@ -49,16 +49,15 @@ export function usePhoneName(phone: string) {
   return { state, name: res?.status === 'FOUND' ? res.name ?? '' : '', parts, network: res?.network ?? null, locked: state !== 'empty' && state !== 'manual' };
 }
 
-const NETWORK: Record<string, string> = { vodacom: 'Vodacom M-Pesa', airtel: 'Airtel Money', tigo: 'Mixx by Yas', yas: 'Mixx by Yas', halotel: 'HaloPesa', ttcl: 'T-Pesa' };
-
-/** Ujumbe mdogo chini ya jina */
-export function NameNote({ state, network, emptyHint }: { state: NameState; network?: string | null; emptyHint?: string }) {
-  if (state === 'found') return <p className="name-note ok">✓ Jina limethibitishwa kutoka usajili wa mobile money{network ? ` (${NETWORK[network.toLowerCase()] ?? network})` : ''}</p>;
-  if (state === 'loading') return <p className="name-note">Inatafuta jina la mwenye namba…</p>;
-  if (state === 'not_found') return <p className="name-note bad">Namba hii haijasajiliwa kwenye mobile money — jina haliwezi kuthibitishwa. Hakikisha namba ni sahihi.</p>;
-  if (state === 'manual') return <p className="name-note warn">Huduma ya kuthibitisha majina haipatikani kwa sasa — andika jina kamili.</p>;
-  if (state === 'typing') return <p className="name-note">Endelea kuandika namba kamili (mf. 0712345678)…</p>;
-  return emptyHint ? <p className="name-note">{emptyHint}</p> : null;
+/**
+ * Ujumbe mdogo chini ya jina: unaonekana tu panapohitajika hatua ya mtumiaji.
+ * Jina likipatikana linajijaza kimya kimya (bila maneno ya kuthibitisha).
+ */
+export function NameNote({ state, emptyHint }: { state: NameState; network?: string | null; emptyHint?: string }) {
+  if (state === 'not_found') return <p className="name-note bad">Namba hii haijasajiliwa kwenye mobile money — jina haliwezi kupatikana. Hakikisha namba ni sahihi.</p>;
+  if (state === 'manual') return <p className="name-note warn">Huduma ya majina haipatikani kwa sasa — andika jina kamili.</p>;
+  if (state === 'empty' && emptyHint) return <p className="name-note">{emptyHint}</p>;
+  return null;
 }
 
 /**
