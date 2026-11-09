@@ -271,3 +271,53 @@ test('Owner: bei, vyama vya zamani (dai au samehe), na bila TeePay hakuna chama 
   assert.equal((await call('POST', `/api/v1/owner/fees/${season.id}/waive`, owner, { reason: 'Msamaha wa bodi' })).status, 200);
   assert.equal(await feeLock(old.body.amcos.id, { fresh: true }), null);
 });
+
+test('Jaribio la TSh 500 (ada halisi inabaki) na kughairi ombi ambalo push haikufika', async () => {
+  // Chama kipya chenye kingilio cha 45,000
+  const mPhone = uniqPhone('25576');
+  const reg = await call('POST', '/api/v1/owner/amcos', owner, { name: `Jaribio ${RUN} AMCOS`, activate: true, manager: { fullName: 'Meneja Jaribio', phone: mPhone, password: 'Meneja#2026x' } });
+  const aid = reg.body.amcos.id;
+  const t = (await login(mPhone, 'Meneja#2026x')).body.token;
+  const mgr = (await call('POST', '/api/v1/auth/change-password', t, { currentPassword: 'Meneja#2026x', newPassword: 'Staff12345' })).body.token;
+  const fee = (await call('GET', '/api/v1/billing', mgr)).body.fees[0];
+  await setDue(fee.id, addDays(today, -1)); // imefungwa
+
+  // Owner anaweka jaribio la 500 (si kwa Meneja)
+  assert.equal((await call('POST', `/api/v1/owner/fees/${fee.id}/test`, mgr, { amount: 500 })).status, 403);
+  assert.equal((await call('POST', `/api/v1/owner/fees/${fee.id}/test`, owner, { amount: 100 })).status, 400, 'Chini ya TSh 500');
+  assert.equal((await call('POST', `/api/v1/owner/fees/${fee.id}/test`, owner, { amount: 500 })).status, 200);
+  let f = (await call('GET', '/api/v1/billing', mgr)).body.fees[0];
+  assert.deepEqual(f.allowed, ['500.00']); assert.equal(f.testAmount, '500.00');
+  assert.equal((await call('POST', `/api/v1/billing/fees/${fee.id}/pay`, mgr, { ...PAYER, amount: '45000' })).status, 400, 'Wakati wa jaribio ni 500 tu');
+
+  // Push haikufika -> Meneja anaghairi -> anaomba tena
+  const p1 = await call('POST', `/api/v1/billing/fees/${fee.id}/pay`, mgr, { ...PAYER, amount: '500' });
+  assert.equal(p1.body.payment.status, 'PENDING'); assert.equal(p1.body.payment.isTest, true);
+  assert.equal((await call('POST', `/api/v1/billing/fees/${fee.id}/pay`, mgr, { ...PAYER, amount: '500' })).status, 409);
+  const cx = await call('POST', `/api/v1/billing/payments/${p1.body.payment.id}/cancel`, mgr, {});
+  assert.equal(cx.status, 200); assert.equal(cx.body.abandoned, true);
+  const p2 = await call('POST', `/api/v1/billing/fees/${fee.id}/pay`, mgr, { ...PAYER, amount: '500' });
+  assert.equal(p2.status, 201, 'Anaruhusiwa kuomba tena baada ya kughairi');
+
+  // Ombi la pili linalipwa -> jaribio limefanikiwa: risiti, lakini ada ya 45,000 inabaki
+  finish(p2.body.payment.reference, 'succeeded');
+  assert.equal((await webhook(p2.body.payment.reference)).status, 200);
+  let b = (await call('GET', '/api/v1/billing', mgr)).body;
+  f = b.fees[0];
+  assert.equal(f.status, 'UNPAID'); assert.equal(f.paid, '0.00'); assert.equal(f.amount, '45000.00');
+  assert.equal(f.testAmount, null, 'Kiasi cha majaribio kimeondoka');
+  assert.deepEqual(f.allowed, ['45000.00'], 'Imerudi 45,000');
+  assert.ok(b.lock, 'Bado imefungwa: ada halisi haijalipwa');
+  const rp = f.payments.find((p: any) => p.isTest);
+  const rc = await call('GET', `/api/v1/billing/receipts/${rp.id}`, mgr);
+  assert.equal(rc.body.isTest, true); assert.match(rc.body.message, /majaribio/);
+
+  // Ombi lililoghairiwa likija kulipwa baadaye bado linarekodiwa (pesa haipotei)
+  finish(p1.body.payment.reference, 'succeeded');
+  await webhook(p1.body.payment.reference);
+  b = (await call('GET', '/api/v1/billing', mgr)).body;
+  assert.equal(b.fees[0].payments.filter((p: any) => p.isTest).length, 2);
+  assert.equal(b.fees[0].paid, '0.00');
+  const od = await call('GET', `/api/v1/owner/fees/amcos/${aid}`, owner);
+  assert.equal(od.status, 200);
+});

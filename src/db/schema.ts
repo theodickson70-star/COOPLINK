@@ -808,6 +808,7 @@ export const platformFees = pgTable('platform_fees', {
   paidAt: timestamp({ withTimezone: true }),
   waivedById: uuid(),
   waivedReason: text(),
+  testAmount: money(),                // Owner: kiasi cha majaribio (mf. 500); likifanikiwa, linaondoka na ada halisi haipungui
   createdById: uuid(),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -857,6 +858,8 @@ export const platformMobilePayments = pgTable('platform_mobile_payments', {
   lastSyncedAt: timestamp({ withTimezone: true }),
   paidAt: timestamp({ withTimezone: true }),
   platformPaymentId: uuid(),
+  isTest: boolean().notNull().default(false),   // malipo ya majaribio (hayapunguzi ada)
+  abandonedAt: timestamp({ withTimezone: true }), // Meneja ameghairi (push haikufika) — bado yanahakikiwa TeePay
   createdById: uuid(),
   createdAt: createdAt(),
 }, (t) => [index().on(t.feeId), index().on(t.status)]);

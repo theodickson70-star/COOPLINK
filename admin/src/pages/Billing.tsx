@@ -14,11 +14,11 @@ import { Section } from '../components/owner-ui';
 import { LogoMark } from '../components/Logo';
 import { PrintButton } from './acc-common';
 
-interface MobilePay { id: string; amount: string; phoneLocal: string; payerName: string; reference: string | null; status: 'SENDING' | 'PENDING' | 'SUCCEEDED' | 'FAILED'; statusDetail: string | null; lastError: string | null; createdAt: string; platformPaymentId: string | null }
+interface MobilePay { id: string; amount: string; phoneLocal: string; payerName: string; reference: string | null; status: 'SENDING' | 'PENDING' | 'SUCCEEDED' | 'FAILED'; statusDetail: string | null; lastError: string | null; createdAt: string; platformPaymentId: string | null; isTest: boolean; abandonedAt: string | null }
 interface Fee {
   id: string; kind: 'ENTRANCE' | 'SEASON'; label: string; amount: string; paid: string; outstanding: string; installments: number;
-  dueDate: string; status: 'UNPAID' | 'PARTIAL' | 'PAID' | 'WAIVED'; overdue: boolean; allowed: string[]; waivedReason: string | null;
-  mobilePayments: MobilePay[]; payments: { id: string; receiptNo: string; amount: string; paidAt: string }[];
+  dueDate: string; status: 'UNPAID' | 'PARTIAL' | 'PAID' | 'WAIVED'; overdue: boolean; allowed: string[]; waivedReason: string | null; testAmount: string | null;
+  mobilePayments: MobilePay[]; payments: { id: string; receiptNo: string; amount: string; paidAt: string; isTest?: boolean }[];
 }
 export interface BillingData {
   teepayEnabled: boolean;
@@ -73,8 +73,8 @@ function FeeCard({ f, canPay, onChange }: { f: Fee; canPay: boolean; onChange: (
   const { user } = useAuth();
   const act = useAction();
   const inst = Number(f.amount) / f.installments;
-  const open = f.mobilePayments.find((m) => m.status === 'SENDING' || m.status === 'PENDING');
-  const last = f.mobilePayments[0];
+  const open = f.mobilePayments.find((m) => (m.status === 'SENDING' || m.status === 'PENDING') && !m.abandonedAt);
+  const last = f.mobilePayments.find((m) => !m.abandonedAt);
   const [amount, setAmount] = useState(f.allowed[0] ?? '');
   const [payer, setPayer] = useState({ phone: user?.phone ? phone(user.phone) : '', name: user?.fullName ?? '', email: user?.email ?? '' });
   const [waited, setWaited] = useState(0);
@@ -129,7 +129,17 @@ function FeeCard({ f, canPay, onChange }: { f: Fee; canPay: boolean; onChange: (
             {waited >= 120 && ' Kama ombi halijafika kwenye simu, subiri dakika chache kisha jaribu tena.'}
           </p>
           {open.lastError && <p className="text-bad" style={{ margin: '6px 0 0', fontSize: 13 }}>{open.lastError}</p>}
+          <div className="actions" style={{ marginTop: 12 }}>
+            <Button variant="secondary" busy={act.busy} onClick={async () => {
+              if (!window.confirm('Push haijafika kwenye simu? Ombi hili litaghairiwa ili uombe tena.\n\nKama ulishaweka PIN, usighairi — subiri kidogo.')) return;
+              const r = await act.run(() => api<{ status: string; abandoned?: boolean; message?: string }>(`/billing/payments/${open.id}/cancel`, { method: 'POST', body: {} }));
+              if (r) onChange(r.message ?? 'Ombi limeghairiwa. Unaweza kuomba tena sasa.');
+            }}>Push haijafika? Ghairi ombi</Button>
+          </div>
         </div>
+      )}
+      {f.testAmount && (f.status === 'UNPAID' || f.status === 'PARTIAL') && (
+        <Alert kind="warn">Malipo ya majaribio yamewashwa na CoopLink: lipa {tsh(f.testAmount)} tu kujaribu mfumo. Ada halisi ya {tsh(f.amount)} haitapungua; jaribio likifanikiwa, kiasi kinarudi {tsh(f.amount)}.</Alert>
       )}
       {!open && canPay && f.allowed.length > 0 && (
         <div className="pay-form">
@@ -156,7 +166,7 @@ function FeeCard({ f, canPay, onChange }: { f: Fee; canPay: boolean; onChange: (
         <div className="table-wrap"><table className="table">
           <thead><tr><th>Risiti</th><th>Tarehe</th><th className="num">Kiasi</th><th /></tr></thead>
           <tbody>{f.payments.map((p) => (
-            <tr key={p.id}><td><strong>{p.receiptNo}</strong></td><td>{dateTime(p.paidAt)}</td><td className="num">{tsh(p.amount)}</td>
+            <tr key={p.id}><td><strong>{p.receiptNo}</strong>{p.isTest && <> <Badge status="DRAFT" label="Jaribio" /></>}</td><td>{dateTime(p.paidAt)}</td><td className="num">{tsh(p.amount)}</td>
               <td style={{ textAlign: 'right' }}><Link className="btn btn-secondary btn-sm" to={`/billing/receipts/${p.id}`}>Risiti</Link></td></tr>
           ))}</tbody>
         </table></div>
@@ -166,6 +176,7 @@ function FeeCard({ f, canPay, onChange }: { f: Fee; canPay: boolean; onChange: (
 }
 
 interface Receipt {
+  isTest?: boolean;
   receipt: { receiptNo: string; amount: string; paidAt: string; providerRef: string | null; method: string };
   fee: { kind: string; label: string; amount: string; paidToDate: string; balance: string; dueDate: string };
   amcos: { name: string; code: string };
@@ -195,7 +206,7 @@ export function BillingReceipt({ base = '/billing' }: { base?: string }) {
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div className="doc-title">RISITI YA MALIPO</div>
+            <div className="doc-title">{data.isTest ? 'RISITI YA MALIPO YA MAJARIBIO' : 'RISITI YA MALIPO'}</div>
             <div className="doc-no">{r.receiptNo}</div>
             <div className="doc-org-sub">{dateTime(r.paidAt)}</div>
           </div>

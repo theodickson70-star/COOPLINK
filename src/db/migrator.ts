@@ -79,6 +79,10 @@ const MARKERS: Record<string, string[]> = {
   '0011_mobile_money_fees': [
     "select to_regclass('public.platform_mobile_payments') is not null",
   ],
+  '0012_fee_test_and_cancel': [
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'platform_fees' and column_name = 'test_amount')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'platform_mobile_payments' and column_name = 'abandoned_at')",
+  ],
 };
 
 interface JournalEntry { tag: string; when: number }

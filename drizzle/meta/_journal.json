@@ -85,6 +85,13 @@
       "when": 1794204751410,
       "tag": "0011_mobile_money_fees",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794206113547,
+      "tag": "0012_fee_test_and_cancel",
+      "breakpoints": true
     }
   ]
 }

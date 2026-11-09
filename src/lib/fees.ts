@@ -9,7 +9,7 @@
 //      Malipo yakithibitishwa -> kinafunguka papo hapo.
 // =====================================================================
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, inArray, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { db, schema, type DbOrTx } from '../db';
 import { D, fmt2, tshText } from './money';
 import { getSetting } from './settings';
@@ -100,6 +100,7 @@ export async function feeLock(amcosId: string, opts: { fresh?: boolean } = {}): 
 export const outstandingOf = (f: Fee) => D(f.amount).minus(f.paid);
 /** Kiasi kinachoruhusiwa kwa ombi moja la malipo: kingilio = chote; msimu = awamu moja, au salio lote. */
 export function allowedAmounts(f: Fee) {
+  if (f.testAmount && (f.status === 'UNPAID' || f.status === 'PARTIAL')) return [fmt2(f.testAmount)]; // jaribio la Owner
   const left = outstandingOf(f);
   if (left.lte(0)) return [];
   const inst = D(f.amount).dividedBy(f.installments).toDecimalPlaces(2);
@@ -149,7 +150,7 @@ export async function requestMobilePayment(feeId: string, amount: string, payer:
     const [f] = await tx.select().from(F).where(eq(F.id, feeId));
     if (!f) throw notFound('Ada');
     if (f.status === 'PAID' || f.status === 'WAIVED') throw conflict('Ada hii tayari imelipwa');
-    const [open] = await tx.select().from(MP).where(and(eq(MP.feeId, feeId), inArray(MP.status, OPEN))).orderBy(sql`${MP.createdAt} desc`).limit(1);
+    const [open] = await tx.select().from(MP).where(and(eq(MP.feeId, feeId), inArray(MP.status, OPEN), isNull(MP.abandonedAt))).orderBy(sql`${MP.createdAt} desc`).limit(1);
     if (open && Date.now() - open.createdAt.getTime() < STALE_MS) {
       throw conflict(`Ombi la malipo la ${tshText(open.amount)} kwenda ${localPhone(open.phone) ?? open.phone} bado linasubiri. Thibitisha kwa PIN kwenye simu, au subiri dakika chache kisha jaribu tena.`);
     }
@@ -163,7 +164,7 @@ export async function requestMobilePayment(feeId: string, amount: string, payer:
     };
     const [mp] = await tx.insert(MP).values({
       id, feeId, amcosId: f.amcosId, amount: fmt2(amount), amountMinor: request.money.amount_minor, phone: payer.phone, payerName: request.customer.name,
-      idempotencyKey: `cooplink_mm_${id.replace(/-/g, '')}`, request, createdById: userId,
+      idempotencyKey: `cooplink_mm_${id.replace(/-/g, '')}`, request, createdById: userId, isTest: !!f.testAmount,
     }).returning();
     await sysAudit(tx, 'FEE_MOBILE_PAYMENT_REQUEST', f.amcosId, f.id, { mobilePaymentId: mp.id, amount: mp.amount, phone: localPhone(payer.phone) }, userId);
     return mp;
@@ -205,6 +206,16 @@ export async function syncMobilePayment(mpId: string) {
     const ref = `TEEPAY:${c.public_reference ?? c.id}`;
     const amount = c.money?.amount_minor ? fromMinor(c.money.amount_minor) : mp.amount;
     let [row] = await tx.select().from(P).where(eq(P.providerRef, ref));
+    if (!row && cur.isTest) {
+      // JARIBIO: pesa imepokelewa na kurekodiwa (mapato), lakini ada halisi haipungui; kiasi cha majaribio kinaondolewa
+      [row] = await tx.insert(P).values({
+        invoiceNo: await nextInvoiceNo(tx), amcosId: f.amcosId, category: 'OTHER', amount, method: 'MOBILE_MONEY', providerRef: ref, status: 'VERIFIED',
+        paidAt: new Date(), verifiedAt: new Date(), feeId: f.id,
+        notes: `MAJARIBIO ya malipo (${f.label}) · simu ${localPhone(mp.phone) ?? mp.phone} (${mp.payerName})${c.channel ? ` · ${c.channel}` : ''} · TeePay ${c.public_reference ?? c.id}`,
+      }).returning();
+      await tx.update(F).set({ testAmount: null, updatedAt: new Date() }).where(eq(F.id, f.id));
+      await sysAudit(tx, 'FEE_TEST_PAYMENT_VERIFIED', f.amcosId, f.id, { invoiceNo: row.invoiceNo, amount, ref, feeAmount: f.amount });
+    }
     if (!row) {
       [row] = await tx.insert(P).values({
         invoiceNo: await nextInvoiceNo(tx), amcosId: f.amcosId, category: f.kind === 'ENTRANCE' ? 'SETUP' : 'SUBSCRIPTION',
@@ -224,6 +235,19 @@ export async function syncMobilePayment(mpId: string) {
   });
   clearFeeLock(mp.amcosId);
   return result;
+}
+
+/**
+ * Meneja anaghairi ombi ambalo push yake haikufika, ili aombe tena. Ombi halifutwi: kwanza linaulizwa TeePay,
+ * na kazi ya nyuma inaendelea kulihakiki — likija kulipwa baadaye, malipo yanarekodiwa kawaida.
+ */
+export async function abandonMobilePayment(mpId: string, userId: string) {
+  try { await syncMobilePayment(mpId); } catch { /* TeePay haipatikani: bado tunaruhusu kughairi */ }
+  const [u] = await db.update(MP).set({ abandonedAt: new Date() })
+    .where(and(eq(MP.id, mpId), inArray(MP.status, OPEN), isNull(MP.abandonedAt))).returning();
+  const [cur] = await db.select().from(MP).where(eq(MP.id, mpId));
+  if (u) await sysAudit(db, 'FEE_MOBILE_PAYMENT_ABANDON', cur.amcosId, cur.feeId, { mobilePaymentId: cur.id, amount: cur.amount, phone: localPhone(cur.phone) }, userId);
+  return { mp: cur, abandoned: !!u };
 }
 
 /** Kazi ya nyuma: ada za msimu mpya + kuhakiki malipo ya simu ambayo webhook haikufika. */
@@ -249,13 +273,16 @@ export async function receiptOf(paymentId: string, amcosId?: string) {
   if (!p || !p.feeId || p.status !== 'VERIFIED') throw notFound('Risiti');
   const [f] = await db.select().from(F).where(eq(F.id, p.feeId));
   const before = await db.select({ amount: P.amount }).from(P)
-    .where(and(eq(P.feeId, f.id), eq(P.status, 'VERIFIED'), sql`(${P.paidAt}, ${P.createdAt}) <= (select x.paid_at, x.created_at from platform_payments x where x.id = ${p.id})`));
+    .where(and(eq(P.feeId, f.id), eq(P.status, 'VERIFIED'), sql`${P.category} <> 'OTHER'`, sql`(${P.paidAt}, ${P.createdAt}) <= (select x.paid_at, x.created_at from platform_payments x where x.id = ${p.id})`));
   const paidToDate = before.reduce((t, x) => t.plus(x.amount), D(0));
   const balance = D(f.amount).minus(paidToDate);
   const a = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, p.amcosId!) }))!;
   const [mp] = await db.select().from(MP).where(eq(MP.platformPaymentId, p.id));
   const cn = !mp && p.controlNumberId ? (await db.select().from(CN).where(eq(CN.id, p.controlNumberId)))[0] : null;
-  const message = f.kind === 'ENTRANCE'
+  const isTest = p.category === 'OTHER';
+  const message = isTest
+    ? `Malipo ya majaribio ya ${tshText(p.amount)} yamepokelewa — mfumo wa malipo unafanya kazi. ${f.label} halisi (${tshText(f.amount)}) haijabadilika.`
+    : f.kind === 'ENTRANCE'
     ? `Ada ya kingilio ya ${tshText(p.amount)} imepokelewa. Karibu CoopLink — utapata huduma kwa mwaka mzima.`
     : balance.lte(0)
       ? `${f.label} imelipwa kikamilifu (${tshText(f.amount)}). Asante — huduma ya CoopLink inaendelea.`
@@ -263,6 +290,7 @@ export async function receiptOf(paymentId: string, amcosId?: string) {
   const method = mp ? `Simu ${localPhone(mp.phone) ?? mp.phone} (${mp.payerName})${mp.channel ? ` · ${mp.channel}` : ''}` : cn ? `Control number ${cn.number ?? ''}` : 'TeePay';
   return {
     receipt: { id: p.id, receiptNo: p.invoiceNo, amount: p.amount, paidAt: p.paidAt, providerRef: p.providerRef?.replace(/^TEEPAY:/, '') ?? null, method },
+    isTest,
     fee: { id: f.id, kind: f.kind, label: f.label, amount: f.amount, paidToDate: fmt2(paidToDate), balance: fmt2(balance.gt(0) ? balance : 0), dueDate: f.dueDate },
     amcos: { id: a.id, name: a.name, code: a.code },
     message,
@@ -283,7 +311,7 @@ export async function feesOverview(amcosId: string) {
       ...f, outstanding: fmt2(outstandingOf(f).gt(0) ? outstandingOf(f) : 0), overdue: ['UNPAID', 'PARTIAL'].includes(f.status) && f.dueDate < t,
       allowed: f.status === 'UNPAID' || f.status === 'PARTIAL' ? allowedAmounts(f) : [],
       mobilePayments: mps.filter((m) => m.feeId === f.id).slice(0, 10).map(({ request: _r, idempotencyKey: _k, ...m }) => ({ ...m, phoneLocal: localPhone(m.phone) ?? m.phone })),
-      payments: pays.filter((p) => p.feeId === f.id).map((p) => ({ id: p.id, receiptNo: p.invoiceNo, amount: p.amount, paidAt: p.paidAt, status: p.status })),
+      payments: pays.filter((p) => p.feeId === f.id).map((p) => ({ id: p.id, receiptNo: p.invoiceNo, amount: p.amount, paidAt: p.paidAt, status: p.status, isTest: p.category === 'OTHER' })),
     })),
   };
 }

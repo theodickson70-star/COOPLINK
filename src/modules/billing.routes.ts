@@ -9,7 +9,7 @@ import { db, schema } from '../db';
 import { ah, decimalSchema, normalizePhone, uuidParam } from '../lib/http';
 import { AppError, badRequest, notFound } from '../lib/errors';
 import { requireRole } from '../middleware/auth';
-import { ensureSeasonFee, feeLock, feesOverview, receiptOf, requestMobilePayment, syncMobilePayment } from '../lib/fees';
+import { abandonMobilePayment, ensureSeasonFee, feeLock, feesOverview, receiptOf, requestMobilePayment, syncMobilePayment } from '../lib/fees';
 import { getSetting } from '../lib/settings';
 import { TeePayError } from '../lib/teepay';
 
@@ -64,6 +64,16 @@ billingRouter.post('/payments/:id/sync', ah(async (req, res) => {
     recorded: r.recorded ? { id: r.recorded.id, receiptNo: r.recorded.invoiceNo, amount: r.recorded.amount } : null,
     lock: await feeLock(req.auth!.amcosId!, { fresh: true }),
   });
+}));
+
+// "Push haijafika": Meneja anaghairi ombi ili aombe tena (ombi linaendelea kuhakikiwa TeePay nyuma)
+billingRouter.post('/payments/:id/cancel', ah(async (req, res) => {
+  const { id } = uuidParam.parse(req.params);
+  const [mp] = await db.select().from(MP).where(and(eq(MP.id, id), eq(MP.amcosId, req.auth!.amcosId!)));
+  if (!mp) throw notFound('Malipo');
+  const r = await abandonMobilePayment(id, req.auth!.userId);
+  if (r.mp.status === 'SUCCEEDED') return res.json({ status: 'SUCCEEDED', message: 'Malipo haya tayari yamethibitishwa — hayawezi kughairiwa.' });
+  res.json({ status: r.mp.status, abandoned: r.abandoned });
 }));
 
 billingRouter.get('/receipts/:id', ah(async (req, res) => {

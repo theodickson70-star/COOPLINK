@@ -81,6 +81,23 @@ ownerFeesRouter.post('/amcos/:id/entrance', requirePermission('subscriptions.man
   res.status(201).json({ fee });
 }));
 
+// JARIBIO: Owner anaweka kiasi kidogo (mf. TSh 500) kwenye ada ambayo haijalipwa ili kujaribu malipo halisi.
+// Malipo ya majaribio yakifanikiwa, kiasi hicho kinaondoka chenyewe na ada halisi (mf. 45,000) inabaki ileile.
+ownerFeesRouter.post('/:id/test', requirePermission('subscriptions.manage'), ah(async (req, res) => {
+  const { id } = uuidParam.parse(req.params);
+  const { amount } = z.object({ amount: z.coerce.number().int().min(500, 'Kiwango cha chini cha TeePay ni TSh 500').nullable() }).parse(req.body);
+  const fee = await db.transaction(async (tx) => {
+    const [f] = await tx.select().from(F).where(eq(F.id, id));
+    if (!f) throw notFound('Ada');
+    if (amount !== null && f.status !== 'UNPAID' && f.status !== 'PARTIAL') throw conflict('Ada hii tayari imelipwa/imesamehewa');
+    if (amount !== null && amount >= Number(f.amount)) throw badRequest('Kiasi cha majaribio kiwe kidogo kuliko ada halisi');
+    const [u] = await tx.update(F).set({ testAmount: amount === null ? null : String(amount), updatedAt: new Date() }).where(eq(F.id, id)).returning();
+    await audit(tx, req, { action: amount === null ? 'FEE_TEST_CLEAR' : 'FEE_TEST_SET', entity: 'PlatformFee', entityId: id, amcosId: f.amcosId, before: { testAmount: f.testAmount }, after: { testAmount: u.testAmount } });
+    return u;
+  });
+  res.json({ fee });
+}));
+
 ownerFeesRouter.post('/:id/waive', requirePermission('subscriptions.manage'), ah(async (req, res) => {
   const { id } = uuidParam.parse(req.params);
   const { reason } = z.object({ reason: z.string().trim().min(3, 'Eleza sababu') }).parse(req.body);

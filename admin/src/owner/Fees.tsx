@@ -80,13 +80,14 @@ function SettingsModal({ s, onClose, onDone }: { s: FeeSettings; onClose: () => 
 export function AmcosFeesSection({ amcosId, active }: { amcosId: string; active: boolean }) {
   const { has } = useAuth();
   const { data, reload } = useFetch<Omit<BillingData, 'config'>>(`/owner/fees/amcos/${amcosId}`);
-  const [modal, setModal] = useState<null | { kind: 'waive-entrance' } | { kind: 'waive'; feeId: string; label: string }>(null);
+  const [modal, setModal] = useState<null | { kind: 'waive-entrance' } | { kind: 'waive'; feeId: string; label: string } | { kind: 'test'; feeId: string; label: string }>(null);
+  const [testAmt, setTestAmt] = useState('500');
   const [reason, setReason] = useState('');
   const act = useAction();
   if (!data) return <Loading />;
   const manage = has('subscriptions.manage');
   const hasEntrance = data.fees.some((f) => f.kind === 'ENTRANCE');
-  const close = () => { setModal(null); setReason(''); };
+  const close = () => { setModal(null); setReason(''); setTestAmt('500'); };
   return (
     <Section pad={false} title="Ada za CoopLink (kingilio na msimu)" actions={manage && active && !hasEntrance && <>
       <Button size="sm" busy={act.busy} onClick={async () => { if (await act.run(() => api(`/owner/fees/amcos/${amcosId}/entrance`, { method: 'POST', body: {} }))) reload(); }}>Dai ada ya kingilio</Button>
@@ -108,12 +109,26 @@ export function AmcosFeesSection({ amcosId, active }: { amcosId: string; active:
                   {(m.status === 'PENDING' || m.status === 'SENDING') && <> · <a href="#" onClick={async (e) => { e.preventDefault(); if (await act.run(() => api(`/owner/fees/payments/${m.id}/sync`, { method: 'POST', body: {} }))) reload(); }}>hakiki</a></>}</div>)}
                 {f.payments.map((p) => <div key={p.id}><Link to={`/owner/fees/receipts/${p.id}`}>{p.receiptNo}</Link> · {money(p.amount)} · {dateTime(p.paidAt)}</div>)}
               </td>
-              <td style={{ textAlign: 'right' }}>{manage && (f.status === 'UNPAID' || f.status === 'PARTIAL') && <Button size="sm" variant="secondary" onClick={() => setModal({ kind: 'waive', feeId: f.id, label: f.label })}>Samehe</Button>}</td>
+              <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{manage && (f.status === 'UNPAID' || f.status === 'PARTIAL') && <>
+                {f.testAmount
+                  ? <Button size="sm" variant="secondary" busy={act.busy} onClick={async () => { if (await act.run(() => api(`/owner/fees/${f.id}/test`, { method: 'POST', body: { amount: null } }))) reload(); }}>Ondoa jaribio ({money(f.testAmount)})</Button>
+                  : <Button size="sm" variant="secondary" onClick={() => setModal({ kind: 'test', feeId: f.id, label: f.label })}>Jaribio</Button>}{' '}
+                <Button size="sm" variant="secondary" onClick={() => setModal({ kind: 'waive', feeId: f.id, label: f.label })}>Samehe</Button>
+              </>}</td>
             </tr>
           ))}</tbody>
         </table></div>
       )}
-      {modal && (
+      {modal?.kind === 'test' && (
+        <Modal open title={`Jaribio la malipo: ${modal.label}`} onClose={close}
+          footer={<><Button variant="secondary" onClick={close}>Ghairi</Button><Button busy={act.busy} disabled={Number(testAmt) < 500} onClick={async () => {
+            if (await act.run(() => api(`/owner/fees/${modal.feeId}/test`, { method: 'POST', body: { amount: Number(testAmt) } }))) { close(); reload(); }
+          }}>Washa jaribio</Button></>}>
+          <p>Meneja atalipa kiasi hiki kidogo kwa simu kujaribu mfumo wa malipo. Jaribio likifanikiwa: risiti ya majaribio inatoka, pesa inaingia kwenye mapato, na ada inarudi kiasi chake halisi bila kupungua.</p>
+          <TextField label="Kiasi cha majaribio (TSh) *" type="number" min="500" value={testAmt} onChange={setTestAmt} help="Kiwango cha chini cha TeePay ni TSh 500" />
+        </Modal>
+      )}
+      {modal && modal.kind !== 'test' && (
         <Modal open title={modal.kind === 'waive' ? `Samehe: ${modal.label}` : 'Samehe ada ya kingilio'} onClose={close}
           footer={<><Button variant="secondary" onClick={close}>Ghairi</Button><Button busy={act.busy} disabled={reason.trim().length < 3} onClick={async () => {
             const ok = modal.kind === 'waive'
