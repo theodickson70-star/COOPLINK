@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { LogoMark } from './Logo';
 import { STATUS_LABEL } from '../lib/format';
 import { useDebounced, useFetch } from '../lib/hooks';
 import type { Paged } from '../lib/api';
@@ -81,7 +82,12 @@ export function PageHead({ title, sub, children }: { title: ReactNode; sub?: Rea
 }
 
 export function Loading() {
-  return <div className="center"><span className="spinner" role="status" aria-label="Inapakia" /></div>;
+  return (
+    <div className="center cl-loading" role="status" aria-label="Inapakia">
+      <LogoMark size={56} spin onDark={false} />
+      <div className="cl-loading-txt">Inapakia<span className="cl-dots" aria-hidden="true" /></div>
+    </div>
+  );
 }
 
 export function Empty({ children }: { children: ReactNode }) {

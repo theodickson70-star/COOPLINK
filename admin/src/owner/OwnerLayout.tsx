@@ -58,9 +58,9 @@ export function OwnerLayout() {
     <div className="shell owner">
       <aside className={`sidebar owner-sidebar ${open ? 'open' : ''}`} aria-label="Menyu ya Owner">
         <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <LogoMark size={40} />
+          <LogoMark size={40} animate />
           <div>
-            <Wordmark size={23} animate />
+            <Wordmark size={23} animate delay={0.9} />
             <div className="owner-tag">OWNER CONTROL</div>
           </div>
         </div>

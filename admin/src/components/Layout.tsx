@@ -142,9 +142,9 @@ export function Layout() {
     <div className="shell">
       <aside className={`sidebar ${open ? 'open' : ''}`} aria-label="Menyu kuu">
         <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <LogoMark size={42} />
+          <LogoMark size={42} animate />
           <div>
-            <Wordmark size={24} animate />
+            <Wordmark size={24} animate delay={0.9} />
             <div style={{ fontSize: 11, color: '#8FB3A1', marginTop: 4, letterSpacing: '.08em' }}>VYAMA VYA MSINGI</div>
           </div>
         </div>

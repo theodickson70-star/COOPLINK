@@ -4,14 +4,16 @@ import { useId, type CSSProperties } from 'react';
 const LEAF = 'M60 60 C 43 47 42 24 60 6 C 78 24 77 47 60 60 Z';
 const VEIN = 'M60 54 L60 14';
 
-export function LogoMark({ size = 40, animate = false, onDark = true, ring = true }: {
-  size?: number; animate?: boolean; onDark?: boolean; ring?: boolean;
+export function LogoMark({ size = 40, animate = false, spin = false, onDark = true, ring = true }: {
+  /** animate: majani yanakua kwa mfuatano; spin: majani yanazunguka (skrini ya kusubiri) */
+  size?: number; animate?: boolean; spin?: boolean; onDark?: boolean; ring?: boolean;
 }) {
   const vein = onDark ? '#0B2F23' : '#F6F0E1';
   return (
     <svg viewBox="0 0 120 120" width={size} height={size} role="img" aria-label="Alama ya CoopLink"
-      className={`cl-mark ${animate ? 'cl-anim' : ''}`}>
+      className={`cl-mark${animate ? ' cl-anim' : ''}${spin ? ' cl-spin' : ''}`}>
       {ring && <circle className="mk-ring" cx="60" cy="60" r="56" fill="none" stroke="#E3A83A" strokeWidth="1.8" strokeLinecap="round" strokeDasharray="0.1 7.2" />}
+      <g className="mk-leaves">
       <path className="mk-leaf" fill="#2FA36B" d={LEAF} />
       <path className="mk-vein" fill="none" stroke={vein} strokeWidth="1.6" strokeLinecap="round" d={VEIN} />
       <g transform="rotate(120 60 60)">
@@ -21,6 +23,7 @@ export function LogoMark({ size = 40, animate = false, onDark = true, ring = tru
       <g transform="rotate(240 60 60)">
         <path className="mk-leaf mk-l3" fill="#E3A83A" d={LEAF} />
         <path className="mk-vein mk-v3" fill="none" stroke={vein} strokeWidth="1.6" strokeLinecap="round" d={VEIN} />
+      </g>
       </g>
       <g className="mk-core">
         <circle cx="60" cy="60" r="9.5" fill="#F6F0E1" stroke="#0B2F23" strokeWidth="2.5" />
@@ -34,6 +37,10 @@ export function LogoMark({ size = 40, animate = false, onDark = true, ring = tru
 // zinajazwa rangi, kisha mwanga unapita juu yake. Michoro haitegemei font kupakuliwa.
 const WM_VIEWBOX = '0.8 -75.2 427.7 97.9';
 const WM_RATIO = 427.7 / 97.9;
+// Kitone cha herufi "i" kinabadilishwa na jani la tumbaku (alama ya zao la wakulima)
+const I_LEAF = 'M303 -52 C 289 -60 290 -77 303 -88 C 316 -77 317 -60 303 -52 Z';
+const I_LEAF_VEIN = 'M303 -56 L303 -82';
+const stemOnly = (d: string) => 'M' + d.split('M').filter(Boolean)[0];
 const GLYPHS = [
   { ch: 'C', d: 'M40.7 1.1L40.7 1.1Q32.6 1.1 25.7-1.7Q18.8-4.4 13.7-9.3Q8.5-14.3 5.7-21Q2.8-27.7 2.8-35.5L2.8-35.5Q2.8-43.4 5.7-50.1Q8.5-56.7 13.7-61.6Q18.8-66.5 25.7-69.3Q32.5-72.1 40.5-72.1L40.5-72.1Q48.9-72.1 55.6-69.5Q62.3-66.8 67.4-62.1L67.4-62.1L55.4-50.1Q52.9-52.9 49.2-54.5Q45.5-56.1 40.5-56.1L40.5-56.1Q36.2-56.1 32.6-54.7Q29.1-53.3 26.5-50.6Q23.9-47.8 22.5-44Q21-40.2 21-35.5L21-35.5Q21-30.8 22.5-27Q23.9-23.2 26.5-20.5Q29.1-17.7 32.6-16.3Q36.2-14.8 40.5-14.8L40.5-14.8Q45.5-14.8 49.3-16.4Q53.1-17.9 55.8-20.8L55.8-20.8L67.8-8.8Q62.6-4.1 56.1-1.5Q49.5 1.1 40.7 1.1Z' },
   { ch: 'o', d: 'M95 1.1L95 1.1Q87.1 1.1 81.0-2.3Q74.8-5.6 71.2-11.5Q67.6-17.3 67.6-24.6L67.6-24.6Q67.6-31.9 71.1-37.6Q74.7-43.4 80.9-46.8Q87.1-50.1 94.9-50.1L94.9-50.1Q102.7-50.1 108.8-46.8Q115-43.4 118.6-37.6Q122.2-31.9 122.2-24.6L122.2-24.6Q122.2-17.3 118.7-11.5Q115.1-5.6 109.0-2.3Q102.8 1.1 95 1.1ZM94.9-14.4L94.9-14.4Q97.8-14.4 99.9-15.7Q102.1-16.9 103.3-19.2Q104.5-21.5 104.5-24.5L104.5-24.5Q104.5-27.5 103.3-29.8Q102-32 99.9-33.3Q97.8-34.5 94.9-34.5L94.9-34.5Q92.1-34.5 89.9-33.2Q87.7-31.9 86.5-29.7Q85.3-27.4 85.3-24.4L85.3-24.4Q85.3-21.5 86.5-19.2Q87.7-16.9 89.9-15.7Q92.1-14.4 94.9-14.4Z' },
@@ -45,16 +52,16 @@ const GLYPHS = [
   { ch: 'k', d: 'M426.5 0L406.5 0L392.5-23.3L392.5 0L375.1 0L375.1-72.9L392.5-72.9L392.5-27.7L406.4-48.9L425.5-48.9L409-26L426.5 0Z' },
 ];
 
-export function Wordmark({ size = 26, onDark = true, animate = false }: { size?: number; onDark?: boolean; animate?: boolean }) {
+export function Wordmark({ size = 26, onDark = true, animate = false, delay = 0 }: { size?: number; onDark?: boolean; animate?: boolean; delay?: number }) {
   const uid = useId().replace(/:/g, '');
   const base = onDark ? '#F6F0E1' : '#0B2F23';
   const accent = onDark ? '#E3A83A' : '#A86F12';
   const h = size * 1.02;
   return (
     <svg className={`cl-wm${animate ? ' cl-wm-anim' : ''}`} viewBox={WM_VIEWBOX} width={h * WM_RATIO} height={h} role="img" aria-label="CoopLink"
-      style={{ display: 'block', overflow: 'visible' }}>
+      style={{ display: 'block', overflow: 'visible', ...(delay ? { '--d': `${delay}s` } : {}) } as CSSProperties}>
       <defs>
-        <clipPath id={`wmc${uid}`}>{GLYPHS.map((g, i) => <path key={i} d={g.d} />)}</clipPath>
+        <clipPath id={`wmc${uid}`}>{GLYPHS.map((g, i) => <path key={i} d={g.ch === 'i' ? stemOnly(g.d) : g.d} />)}<path d={I_LEAF} /></clipPath>
         <linearGradient id={`wmg${uid}`} x1="0" x2="1" y1="0" y2="0">
           <stop offset="0" stopColor="#fff" stopOpacity="0" />
           <stop offset="0.5" stopColor="#fff" stopOpacity={onDark ? 0.85 : 0.6} />
@@ -64,10 +71,14 @@ export function Wordmark({ size = 26, onDark = true, animate = false }: { size?:
       {GLYPHS.map((g, i) => {
         const c = i >= 4 ? accent : base;
         return (
-          <path key={i} className="wm-ch" d={g.d} fill={c} stroke={c} strokeWidth={animate ? 1.6 : 0} strokeLinejoin="round"
+          <path key={i} className="wm-ch" d={g.ch === 'i' ? stemOnly(g.d) : g.d} fill={c} stroke={c} strokeWidth={animate ? 1.6 : 0} strokeLinejoin="round"
             pathLength={1} style={animate ? ({ '--i': i } as CSSProperties) : undefined} />
         );
       })}
+      <g className="wm-ileaf">
+        <path d={I_LEAF} fill="#2FA36B" />
+        <path d={I_LEAF_VEIN} fill="none" stroke={onDark ? '#0B2F23' : '#F6F0E1'} strokeWidth="1.8" strokeLinecap="round" />
+      </g>
       {animate && (
         <g clipPath={`url(#wmc${uid})`}>
           <rect className="wm-gleam" x="-60" y="-80" width="60" height="110" fill={`url(#wmg${uid})`} transform="skewX(-18)" />

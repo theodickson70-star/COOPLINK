@@ -263,10 +263,30 @@ table.table { width: 100%; border-collapse: collapse; }
 .cl-anim .mk-ring { transform-box: view-box; transform-origin: 60px 60px; animation: mkRingIn 1s ease-out .6s both, mkSpin 40s linear 1.6s infinite; }
 /* Wordmark: kila herufi inachorwa (mstari), kisha inajazwa rangi; mwisho mwanga unapita juu ya neno */
 .cl-wm-anim .wm-ch { stroke-dasharray: 1 1; stroke-dashoffset: 1; fill-opacity: 0;
-  animation: wmDraw .75s cubic-bezier(.55,.1,.35,1) calc(.35s + var(--i) * .16s) forwards, wmFill .45s ease-out calc(.8s + var(--i) * .16s) forwards; }
-.cl-wm-anim .wm-gleam { animation: wmGleam 7s cubic-bezier(.45,0,.25,1) 2.1s infinite; transform-box: view-box; }
+  animation: wmDraw .75s cubic-bezier(.55,.1,.35,1) calc(var(--d, 0s) + .35s + var(--i) * .16s) forwards, wmFill .45s ease-out calc(var(--d, 0s) + .8s + var(--i) * .16s) forwards; }
+.cl-wm-anim .wm-gleam { animation: wmGleam 7s cubic-bezier(.45,0,.25,1) calc(var(--d, 0s) + 2.1s) infinite; transform-box: view-box; }
 @keyframes wmDraw { to { stroke-dashoffset: 0; } }
 @keyframes wmFill { to { fill-opacity: 1; stroke-width: 0; } }
+/* B: jani kwenye "i" linachipuka kisha linayumba taratibu */
+.wm-ileaf { transform-box: fill-box; transform-origin: 50% 100%; }
+.cl-wm-anim .wm-ileaf { transform: scale(0) rotate(-60deg); animation: leafPop .7s cubic-bezier(.3,1.7,.5,1) calc(var(--d, 0s) + 2.1s) forwards, leafSway 3.2s ease-in-out calc(var(--d, 0s) + 3s) infinite; }
+@keyframes leafPop { to { transform: scale(1) rotate(0); } }
+@keyframes leafSway { 0%, 100% { transform: scale(1) rotate(0); } 50% { transform: scale(1) rotate(10deg); } }
+/* E: kugusa logo -> majani yanazunguka theluthi moja, mwanga unapita */
+.mk-leaves { transform-box: view-box; transform-origin: 60px 60px; transition: transform .9s cubic-bezier(.3,1.3,.4,1); }
+.brand:hover .mk-leaves, .brand:focus-within .mk-leaves { transform: rotate(120deg); }
+.brand:hover .wm-gleam { animation: wmGleamOnce 1s cubic-bezier(.45,0,.25,1) both !important; }
+@keyframes wmGleamOnce { from { transform: skewX(-18deg) translateX(0); } to { transform: skewX(-18deg) translateX(560px); } }
+/* F: skrini ya kusubiri — majani yanazunguka, kiini kinadunda */
+.cl-spin .mk-leaves { animation: clSpin 2.4s cubic-bezier(.6,0,.4,1) infinite; }
+.cl-spin .mk-core { transform-box: view-box; transform-origin: 60px 60px; animation: clPulse 1.2s ease-in-out infinite; }
+@keyframes clSpin { to { transform: rotate(360deg); } }
+@keyframes clPulse { 50% { transform: scale(1.25); } }
+.cl-loading { gap: 12px; align-content: center; }
+.cl-loading-txt { font-family: var(--font-head); color: var(--muted); font-size: 13px; letter-spacing: .12em; }
+.cl-splash .cl-loading-txt { color: #8FB3A1; }
+.cl-dots::after { content: ""; animation: clDots 1.4s steps(4) infinite; }
+@keyframes clDots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
 @keyframes wmGleam { 0% { transform: skewX(-18deg) translateX(0); } 18%, 100% { transform: skewX(-18deg) translateX(560px); } }
 @keyframes mkGrow { 0% { transform: scale(0) rotate(-40deg); opacity: 0; } 70% { transform: scale(1.08) rotate(4deg); opacity: 1; } 100% { transform: none; opacity: 1; } }
 @keyframes mkVein { to { stroke-dashoffset: 0; } }
@@ -278,6 +298,8 @@ table.table { width: 100%; border-collapse: collapse; }
 @media (prefers-reduced-motion: reduce) {
   .cl-anim *, .cl-anim .wm span { animation: none !important; opacity: 1 !important; stroke-dashoffset: 0 !important; }
   .cl-wm-anim .wm-ch { animation: none !important; fill-opacity: 1 !important; stroke-width: 0 !important; }
+  .cl-wm-anim .wm-ileaf, .cl-spin .mk-leaves, .cl-spin .mk-core { animation: none !important; transform: none !important; }
+  .mk-leaves { transition: none; }
   .cl-wm-anim .wm-gleam { display: none; }
 }
 
