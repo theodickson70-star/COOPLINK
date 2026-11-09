@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, type Paged } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
-import { APPROVAL_TYPE_LABEL, dateTime, ROLE_LABEL, tsh } from '../lib/format';
+import { APPROVAL_TYPE_LABEL, dateTime, phone, ROLE_LABEL, tsh } from '../lib/format';
 import { Alert, Badge, Button, Empty, Loading, Modal, PageHead, Pager, Select, TextField } from '../components/ui';
 import { Tabs } from '../components/owner-ui';
 
@@ -148,6 +148,9 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
         <dl className="dl"><dt>Hadi tarehe</dt><dd>{p.closeDate}</dd><dt>Mapato</dt><dd>{tsh(p.totals.income)}</dd><dt>Matumizi</dt><dd>{tsh(p.totals.expense)}</dd><dt>Ziada → 3200</dt><dd><strong>{tsh(p.totals.surplus)}</strong></dd></dl>
       )}
       {(a.type === 'PERIOD_CLOSE' || a.type === 'YEAR_END_CLOSE') && <Alert kind="warn">Ukiidhinisha, vitabu vitafungwa hadi {p?.lockedThrough ?? p?.closeDate}: hakuna muamala wala journal wa tarehe hiyo au kabla yake utakaoruhusiwa. Haitenguliwi.{p?.openTransactions ? ` Miamala ${p.openTransactions} ya kipindi hicho bado haijakamilika.` : ''}</Alert>}
+      {a.type === 'MEMBER_REGISTRATION' && (a.payload as { nameOverride?: { name: string; phoneOwnerName: string | null; phone: string | null; reason: string } } | null)?.nameOverride && (() => { const n = (a.payload as { nameOverride: { name: string; phoneOwnerName: string | null; phone: string | null; reason: string } }).nameOverride; return (
+        <Alert kind="warn">Jina la mkulima <b>{n.name}</b> ni tofauti na mwenye namba {n.phone ? phone(n.phone) : ''} {n.phoneOwnerName ? <>(<b>{n.phoneOwnerName}</b>)</> : '(haijasajiliwa kwenye mobile money)'}. Sababu: {n.reason}. Ukiidhinisha usajili, unaidhinisha pia jina hili.</Alert>
+      ); })()}
       {a.type === 'KUNI_BATCH' && a.payload && (() => { const k = a.payload as { farmers: number; total: string; interest: string; rate: string; amountPerAcre: string }; return (
         <dl className="dl"><dt>Wakulima</dt><dd>{k.farmers}</dd><dt>Pesa ya kuni</dt><dd><strong>{tsh(k.total)}</strong></dd><dt>Riba ({Number(k.rate)}%)</dt><dd>{tsh(k.interest)}</dd><dt>Kikomo kwa ekari</dt><dd>{tsh(k.amountPerAcre)}</dd></dl>
       ); })()}

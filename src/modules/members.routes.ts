@@ -3,12 +3,12 @@ import { z } from 'zod';
 import { and, asc, count, desc, eq, ilike, ne, or, sql } from 'drizzle-orm';
 import { db, schema } from '../db';
 import { ah, decimalSchema, paged, paginationQuery, phoneSchema, uuidParam } from '../lib/http';
-import { badRequest, conflict, notFound } from '../lib/errors';
+import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
 import { requireAmcosPerm } from '../middleware/auth';
 import { activeGroups } from '../lib/groups';
 import { hasAmcosPerm } from '../lib/amcos-permissions';
 import { createApproval } from '../lib/approvals';
-import { lookupNameOrNull, splitName } from '../lib/name-lookup';
+import { lookupNameOrNull, resolvePhoneName, splitName } from '../lib/name-lookup';
 import { amcosScope, resolveWriteAmcosId } from '../middleware/tenant';
 import { nextNumber, pad } from '../lib/counter';
 import { audit } from '../lib/audit';
@@ -54,19 +54,48 @@ const memberBody = z.object({
   entryFeeReference: opt(z.string().trim().max(60)),
   guarantorName: opt(z.string().trim().min(3, 'Jina la mzamini angalau herufi 3')),
   guarantorPhone: opt(phoneSchema),
+  // Namba si ya mkulima mwenyewe (mf. ni ya mke): jina lake linaandikwa kwa sababu maalum na linaidhinishwa na Meneja
+  nameOverrideReason: opt(z.string().trim().min(5, 'Eleza sababu ya jina kuwa tofauti na mwenye namba').max(300)),
 });
 
-type MemberNames = Partial<Pick<z.infer<typeof memberBody>, 'firstName' | 'middleName' | 'lastName' | 'phone' | 'guarantorName' | 'guarantorPhone' | 'nextOfKinName' | 'nextOfKinPhone' | 'mobileMoneyNumber' | 'mobileMoneyName'>>;
+type MemberNames = Partial<Pick<z.infer<typeof memberBody>, 'firstName' | 'middleName' | 'lastName' | 'phone' | 'guarantorName' | 'guarantorPhone' | 'nextOfKinName' | 'nextOfKinPhone' | 'mobileMoneyNumber' | 'mobileMoneyName' | 'nameOverrideReason'>>
+  & { phoneOwnerName?: string | null; nameOverrideById?: string | null; nameOverrideAt?: Date | null };
+type MemberBefore = { status: string; phone: string | null; firstName: string; middleName: string | null; lastName: string; nameOverrideReason: string | null; nameOverrideById: string | null };
+const norm = (v: string) => v.toLowerCase().replace(/\s+/g, ' ').trim();
+const fullOf = (x: { firstName?: string | null; middleName?: string | null; lastName?: string | null }) => [x.firstName, x.middleName, x.lastName].filter(Boolean).join(' ');
+const local0 = (p: string) => (p.startsWith('255') ? '0' + p.slice(3) : p);
+
 /**
  * Majina yanatoka kwenye usajili wa mobile money wa namba husika (Abliner Name Lookup) — hayaandikwi kwa mkono.
+ * ISIPOKUWA: namba si ya mkulima mwenyewe (mf. ni ya mke/mzazi) au haijasajiliwa kwenye mobile money — hapo jina lake
+ * linaandikwa pamoja na SABABU, na linaidhinishwa na Meneja (Meneja akisajili/akihariri mwenyewe, ndiye anaidhinisha).
  * Mkulima asiye na simu: jina lake linaandikwa (hakuna namba ya kuthibitisha).
  */
-async function verifyMemberNames(body: MemberNames, before?: { phone: string | null }) {
+async function verifyMemberNames(req: Request, body: MemberNames, before?: MemberBefore) {
+  const confirmer = hasAmcosPerm(req.auth!.role, 'members.approve');
   const ph = body.phone !== undefined ? body.phone : before?.phone;
-  const touchesName = body.phone !== undefined || body.firstName !== undefined || body.middleName !== undefined || body.lastName !== undefined;
-  if (ph && touchesName) {
-    const n = await lookupNameOrNull(ph, 'Simu ya mkulima');
-    if (n) Object.assign(body, splitName(n));
+  const touchesName = body.phone !== undefined || body.firstName !== undefined || body.middleName !== undefined || body.lastName !== undefined || body.nameOverrideReason !== undefined;
+  const reason = body.nameOverrideReason !== undefined ? body.nameOverrideReason : before?.nameOverrideReason ?? null;
+  const typed = fullOf({ firstName: body.firstName ?? before?.firstName, middleName: body.middleName !== undefined ? body.middleName : before?.middleName, lastName: body.lastName ?? before?.lastName });
+  // Jina tofauti lililokwisha idhinishwa, na halijaguswa -> libaki kama lilivyo (mf. Stokipa anabadilisha kijiji tu)
+  const unchanged = !!before?.nameOverrideById && ph === before.phone && reason === before.nameOverrideReason && norm(typed) === norm(fullOf(before));
+  if (ph && touchesName && !unchanged) {
+    const r = await resolvePhoneName(ph);
+    const differs = r.status === 'NOT_FOUND' || (r.status === 'FOUND' && norm(typed) !== norm(r.name));
+    if (reason && differs) {
+      if (!confirmer && before && before.status !== 'PENDING') throw forbidden('Jina la mkulima tofauti na la mwenye namba linaidhinishwa na Meneja. Mwombe Meneja afanye mabadiliko haya.');
+      body.nameOverrideReason = reason;
+      body.phoneOwnerName = r.status === 'FOUND' ? r.name : null;
+      body.nameOverrideById = confirmer ? req.auth!.userId : null; // Stokipa akisajili: Meneja anaidhinisha pamoja na usajili
+      body.nameOverrideAt = confirmer ? new Date() : null;
+    } else if (r.status === 'NOT_FOUND') {
+      throw badRequest(`Simu ya mkulima ${local0(r.phone)} haijasajiliwa kwenye mobile money, kwa hiyo jina haliwezi kuthibitishwa. Hakikisha namba ni sahihi, au chagua "Namba si ya mkulima" na ueleze sababu (Meneja ataidhinisha).`);
+    } else {
+      if (r.status === 'FOUND') Object.assign(body, splitName(r.name));
+      Object.assign(body, { nameOverrideReason: null, phoneOwnerName: null, nameOverrideById: null, nameOverrideAt: null });
+    }
+  } else if (!ph && touchesName) {
+    Object.assign(body, { nameOverrideReason: null, phoneOwnerName: null, nameOverrideById: null, nameOverrideAt: null });
   }
   const pairs = [['guarantorPhone', 'guarantorName', 'Simu ya mzamini'], ['nextOfKinPhone', 'nextOfKinName', 'Simu ya mrithi'], ['mobileMoneyNumber', 'mobileMoneyName', 'Namba ya malipo ya simu']] as const;
   for (const [pk, nk, label] of pairs) {
@@ -152,7 +181,7 @@ membersRouter.post(
     const amcosId = await resolveWriteAmcosId(req, body.amcosId);
     const amcos = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId) }))!;
     checkEntryFee(body);
-    await verifyMemberNames(body);
+    await verifyMemberNames(req, body);
     await assertUnique(amcosId, body);
     const { memberNo: givenNo, amcosId: _ignored, ...data } = body;
 
@@ -173,7 +202,8 @@ membersRouter.post(
       if (!confirmer) {
         await createApproval(tx, req, {
           amcosId, type: 'MEMBER_REGISTRATION', entityType: 'Member', entityId: row.id,
-          title: `Usajili: ${row.firstName} ${row.lastName} (${row.memberNo})${row.village ? ` · ${row.village}` : ''}`,
+          title: `Usajili: ${row.firstName} ${row.lastName} (${row.memberNo})${row.village ? ` · ${row.village}` : ''}${row.nameOverrideReason ? ' · jina tofauti na mwenye namba' : ''}`,
+          payload: row.nameOverrideReason ? { nameOverride: { name: fullOf(row), phoneOwnerName: row.phoneOwnerName, phone: row.phone, reason: row.nameOverrideReason } } : undefined,
         });
       }
       return row;
@@ -210,7 +240,7 @@ membersRouter.patch(
       if (!body.memberNo) throw badRequest('Namba ya uanachama haiwezi kuwa tupu');
     }
     checkEntryFee(body, before);
-    await verifyMemberNames(body, before);
+    await verifyMemberNames(req, body, before);
     await assertUnique(before.amcosId, body, id);
     const member = await db.transaction(async (tx) => {
       const [row] = await tx.update(m).set({ ...body, memberNo: body.memberNo ?? undefined }).where(eq(m.id, id)).returning();

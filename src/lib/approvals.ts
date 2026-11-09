@@ -96,6 +96,10 @@ async function onMember(tx: Tx, req: Request, a: Approval, o: Outcome, note: str
   const status = o === 'APPROVED' ? 'ACTIVE' : 'EXITED';
   const [row] = await tx.update(m).set({ status }).where(and(eq(m.id, a.entityId!), eq(m.status, 'PENDING'))).returning();
   if (!row) throw conflict('Mkulima huyu hasubiri tena uthibitisho');
+  // Jina tofauti na mwenye namba: Meneja akiidhinisha usajili, anaidhinisha pia jina hilo
+  if (o === 'APPROVED' && row.nameOverrideReason && !row.nameOverrideById) {
+    await tx.update(m).set({ nameOverrideById: req.auth!.userId, nameOverrideAt: new Date() }).where(eq(m.id, row.id));
+  }
   await audit(tx, req, { action: o === 'APPROVED' ? 'MEMBER_CONFIRM' : 'MEMBER_REGISTRATION_REJECT', entity: 'Member', entityId: row.id, amcosId: a.amcosId, before: { status: 'PENDING' }, after: { status, note } });
 }
 

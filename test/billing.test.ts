@@ -455,3 +455,41 @@ test('Majina kutoka namba ya simu (Abliner Name Lookup): yanajitokeza, hayaandik
   assert.equal(m2.status, 201); assert.equal(m2.body.member.firstName, 'Zuhura');
   process.env.ABLINER_API_KEY = k;
 });
+
+test('Jina tofauti na mwenye namba: kwa sababu maalum, Meneja anaidhinisha', async () => {
+  const clerk = (await login(clerkPhone, 'Staff12345')).body.token;
+  const ph = () => '07' + String(Date.now() + Math.floor(Math.random() * 1000)).slice(-8);
+
+  // Stokipa anasajili: namba ni ya mume (John Juma Doe), mkulima ni Mariam
+  const p1 = ph();
+  const c = await call('POST', '/api/v1/members', clerk, { firstName: 'Mariam', lastName: 'Juma', gender: 'FEMALE', phone: p1, nameOverrideReason: 'Namba ni ya mke / mume wake' });
+  assert.equal(c.status, 201, JSON.stringify(c.body));
+  let mem = c.body.member;
+  assert.equal(mem.firstName, 'Mariam'); assert.equal(mem.lastName, 'Juma'); assert.equal(mem.status, 'PENDING');
+  assert.equal(mem.phoneOwnerName, 'John Juma Doe'); assert.equal(mem.nameOverrideById, null, 'Linasubiri idhini ya Meneja');
+  const appr = (await call('GET', '/api/v1/approvals?status=PENDING', manager)).body.data.find((x: any) => x.entityId === mem.id);
+  assert.ok(appr); assert.match(appr.title, /jina tofauti/);
+  assert.equal(appr.payload.nameOverride.phoneOwnerName, 'John Juma Doe');
+  const d = await call('POST', `/api/v1/approvals/${appr.id}/decide`, manager, { decision: 'APPROVED', note: 'Nimemhoji, ni mkewe' });
+  assert.equal(d.status, 200, JSON.stringify(d.body));
+  mem = (await call('GET', `/api/v1/members/${mem.id}`, manager)).body.member;
+  assert.equal(mem.status, 'ACTIVE'); assert.ok(mem.nameOverrideById, 'Meneja ameidhinisha jina');
+
+  // Stokipa anabadilisha kijiji tu -> jina lililoidhinishwa linabaki
+  const e1 = await call('PATCH', `/api/v1/members/${mem.id}`, clerk, { firstName: 'Mariam', middleName: null, lastName: 'Juma', phone: p1, nameOverrideReason: 'Namba ni ya mke / mume wake', village: 'Usoke' });
+  assert.equal(e1.status, 200, JSON.stringify(e1.body)); assert.equal(e1.body.member.firstName, 'Mariam'); assert.ok(e1.body.member.nameOverrideById);
+  // Stokipa hawezi kubadilisha jina tofauti kwenye mkulima aliye hai
+  assert.equal((await call('PATCH', `/api/v1/members/${mem.id}`, clerk, { firstName: 'Mwanaidi', lastName: 'Juma', phone: p1, nameOverrideReason: 'Namba ni ya mke / mume wake' })).status, 403);
+
+  // Bila sababu: jina lililoandikwa linapuuzwa (linatoka mobile money)
+  const c2 = await call('POST', '/api/v1/members', manager, { firstName: 'Mariam', lastName: 'Juma', gender: 'FEMALE', phone: ph() });
+  assert.equal(c2.body.member.firstName, 'John'); assert.equal(c2.body.member.nameOverrideReason, null);
+  // Sababu fupi mno inakataliwa
+  assert.equal((await call('POST', '/api/v1/members', manager, { firstName: 'A', lastName: 'B', gender: 'FEMALE', phone: ph(), nameOverrideReason: 'ok' })).status, 400);
+
+  // Namba isiyosajiliwa kwenye mobile money + sababu; Meneja akisajili mwenyewe, linaidhinishwa papo hapo
+  const c3 = await call('POST', '/api/v1/members', manager, { firstName: 'Saidi', lastName: 'Ramadhani', gender: 'MALE', phone: '0700000009', nameOverrideReason: 'Namba haijasajiliwa kwenye mobile money' });
+  assert.equal(c3.status, 201, JSON.stringify(c3.body));
+  assert.equal(c3.body.member.firstName, 'Saidi'); assert.equal(c3.body.member.phoneOwnerName, null); assert.ok(c3.body.member.nameOverrideById);
+  assert.equal(c3.body.member.status, 'ACTIVE');
+});

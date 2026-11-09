@@ -212,6 +212,11 @@ export const members = pgTable('members', {
   // Mzamini wa mkulima
   guarantorName: text(),
   guarantorPhone: text(),
+  // Jina la mkulima tofauti na jina la mobile money la namba yake (mf. namba ni ya mke) — linaidhinishwa na Meneja
+  phoneOwnerName: text(),             // jina lililosajiliwa kwenye mobile money la namba hii
+  nameOverrideReason: text(),
+  nameOverrideById: uuid(),           // Meneja aliyeidhinisha (null = linasubiri idhini)
+  nameOverrideAt: timestamp({ withTimezone: true }),
   createdById: uuid(),
   createdAt: createdAt(),
   updatedAt: updatedAt(),

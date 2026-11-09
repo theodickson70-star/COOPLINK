@@ -12,6 +12,7 @@ export interface Member {
   dateOfBirth: string | null; nidaNumber: string | null; voterIdNumber: string | null; phone: string | null; village: string | null; hamlet: string | null;
   status: string; joinedAt: string; mobileMoneyNumber: string | null; mobileMoneyProvider: string | null; mobileMoneyName: string | null;
   bankName: string | null; bankAccountName: string | null; bankAccountNumber: string | null; preferredPayment: string;
+  phoneOwnerName?: string | null; nameOverrideReason?: string | null; nameOverrideById?: string | null; nameOverrideAt?: string | null;
   sharesCount: number; nextOfKinName: string | null; nextOfKinPhone: string | null; nextOfKinRelation: string | null; amcosId: string;
   entryFee: string | null; entryFeePaid: boolean; entryFeePaidAt: string | null; entryFeeReference: string | null;
   guarantorName: string | null; guarantorPhone: string | null;
@@ -68,11 +69,14 @@ export function Members() {
   );
 }
 
+const REASONS = ['Namba ni ya mke / mume wake', 'Namba ni ya mzazi wake', 'Namba ni ya mtoto wake', 'Namba ni ya ndugu yake', 'Namba haijasajiliwa kwenye mobile money', 'Jina kwenye mobile money limekosewa'];
+
 const EMPTY = {
   memberNo: '', firstName: '', middleName: '', lastName: '', gender: 'MALE', dateOfBirth: '', nidaNumber: '', voterIdNumber: '', phone: '', village: '', hamlet: '',
   mobileMoneyNumber: '', mobileMoneyProvider: 'MPESA', mobileMoneyName: '', bankName: '', bankAccountName: '', bankAccountNumber: '',
   preferredPayment: 'MOBILE_MONEY', sharesCount: '0', nextOfKinName: '', nextOfKinPhone: '', nextOfKinRelation: '',
   entryFee: '', entryFeePaid: 'no', entryFeePaidAt: '', entryFeeReference: '', guarantorName: '', guarantorPhone: '',
+  nameOverrideReason: '',
 };
 type Form = typeof EMPTY;
 type IdType = 'NIDA' | 'VOTER' | 'NONE';
@@ -179,6 +183,7 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
 
   const go = (to: number) => {
     if (to > step) {
+      if (step === 0 && to > 0 && diff && (f.nameOverrideReason ?? '').trim().length < 5) { setTried(true); return; }
       for (let i = step; i < to; i++) if (stepErrors(i, f, idType).length) { setStep(i); setTried(true); return; }
     }
     setTried(false);
@@ -188,6 +193,7 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
   };
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
+    if (diff && (f.nameOverrideReason ?? '').trim().length < 5) { setStep(0); setTried(true); return; }
     for (let i = 0; i < 3; i++) if (stepErrors(i, f, idType).length) { setStep(i); setTried(true); return; }
     const payload = toPayload(f, idType);
     if (editing && !may('members.approve')) delete payload.memberNo;
@@ -198,8 +204,13 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
   const fullNameStr = [f.firstName, f.middleName, f.lastName].filter((x) => x.trim()).join(' ');
   // Majina ya mkulima yanatoka kwenye usajili wa mobile money wa simu yake (hayaandikwi kwa mkono)
   const own = usePhoneName(f.phone);
+  // Namba si ya mkulima mwenyewe (mf. ni ya mke): jina lake linaandikwa kwa sababu, Meneja anaidhinisha
+  const [diff, setDiff] = useState(!!f.nameOverrideReason);
+  const [reasonKind, setReasonKind] = useState(() => (REASONS.includes(f.nameOverrideReason ?? '') ? f.nameOverrideReason : f.nameOverrideReason ? 'OTHER' : ''));
+  const namesLocked = own.locked && !diff;
   const filled = useRef('');
   useEffect(() => {
+    if (diff) return;
     if (own.state === 'found' && own.parts) {
       filled.current = own.name;
       setF((s) => ({ ...s, firstName: own.parts!.firstName, middleName: own.parts!.middleName ?? '', lastName: own.parts!.lastName }));
@@ -208,7 +219,7 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
       filled.current = '';
       setF((s) => ({ ...s, firstName: '', middleName: '', lastName: '' }));
     }
-  }, [own.state, own.name]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [own.state, own.name, diff]); // eslint-disable-line react-hooks/exhaustive-deps
   const R = ({ k, v }: { k: string; v: React.ReactNode }) => <><dt>{k}</dt><dd>{v || <span className="muted">—</span>}</dd></>;
 
   return (
@@ -257,11 +268,29 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
               help={editing ? 'Inabadilishwa na Meneja tu' : 'Namba aliyopewa na chama. Ukiacha wazi, mfumo utatoa mpya.'} />
             <div>
               <TextField label="Simu ya mkulima" type="tel" inputMode="tel" placeholder="0712 345 678" value={f.phone} onChange={set('phone')} autoFocus={!editing} />
-              <NameNote state={own.state} network={own.network} emptyHint="Weka namba ya simu — majina yatajitokeza yenyewe. Mkulima asiye na simu: acha wazi na uandike majina." />
+              {!diff && <NameNote state={own.state} network={own.network} emptyHint="Weka namba ya simu — majina yatajitokeza yenyewe. Mkulima asiye na simu: acha wazi na uandike majina." />}
+              {(own.state === 'found' || own.state === 'not_found' || diff) && (
+                <button type="button" className="link-btn" onClick={() => {
+                  const on = !diff; setDiff(on);
+                  if (!on) { setReasonKind(''); setF((s) => ({ ...s, nameOverrideReason: '' })); filled.current = ''; }
+                }}>{diff ? '← Tumia jina la mwenye namba' : 'Namba si ya mkulima mwenyewe? Andika jina lake'}</button>
+              )}
             </div>
-            <div className={own.locked ? 'locked-field' : undefined}><TextField label="Jina la kwanza *" value={f.firstName} onChange={set('firstName')} readOnly={own.locked} tabIndex={own.locked ? -1 : undefined} /></div>
-            <div className={own.locked ? 'locked-field' : undefined}><TextField label="Jina la kati" value={f.middleName} onChange={set('middleName')} readOnly={own.locked} tabIndex={own.locked ? -1 : undefined} /></div>
-            <div className={own.locked ? 'locked-field' : undefined}><TextField label="Jina la ukoo *" value={f.lastName} onChange={set('lastName')} readOnly={own.locked} tabIndex={own.locked ? -1 : undefined} /></div>
+            {diff && (
+              <div className="override-box">
+                <strong>Jina tofauti na la mwenye namba</strong>
+                <p>{own.state === 'found' ? <>Namba hii imesajiliwa kwa jina la <b>{own.name}</b>.</> : own.state === 'not_found' ? 'Namba hii haijasajiliwa kwenye mobile money.' : null} Andika majina ya mkulima hapa chini na ueleze sababu. {may('members.approve') ? 'Wewe kama Meneja unaidhinisha jina hili ukihifadhi.' : 'Meneja ataidhinisha jina hili pamoja na usajili.'}</p>
+                <div className="form-grid">
+                  <SelectField label="Sababu *" value={reasonKind} placeholder="Chagua sababu…" onChange={(v) => { setReasonKind(v); setF((s) => ({ ...s, nameOverrideReason: v === 'OTHER' ? '' : v })); }}
+                    options={[...REASONS.map((r) => ({ value: r, label: r })), { value: 'OTHER', label: 'Sababu nyingine…' }]} />
+                  {reasonKind === 'OTHER' && <TextField label="Eleza sababu *" value={f.nameOverrideReason} onChange={set('nameOverrideReason')} placeholder="mf. Namba ni ya mjomba wake anayemsaidia" />}
+                </div>
+                {f.nameOverrideReason && f.nameOverrideReason.trim().length < 5 && <p className="name-note bad">Sababu iwe na maelezo ya kutosha (herufi 5+)</p>}
+              </div>
+            )}
+            <div className={namesLocked ? 'locked-field' : undefined}><TextField label="Jina la kwanza *" value={f.firstName} onChange={set('firstName')} readOnly={namesLocked} tabIndex={namesLocked ? -1 : undefined} /></div>
+            <div className={namesLocked ? 'locked-field' : undefined}><TextField label="Jina la kati" value={f.middleName} onChange={set('middleName')} readOnly={namesLocked} tabIndex={namesLocked ? -1 : undefined} /></div>
+            <div className={namesLocked ? 'locked-field' : undefined}><TextField label="Jina la ukoo *" value={f.lastName} onChange={set('lastName')} readOnly={namesLocked} tabIndex={namesLocked ? -1 : undefined} /></div>
             <SelectField label="Jinsia *" value={f.gender} onChange={set('gender')} options={[{ value: 'MALE', label: 'Mwanaume' }, { value: 'FEMALE', label: 'Mwanamke' }]} />
             <TextField label="Tarehe ya kuzaliwa" type="date" value={f.dateOfBirth} onChange={set('dateOfBirth')} />
             <SelectField label="Aina ya kitambulisho" value={idType} onChange={(v) => setIdType(v as IdType)}

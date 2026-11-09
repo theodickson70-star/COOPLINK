@@ -642,3 +642,6 @@ button.card.kpi:hover { border-color: var(--green); }
 .name-note.ok { color: var(--green); font-weight: 600; }
 .name-note.bad { color: var(--danger); }
 .name-note.warn { color: var(--gold-ink); }
+.link-btn { background: none; border: 0; padding: 4px 0 0; color: var(--green); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; text-decoration: underline; text-align: left; }
+.override-box { grid-column: 1 / -1; border: 1px solid var(--gold); background: #FFF9EA; border-radius: 12px; padding: 12px 14px; }
+.override-box p { margin: 4px 0 10px; font-size: 13.5px; }

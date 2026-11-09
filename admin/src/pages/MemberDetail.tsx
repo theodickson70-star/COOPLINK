@@ -51,7 +51,9 @@ export function MemberDetail() {
           <h2>Taarifa za mwanachama</h2>
           <dl className="dl">
             <dt>Jinsia</dt><dd>{m.gender === 'FEMALE' ? 'Mwanamke' : 'Mwanaume'}</dd>
-            <dt>Simu</dt><dd>{phone(m.phone)}</dd>
+            <dt>Simu</dt><dd>{phone(m.phone)}{m.nameOverrideReason && <div className="muted" style={{ fontSize: 12.5 }}>
+              {m.phoneOwnerName ? <>Namba imesajiliwa kwa jina la <b>{m.phoneOwnerName}</b></> : 'Namba haijasajiliwa kwenye mobile money'} · sababu: {m.nameOverrideReason} · {m.nameOverrideById ? <Badge status="APPROVED" label="Jina limeidhinishwa na Meneja" /> : <Badge status="PENDING" label="Jina linasubiri idhini ya Meneja" />}
+            </div>}</dd>
             <dt>Kitambulisho</dt><dd>{m.nidaNumber ? `NIDA · ${m.nidaNumber}` : m.voterIdNumber ? `Kadi ya mpiga kura · ${m.voterIdNumber}` : '—'}</dd>
             <dt>Kijiji</dt><dd>{[m.village, m.hamlet].filter(Boolean).join(', ') || '—'}</dd>
             <dt>Alijiunga</dt><dd>{date(m.joinedAt)}</dd>

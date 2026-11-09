@@ -89,6 +89,9 @@ const MARKERS: Record<string, string[]> = {
   '0014_phone_name_lookup': [
     "select to_regclass('public.phone_name_lookups') is not null",
   ],
+  '0015_member_name_override': [
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'members' and column_name = 'name_override_reason')",
+  ],
 };
 
 interface JournalEntry { tag: string; when: number }
