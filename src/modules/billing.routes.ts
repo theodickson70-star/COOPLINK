@@ -1,6 +1,6 @@
 // =====================================================================
-//  ADA ZA COOPLINK — upande wa chama (Meneja pekee ndiye mhusika mkuu wa kulipa)
-//  Njia hizi zinapatikana HATA chama kikiwa kimefungwa kwa ada, ili Meneja alipe.
+//  ADA ZA COOPLINK — upande wa chama (Mhasibu ndiye mhusika wa kulipa; Meneja anaona — analipa kama hakuna Mhasibu)
+//  Njia hizi zinapatikana HATA chama kikiwa kimefungwa kwa ada, ili mlipaji alipe.
 // =====================================================================
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
@@ -9,14 +9,28 @@ import { db, schema } from '../db';
 import { ah, decimalSchema, normalizePhone, uuidParam } from '../lib/http';
 import { AppError, badRequest, notFound } from '../lib/errors';
 import { requireRole } from '../middleware/auth';
-import { PROVIDER_NAME, type Provider, abandonMobilePayment, ensureSeasonFee, feeLock, feesOverview, receiptOf, requestMobilePayment, syncMobilePayment } from '../lib/fees';
+import { PAYER_LABEL, feePayerRole, PROVIDER_NAME, type Provider, abandonMobilePayment, ensureSeasonFee, feeLock, feesOverview, receiptOf, requestMobilePayment, syncMobilePayment } from '../lib/fees';
 import { getSetting } from '../lib/settings';
 import { lookupNameOrNull } from '../lib/name-lookup';
 import { TeePayError } from '../lib/teepay';
 
 export const billingRouter = Router();
 const MP = schema.platformMobilePayments;
-billingRouter.use(requireRole(['AMCOS_ADMIN']));
+// Mhasibu ndiye analipa ada ya CoopLink; Meneja anaona hali na risiti (analipa tu kama chama hakina Mhasibu).
+billingRouter.use(requireRole(['AMCOS_ADMIN', 'ACCOUNTANT']));
+billingRouter.use(ah(async (req, _res, next) => {
+  const payer = await feePayerRole(req.auth!.amcosId!);
+  req.feePayer = { role: payer, isPayer: req.auth!.role === payer };
+  // Chama kimefungwa: mlipaji peke yake ndiye anabaki (hata Meneja anazuiwa kama kuna Mhasibu)
+  if (!req.feePayer.isPayer) {
+    const lock = await feeLock(req.auth!.amcosId!);
+    if (lock) throw new AppError(402, 'FEES_LOCKED', `Chama kimefungwa kwa sababu ${lock.label.toLowerCase()} (${lock.outstanding}) haijalipwa. ${PAYER_LABEL[payer]} alipie; kitafunguka papo hapo.`, { lock });
+  }
+  next();
+}));
+const payerOnly = (req: Request) => {
+  if (!req.feePayer?.isPayer) throw new AppError(403, 'FEE_PAYER_ONLY', `Ada ya CoopLink inalipwa na ${PAYER_LABEL[req.feePayer!.role]} wa chama.`);
+};
 
 const ownFee = async (req: Request, id: string) => {
   const [f] = await db.select().from(schema.platformFees).where(and(eq(schema.platformFees.id, id), eq(schema.platformFees.amcosId, req.auth!.amcosId!)));
@@ -32,11 +46,12 @@ billingRouter.get('/', ah(async (req, res) => {
   const amcosId = req.auth!.amcosId!;
   await db.transaction((tx) => ensureSeasonFee(tx, amcosId));
   const c = await getSetting('fees');
-  res.json({ ...(await feesOverview(amcosId)), config: { entranceFee: c.entranceFee, seasonFee: c.seasonFee, seasonInstallments: c.seasonInstallments, entranceDays: c.entranceDays, deadlineDay: c.deadlineDay, deadlineMonth: c.deadlineMonth } });
+  res.json({ ...(await feesOverview(amcosId)), payer: { role: req.feePayer!.role, label: PAYER_LABEL[req.feePayer!.role], isMe: req.feePayer!.isPayer }, config: { entranceFee: c.entranceFee, seasonFee: c.seasonFee, seasonInstallments: c.seasonInstallments, entranceDays: c.entranceDays, deadlineDay: c.deadlineDay, deadlineMonth: c.deadlineMonth } });
 }));
 
 // Ombi la malipo kwa simu: Meneja anaweka namba ya simu (yake au ya mlipaji mwingine), jina kamili na email
 billingRouter.post('/fees/:id/pay', ah(async (req, res) => {
+  payerOnly(req);
   const { id } = uuidParam.parse(req.params);
   const b = z.object({
     amount: decimalSchema({ min: 1 }),
@@ -71,6 +86,7 @@ billingRouter.post('/payments/:id/sync', ah(async (req, res) => {
 
 // "Push haijafika": Meneja anaghairi ombi ili aombe tena (ombi linaendelea kuhakikiwa TeePay nyuma)
 billingRouter.post('/payments/:id/cancel', ah(async (req, res) => {
+  payerOnly(req);
   const { id } = uuidParam.parse(req.params);
   const [mp] = await db.select().from(MP).where(and(eq(MP.id, id), eq(MP.amcosId, req.auth!.amcosId!)));
   if (!mp) throw notFound('Malipo');
@@ -86,7 +102,7 @@ billingRouter.get('/receipts/:id', ah(async (req, res) => {
 
 /**
  * Chama kimefungwa kwa ada ambayo haijalipwa -> kila njia ya data ya chama inazuiwa (402).
- * Meneja anabaki na /billing (imewekwa KABLA ya mlinzi huu) ili alipe.
+ * Mlipaji (Mhasibu, au Meneja kama hakuna Mhasibu) anabaki na /billing (imewekwa KABLA ya mlinzi huu) ili alipe.
  */
 export async function feeGuard(req: Request, _res: Response, next: NextFunction) {
   try {
@@ -94,7 +110,8 @@ export async function feeGuard(req: Request, _res: Response, next: NextFunction)
     if (!amcosId) return next();
     const lock = await feeLock(amcosId);
     if (!lock) return next();
-    const who = req.auth!.role === 'AMCOS_ADMIN' ? 'Lipia kwenye ukurasa wa "Ada ya CoopLink"' : 'Meneja wa chama alipie';
+    const payer = await feePayerRole(amcosId);
+    const who = req.auth!.role === payer ? 'Lipia kwenye ukurasa wa "Ada ya CoopLink"' : `${PAYER_LABEL[payer]} wa chama alipie`;
     next(new AppError(402, 'FEES_LOCKED', `Chama kimefungwa kwa sababu ${lock.label.toLowerCase()} (${lock.outstanding}) haijalipwa tangu ${lock.dueDate}. ${who}; kitafunguka papo hapo malipo yakithibitishwa.`, { lock }));
   } catch (e) { next(e); }
 }

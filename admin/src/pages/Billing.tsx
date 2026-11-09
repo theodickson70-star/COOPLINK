@@ -1,5 +1,5 @@
 // =====================================================================
-//  ADA YA COOPLINK (Meneja): kingilio + ada ya msimu kwa mitandao ya simu (TeePay au Abliner).
+//  ADA YA COOPLINK (Mhasibu analipa; Meneja anaona — analipa kama chama hakina Mhasibu): kingilio + ada ya msimu kwa mitandao ya simu (TeePay au Abliner).
 //  Malipo yakithibitishwa na mtoa huduma, chama kinafunguka papo hapo na risiti inatolewa.
 // =====================================================================
 import { useEffect, useState } from 'react';
@@ -24,6 +24,7 @@ interface Fee {
 export interface BillingData {
   teepayEnabled: boolean;
   lock: { kind: string; label: string; dueDate: string; outstanding: string } | null;
+  payer?: { role: 'ACCOUNTANT' | 'AMCOS_ADMIN'; label: string; isMe: boolean };
   fees: Fee[];
   config: { entranceFee: number; seasonFee: number; seasonInstallments: number; entranceDays: number; deadlineDay: number; deadlineMonth: number };
 }
@@ -38,6 +39,7 @@ export function Billing() {
   const c = data.config;
   const open = data.fees.filter((f) => f.status === 'UNPAID' || f.status === 'PARTIAL');
   const done = data.fees.filter((f) => f.status === 'PAID' || f.status === 'WAIVED');
+  const isPayer = data.payer?.isMe ?? true;
   return (
     <>
       <PageHead title="Ada ya CoopLink" sub="Malipo ya huduma ya mfumo wa CoopLink kwa simu (M-Pesa, Airtel Money, Mixx by Yas, HaloPesa). Malipo yakithibitishwa, unapata risiti papo hapo." />
@@ -45,22 +47,24 @@ export function Billing() {
       {data.lock && (
         <div className="lock-card">
           <strong>Chama kimefungwa kwa muda</strong>
-          <p>{data.lock.label} ({tsh(data.lock.outstanding)}) haijalipwa tangu {date(data.lock.dueDate)}. Wafanyakazi wengine hawawezi kuingia kwenye mfumo mpaka ilipwe. Lipa kwa simu hapa chini — mfumo utafunguka papo hapo malipo yakithibitishwa.</p>
+          <p>{data.lock.label} ({tsh(data.lock.outstanding)}) haijalipwa tangu {date(data.lock.dueDate)}. Watumishi wengine wote (pamoja na Meneja) hawawezi kuingia kwenye mfumo mpaka ilipwe. Lipa kwa simu hapa chini — mfumo utafunguka papo hapo malipo yakithibitishwa.</p>
         </div>
       )}
+      {!isPayer && open.length > 0 && <Alert kind="warn"><strong>{data.payer!.label} wa chama ndiye analipa ada ya CoopLink.</strong> Hapa unaona hali ya ada na risiti tu. Hakikisha {data.payer!.label.toLowerCase()} analipa kabla ya tarehe ya mwisho — ada isipolipwa, chama kizima kinafungwa (hata Meneja hataingia).</Alert>}
       {!data.teepayEnabled && <Alert kind="warn">Malipo kwa simu bado hayajawashwa na CoopLink. Wasiliana na CoopLink.</Alert>}
       {open.length === 0 && done.length > 0 && !data.lock && <Alert kind="ok">Hakuna ada inayodaiwa kwa sasa. Asante!</Alert>}
       {data.fees.length === 0 && <Empty>Chama hiki hakina ada inayodaiwa kwa sasa.</Empty>}
       <div className="stack" style={{ gap: 16 }}>
-        {open.map((f) => <FeeCard key={f.id} f={f} canPay={data.teepayEnabled} onChange={(m) => { if (m) setOk(m); reload(); }} />)}
-        {done.map((f) => <FeeCard key={f.id} f={f} canPay={false} onChange={() => reload()} />)}
+        {open.map((f) => <FeeCard key={f.id} f={f} canPay={data.teepayEnabled && isPayer} canCancel={isPayer} onChange={(m) => { if (m) setOk(m); reload(); }} />)}
+        {done.map((f) => <FeeCard key={f.id} f={f} canPay={false} canCancel={false} onChange={() => reload()} />)}
       </div>
       <div style={{ marginTop: 16 }} />
       <Section title="Utaratibu wa ada za CoopLink">
         <ul className="rules">
           <li><strong>Ada ya kingilio — {tsh(c.entranceFee)}</strong>: inalipwa mara moja, ndani ya siku {c.entranceDays} baada ya akaunti ya chama kufunguliwa.</li>
           <li><strong>Ada ya msimu — {tsh(c.seasonFee)}</strong> kwa kila msimu wa tumbaku, kwa awamu {c.seasonInstallments} ({tsh(c.seasonFee / c.seasonInstallments)} kila moja). Mwisho wa kulipa kwa vyama vyote ni tarehe {c.deadlineDay} {MONTHS[c.deadlineMonth]} kila mwaka.</li>
-          <li>Ada isipolipwa kufikia tarehe yake, chama kinafungwa mpaka ilipwe. Meneja anaendelea kuingia ili alipe.</li>
+          <li><strong>Mhasibu</strong> ndiye analipa ada za CoopLink (kama chama bado hakina Mhasibu, Meneja analipa). Meneja anaona hali ya ada na risiti.</li>
+          <li>Ada isipolipwa kufikia tarehe yake, chama kizima kinafungwa mpaka ilipwe — Mhasibu peke yake ndiye anaingia, kwenye ukurasa huu tu, ili alipe.</li>
           <li>Malipo ni kwa simu: weka namba, kisha thibitisha kwa PIN ombi litakalokuja kwenye simu hiyo (M-Pesa, Airtel Money, Mixx by Yas, HaloPesa).</li>
         </ul>
       </Section>
@@ -71,7 +75,7 @@ export function Billing() {
 const PNAME: Record<string, string> = { TEEPAY: 'TeePay', ABLINER: 'Abliner' };
 const DETAIL: Record<string, string> = { cancelled: 'Ombi limeghairiwa kwenye simu', expired: 'Muda wa kuweka PIN umeisha' };
 
-function FeeCard({ f, canPay, onChange }: { f: Fee; canPay: boolean; onChange: (msg?: string) => void }) {
+function FeeCard({ f, canPay, canCancel = canPay, onChange }: { f: Fee; canPay: boolean; canCancel?: boolean; onChange: (msg?: string) => void }) {
   const { user } = useAuth();
   const act = useAction();
   const inst = Number(f.amount) / f.installments;
@@ -132,13 +136,13 @@ function FeeCard({ f, canPay, onChange }: { f: Fee; canPay: boolean; onChange: (
             {waited >= 120 && ' Kama ombi halijafika kwenye simu, subiri dakika chache kisha jaribu tena.'}
           </p>
           {open.lastError && <p className="text-bad" style={{ margin: '6px 0 0', fontSize: 13 }}>{open.lastError}</p>}
-          <div className="actions" style={{ marginTop: 12 }}>
+          {canCancel && <div className="actions" style={{ marginTop: 12 }}>
             <Button variant="secondary" busy={act.busy} onClick={async () => {
               if (!window.confirm('Push haijafika kwenye simu? Ombi hili litaghairiwa ili uombe tena.\n\nKama ulishaweka PIN, usighairi — subiri kidogo.')) return;
               const r = await act.run(() => api<{ status: string; abandoned?: boolean; message?: string }>(`/billing/payments/${open.id}/cancel`, { method: 'POST', body: {} }));
               if (r) onChange(r.message ?? 'Ombi limeghairiwa. Unaweza kuomba tena sasa.');
             }}>Push haijafika? Ghairi ombi</Button>
-          </div>
+          </div>}
         </div>
       )}
       {f.testAmount && (f.status === 'UNPAID' || f.status === 'PARTIAL') && (

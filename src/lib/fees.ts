@@ -6,7 +6,7 @@
 //   3. Malipo ni kwa MITANDAO YA SIMU kupitia TeePay au Abliner (ombi la PIN kwenye simu ya mlipaji);
 //      njia moja ikishindwa, nyingine inajaribiwa.
 //      Yanarekodiwa tu TeePay ikisema "succeeded" — ombi la malipo pekee SI malipo.
-//   4. Ada ikipita tarehe bila kulipwa yote -> chama kizima kinafungwa (Meneja anaingia kulipa tu).
+//   4. Ada ikipita tarehe bila kulipwa yote -> chama kizima kinafungwa (Mhasibu anaingia kulipa tu; Meneja kama chama hakina Mhasibu).
 //      Malipo yakithibitishwa -> kinafunguka papo hapo.
 // =====================================================================
 import { randomUUID } from 'node:crypto';
@@ -373,6 +373,17 @@ export async function receiptOf(paymentId: string, amcosId?: string) {
 }
 
 /** Taarifa za ada za chama kimoja (Meneja / Owner). */
+/**
+ * Mlipaji wa ada ya CoopLink: Mhasibu (mambo yote ya fedha). Chama ambacho bado hakina Mhasibu hai,
+ * Meneja ndiye analipa ili chama kisikwame (mf. kingilio cha chama kipya).
+ */
+export async function feePayerRole(amcosId: string): Promise<'ACCOUNTANT' | 'AMCOS_ADMIN'> {
+  const [a] = await db.select({ id: schema.users.id }).from(schema.users)
+    .where(and(eq(schema.users.amcosId, amcosId), eq(schema.users.role, 'ACCOUNTANT'), eq(schema.users.isActive, true))).limit(1);
+  return a ? 'ACCOUNTANT' : 'AMCOS_ADMIN';
+}
+export const PAYER_LABEL = { ACCOUNTANT: 'Mhasibu', AMCOS_ADMIN: 'Meneja' } as const;
+
 export async function feesOverview(amcosId: string) {
   const fees = await db.select().from(F).where(eq(F.amcosId, amcosId)).orderBy(asc(F.dueDate), asc(F.createdAt));
   const mps = fees.length ? await db.select().from(MP).where(eq(MP.amcosId, amcosId)).orderBy(sql`${MP.createdAt} desc`) : [];

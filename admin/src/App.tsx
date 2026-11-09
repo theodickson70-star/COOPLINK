@@ -153,8 +153,8 @@ export default function App() {
             <Route path="input-issues/new" element={<Need p={['issues.request']}><InputIssueNew /></Need>} />
             <Route path="input-issues/:id" element={<InputIssueDetail />} />
             <Route path="balances" element={<Need p={['ledger.read']}><Balances /></Need>} />
-            <Route path="billing" element={<Protected roles={['AMCOS_ADMIN']}><Billing /></Protected>} />
-            <Route path="billing/receipts/:id" element={<Protected roles={['AMCOS_ADMIN']}><BillingReceipt /></Protected>} />
+            <Route path="billing" element={<Protected roles={['AMCOS_ADMIN', 'ACCOUNTANT']}><Billing /></Protected>} />
+            <Route path="billing/receipts/:id" element={<Protected roles={['AMCOS_ADMIN', 'ACCOUNTANT']}><BillingReceipt /></Protected>} />
             <Route path="users" element={<Protected roles={['SUPER_ADMIN', 'UNION_ADMIN', 'AMCOS_ADMIN']}><Users /></Protected>} />
             <Route path="organizations" element={<Protected roles={ROLE_GROUPS.ORGS}><Organizations /></Protected>} />
             <Route path="audit" element={<Need p={['audit.read']}><Audit /></Need>} />

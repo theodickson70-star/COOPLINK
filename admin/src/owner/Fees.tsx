@@ -128,7 +128,7 @@ export function AmcosFeesSection({ amcosId, active }: { amcosId: string; active:
           footer={<><Button variant="secondary" onClick={close}>Ghairi</Button><Button busy={act.busy} disabled={Number(testAmt) < 500} onClick={async () => {
             if (await act.run(() => api(`/owner/fees/${modal.feeId}/test`, { method: 'POST', body: { amount: Number(testAmt) } }))) { close(); reload(); }
           }}>Washa jaribio</Button></>}>
-          <p>Meneja atalipa kiasi hiki kidogo kwa simu kujaribu mfumo wa malipo. Jaribio likifanikiwa: risiti ya majaribio inatoka, pesa inaingia kwenye mapato, na ada inarudi kiasi chake halisi bila kupungua.</p>
+          <p>Mhasibu wa chama (au Meneja kama hakuna Mhasibu) atalipa kiasi hiki kidogo kwa simu kujaribu mfumo wa malipo. Jaribio likifanikiwa: risiti ya majaribio inatoka, pesa inaingia kwenye mapato, na ada inarudi kiasi chake halisi bila kupungua.</p>
           <TextField label="Kiasi cha majaribio (TSh) *" type="number" min="500" value={testAmt} onChange={setTestAmt} help="Kiwango cha chini cha TeePay ni TSh 500" />
         </Modal>
       )}

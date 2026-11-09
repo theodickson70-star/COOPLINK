@@ -560,3 +560,56 @@ test('Kupakia wakulima wengi (CSV) na hatua za kuanza', async () => {
   assert.ok(st.body.total >= 7);
   assert.deepEqual((await call('GET', '/api/v1/workspace/setup', clerk)).body.steps, [], 'Si kwa Stokipa');
 });
+
+test('Mhasibu ndiye analipa ada ya CoopLink; chama kikifungwa, Mhasibu pekee anaingia (hata Meneja anazuiwa)', async () => {
+  // Mhasibu wa chama (kama hayupo, anasajiliwa); kama hakuna Mhasibu hai, Meneja ndiye mlipaji (chama kisikwame)
+  let accPhone: string;
+  const [ex] = (await db.execute<{ id: string; phone: string }>(sql`select id, phone from users where amcos_id = ${amcosId} and role = 'ACCOUNTANT' and is_active`)).rows;
+  if (ex) {
+    accPhone = ex.phone;
+    await db.execute(sql`update users set is_active = false where id = ${ex.id}`);
+    assert.equal((await billing()).payer.role, 'AMCOS_ADMIN', 'Bila Mhasibu hai, Meneja analipa');
+    assert.equal((await billing()).payer.isMe, true);
+    await db.execute(sql`update users set is_active = true, must_change_password = false, password_hash = ${await hashPassword('Mhasibu#2026x')} where id = ${ex.id}`);
+  } else {
+    assert.equal((await billing()).payer.role, 'AMCOS_ADMIN');
+    accPhone = uniqPhone('25577');
+    const r = await call('POST', `/api/v1/owner/amcos/${amcosId}/staff`, owner, { role: 'ACCOUNTANT', fullName: `Mhasibu ${RUN}`, phone: accPhone });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    const t0 = (await login(accPhone, r.body.temporaryPassword)).body.token;
+    assert.equal((await call('POST', '/api/v1/auth/change-password', t0, { currentPassword: r.body.temporaryPassword, newPassword: 'Mhasibu#2026x' })).status, 200);
+  }
+  const acc = (await login(accPhone, 'Mhasibu#2026x')).body.token;
+  assert.ok(acc);
+  // Meneja wa sasa wa chama hiki (nenosiri linalojulikana kwa jaribio)
+  const [mg] = (await db.execute<{ id: string; phone: string }>(sql`select id, phone from users where amcos_id = ${amcosId} and role = 'AMCOS_ADMIN' and is_active`)).rows;
+  await db.execute(sql`update users set password_hash = ${await hashPassword('Meneja#2026y')}, must_change_password = false, totp_enabled = false where id = ${mg.id}`);
+  const managerPhone = mg.phone;
+
+  const ab = (await call('GET', '/api/v1/billing', acc)).body;
+  assert.equal(ab.payer.role, 'ACCOUNTANT'); assert.equal(ab.payer.isMe, true);
+  const mb = await billing();
+  assert.equal(mb.payer.isMe, false, 'Meneja anaona tu');
+
+  // Ada mpya ya msimu ambayo haijalipwa -> Meneja hawezi kulipa, Mhasibu anaweza
+  const [fee] = (await db.execute<{ id: string }>(sql`insert into platform_fees (amcos_id, kind, label, amount, installments, due_date)
+    values (${amcosId}, 'SEASON', 'Ada ya msimu (jaribio)', 700000, 2, ${addDays(today, 413)}) returning id`)).rows;
+  clearFeeLock();
+  const mp = await call('POST', `/api/v1/billing/fees/${fee.id}/pay`, manager, { ...PAYER, amount: '350000' });
+  assert.equal(mp.status, 403); assert.equal(mp.body.error?.code ?? mp.body.code, 'FEE_PAYER_ONLY');
+
+  // Tarehe imepita -> chama kimefungwa: Mhasibu anaingia (ukurasa wa ada tu), Meneja na Stokipa hawaingii
+  await setDue(fee.id, addDays(today, -37));
+  assert.equal((await login(managerPhone, 'Meneja#2026y')).status, 403, 'Meneja anazuiwa kuingia');
+  assert.equal((await call('GET', '/api/v1/billing', manager)).status, 402, 'Token ya zamani ya Meneja inazuiwa hata kwenye ada');
+  assert.equal((await login(clerkPhone, 'Staff12345')).status, 403);
+  assert.equal((await login(accPhone, 'Mhasibu#2026x')).status, 200, 'Mhasibu anaingia kulipa');
+  assert.equal((await call('GET', '/api/v1/billing', acc)).body.lock?.kind, 'SEASON');
+  assert.equal((await call('GET', '/api/v1/finance/accounts', acc)).status, 402, 'Mhasibu anaona ukurasa wa ada tu');
+  const ap = await call('POST', `/api/v1/billing/fees/${fee.id}/pay`, acc, { ...PAYER, amount: '350000' });
+  assert.equal(ap.status, 201, JSON.stringify(ap.body));
+
+  // Usafi: ada ya jaribio inasamehewa ili chama kifunguke
+  await db.execute(sql`update platform_fees set status = 'WAIVED' where id = ${fee.id}`); clearFeeLock();
+  assert.equal((await login(managerPhone, 'Meneja#2026y')).status, 200);
+});

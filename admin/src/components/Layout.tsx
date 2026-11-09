@@ -84,7 +84,7 @@ const NAV: { section?: string; items: NavItem[] }[] = [
     section: 'Usimamizi',
     items: [
       { to: '/users', label: 'Watumishi', icon: I.users, roles: ['SUPER_ADMIN', 'UNION_ADMIN', 'AMCOS_ADMIN'] },
-      { to: '/billing', label: 'Ada ya CoopLink', icon: I.wallet, roles: ['AMCOS_ADMIN'] },
+      { to: '/billing', label: 'Ada ya CoopLink', icon: I.wallet, roles: ['AMCOS_ADMIN', 'ACCOUNTANT'] },
       { to: '/organizations', label: 'Vyama na Misimu', icon: I.org, roles: ROLE_GROUPS.ORGS },
       { to: '/audit', label: 'Kumbukumbu (Audit)', icon: I.audit, perm: ['audit.read'] },
     ],
@@ -119,21 +119,24 @@ export function Layout() {
   const [open, setOpen] = useState(false);
   const loc = useLocation();
   useEffect(() => setOpen(false), [loc.pathname]);
-  // Ada ya CoopLink: Meneja anaona hali yake; chama kikifungwa, Meneja anabaki kwenye ukurasa wa malipo tu
-  const isMgr = user?.role === 'AMCOS_ADMIN';
-  const fees = useFetch<BillingData>(isMgr ? '/billing' : null);
+  // Ada ya CoopLink: Mhasibu analipa (Meneja kama hakuna Mhasibu); Meneja anaona hali yake.
+  // Chama kikifungwa, mlipaji anabaki kwenye ukurasa wa malipo tu; wengine wote wanaona skrini ya kufungwa.
+  const feeRole = user?.role === 'AMCOS_ADMIN' || user?.role === 'ACCOUNTANT';
+  const fees = useFetch<BillingData>(feeRole ? '/billing' : null);
+  const isPayer = feeRole && !!fees.data?.payer?.isMe;
   const [lockMsg, setLockMsg] = useState<string | null>(null);
   useEffect(() => {
-    const on = (e: Event) => { setLockMsg((e as CustomEvent<string>).detail); fees.reload(); };
+    // Ujumbe mpya wa kufungwa -> hali ya ada isomwe upya mara moja (si kila ombi, ili kusiwe na mzunguko)
+    const on = (e: Event) => { const msg = (e as CustomEvent<string>).detail; setLockMsg((prev) => { if (prev !== msg) fees.reload(); return msg; }); };
     window.addEventListener('cl:fees-locked', on);
     return () => window.removeEventListener('cl:fees-locked', on);
   }, [fees.reload]);
-  useEffect(() => { if (isMgr && loc.pathname.startsWith('/billing')) fees.reload(); }, [loc.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (feeRole && loc.pathname.startsWith('/billing')) fees.reload(); }, [loc.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!user) return null;
   const multi = !user.amcosId;
-  const feeLocked = isMgr ? !!fees.data?.lock : !!lockMsg;
-  if (isMgr && feeLocked && !loc.pathname.startsWith('/billing')) return <Navigate to="/billing" replace />;
-  const due = isMgr && !feeLocked ? fees.data?.fees.find((f) => (f.status === 'UNPAID' || f.status === 'PARTIAL') && (Date.parse(f.dueDate) - Date.now()) / 86_400_000 <= 30) : undefined;
+  const feeLocked = isPayer ? !!fees.data?.lock : !!lockMsg || (feeRole && !!fees.error && /imefungwa/i.test(fees.error));
+  if (isPayer && feeLocked && !loc.pathname.startsWith('/billing')) return <Navigate to="/billing" replace />;
+  const due = feeRole && !feeLocked ? fees.data?.fees.find((f) => (f.status === 'UNPAID' || f.status === 'PARTIAL') && (Date.parse(f.dueDate) - Date.now()) / 86_400_000 <= 30) : undefined;
 
   return (
     <div className="shell">
@@ -184,14 +187,14 @@ export function Layout() {
           {user.amcosId && <AnnouncementBar />}
           {due && !loc.pathname.startsWith('/billing') && (
             <div className="fee-banner">
-              <span><strong>{due.label}</strong>: salio {tsh(due.outstanding)}, mwisho wa kulipa {date(due.dueDate)}. Ada isipolipwa kufikia tarehe hiyo, chama kitafungwa.</span>
-              <Link className="btn btn-primary btn-sm" to="/billing">Lipa sasa</Link>
+              <span><strong>{due.label}</strong>: salio {tsh(due.outstanding)}, mwisho wa kulipa {date(due.dueDate)}.{!isPayer && fees.data?.payer ? ` ${fees.data.payer.label} ndiye analipa.` : ''} Ada isipolipwa kufikia tarehe hiyo, chama kitafungwa.</span>
+              <Link className="btn btn-primary btn-sm" to="/billing">{isPayer ? 'Lipa sasa' : 'Angalia ada'}</Link>
             </div>
           )}
-          {!isMgr && lockMsg ? (
+          {!isPayer && feeLocked ? (
             <section className="card lock-screen">
               <h2>Chama kimefungwa kwa muda</h2>
-              <p>{lockMsg}</p>
+              <p>{lockMsg ?? fees.error}</p>
               <Button onClick={logout}>Toka</Button>
             </section>
           ) : <Outlet />}
