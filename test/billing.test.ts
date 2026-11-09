@@ -29,6 +29,7 @@ function startMock() {
     req.on('data', (c) => (body += c));
     req.on('end', () => {
       const send = (status: number, json: unknown) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(json)); };
+      if (req.url?.startsWith('/ab/')) return abliner(req, body, send);
       if (req.headers.authorization !== 'Bearer tp_test_mock.secret') return send(401, { error: { code: 'invalid_credential', message: 'bad key' } });
       if (req.method === 'POST' && req.url === '/v1/collections') {
         const key = String(req.headers['idempotency-key'] ?? '');
@@ -37,6 +38,7 @@ function startMock() {
         const prev = mock.byKey.get(key);
         if (prev && prev.body !== body) return send(409, { error: { code: 'idempotency_conflict', message: 'different body' } });
         const j = JSON.parse(body);
+        if (j.customer?.phone === '+255700000001') return send(422, { error: { code: 'invalid_request', message: 'The request is invalid', request_id: 'req_x' } });
         if (!j.customer?.email || String(j.customer?.name).split(' ').length < 2) return send(422, { error: { code: 'invalid_request', message: 'invalid', field: 'customer' } });
         const col = prev ?? { id: crypto.randomUUID(), ref: 'TP' + crypto.randomBytes(4).toString('hex').toUpperCase(), amount_minor: j.money.amount_minor, body, status: 'pending' };
         mock.byKey.set(key, col); mock.cols.set(col.ref, col);
@@ -52,6 +54,37 @@ function startMock() {
     });
   }).listen(0);
   return `http://127.0.0.1:${(mockServer.address() as AddressInfo).port}`;
+}
+// Abliner ya kuigiza
+const AB_SECRET = 'whsec_ab_' + RUN;
+const ab = { txns: new Map<string, any>(), creates: [] as { key: string; body: string; sigOk: boolean }[] };
+function abliner(req: http.IncomingMessage, body: string, send: (s: number, j: unknown) => void) {
+  if (req.headers.authorization !== 'Bearer tsl_live_mock') return send(401, { status: 'error', code: 'unauthorized', message: 'bad key' });
+  if (req.method === 'POST' && req.url === '/ab/deposits') {
+    const ts = String(req.headers['x-abliner-timestamp'] ?? '');
+    const sigOk = req.headers['x-abliner-signature'] === crypto.createHmac('sha256', AB_SECRET).update(`${ts}.${body}`).digest('hex');
+    const key = String(req.headers['idempotency-key'] ?? '');
+    ab.creates.push({ key, body, sigOk });
+    if (!sigOk) return send(401, { status: 'error', code: 'invalid_request_signature', message: 'bad signature' });
+    const j = JSON.parse(body);
+    const t = ab.txns.get(key) ?? { id: 'tx_' + crypto.randomBytes(5).toString('hex'), type: 'deposit', flow: 'push', status: 'pending', amount: j.amount, currency: 'TZS', method: 'mobile', reference: 'ABL' + crypto.randomBytes(4).toString('hex').toUpperCase(), customer_reference: j.reference, idempotency_key: key };
+    ab.txns.set(key, t);
+    return send(201, { status: 'success', data: { ...t, payment_url: null, message: 'Mobile money push sent.' } });
+  }
+  if (req.method === 'GET' && req.url?.startsWith('/ab/transactions')) {
+    const key = new URL(req.url, 'http://x').searchParams.get('idempotency_key');
+    const t = key ? ab.txns.get(key) : undefined;
+    return send(200, { status: 'success', data: t ? [{ ...t, amount_cents: t.amount * 100 }] : [] });
+  }
+  send(404, { status: 'error', code: 'not_found', message: req.url });
+}
+async function abWebhook(t: any, opts: { badSig?: boolean } = {}) {
+  const id = 'evt_' + crypto.randomUUID();
+  const raw = JSON.stringify({ id, event: t.status === 'completed' ? 'transaction.completed' : 'transaction.failed', created_at: new Date().toISOString(), data: { ...t, amount_cents: t.amount * 100, completed_at: new Date().toISOString() } });
+  const ts = String(Math.floor(Date.now() / 1000));
+  const sig = crypto.createHmac('sha256', opts.badSig ? 'whsec_wrong' : AB_SECRET).update(`${ts}.${raw}`).digest('hex');
+  const r = await fetch(base + '/api/v1/public/abliner/webhook', { method: 'POST', headers: { 'content-type': 'application/json', 'x-webhook-id': id, 'x-webhook-timestamp': ts, 'x-webhook-signature': sig }, body: raw });
+  return { status: r.status, body: await r.json() as any };
 }
 const finish = (ref: string, status: 'succeeded' | 'failed', detail?: string) => { const c = mock.cols.get(ref)!; c.status = status; c.detail = detail; };
 async function webhook(ref: string, opts: { eventId?: string; badSig?: boolean; type?: string } = {}) {
@@ -83,6 +116,9 @@ before(async () => {
   process.env.TEEPAY_API_KEY = 'tp_test_mock.secret';
   process.env.TEEPAY_WEBHOOK_SECRET = SECRET;
   process.env.TEEPAY_BASE_URL = startMock();
+  process.env.ABLINER_API_KEY = 'tsl_live_mock';
+  process.env.ABLINER_WEBHOOK_SECRET = AB_SECRET;
+  process.env.ABLINER_BASE_URL = process.env.TEEPAY_BASE_URL + '/ab';
   server = createApp().listen(0);
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const phone = uniqPhone('25569');
@@ -102,7 +138,7 @@ before(async () => {
 
 after(async () => {
   server.close(); mockServer.close();
-  delete process.env.TEEPAY_API_KEY; delete process.env.TEEPAY_WEBHOOK_SECRET; delete process.env.TEEPAY_BASE_URL;
+  for (const k of ['TEEPAY_API_KEY', 'TEEPAY_WEBHOOK_SECRET', 'TEEPAY_BASE_URL', 'ABLINER_API_KEY', 'ABLINER_WEBHOOK_SECRET', 'ABLINER_BASE_URL']) delete process.env[k];
   await pool.end();
 });
 
@@ -264,8 +300,10 @@ test('Owner: bei, vyama vya zamani (dai au samehe), na bila TeePay hakuna chama 
   await setDue(season.id, addDays(today, -1));
   const { feeLock } = await import('../src/lib/fees');
   assert.ok(await feeLock(old.body.amcos.id, { fresh: true }));
-  const k = process.env.TEEPAY_API_KEY; delete process.env.TEEPAY_API_KEY;
-  assert.equal(await feeLock(old.body.amcos.id, { fresh: true }), null);
+  const k = process.env.TEEPAY_API_KEY, k2 = process.env.ABLINER_API_KEY; delete process.env.TEEPAY_API_KEY; delete process.env.ABLINER_API_KEY;
+  assert.equal(await feeLock(old.body.amcos.id, { fresh: true }), null, 'Bila njia yoyote ya malipo hakuna kufungwa');
+  process.env.ABLINER_API_KEY = k2;
+  assert.ok(await feeLock(old.body.amcos.id, { fresh: true }), 'Abliner peke yake inatosha');
   process.env.TEEPAY_API_KEY = k;
   // Owner anasamehe ada ya msimu kwa sababu -> imefunguka
   assert.equal((await call('POST', `/api/v1/owner/fees/${season.id}/waive`, owner, { reason: 'Msamaha wa bodi' })).status, 200);
@@ -298,10 +336,11 @@ test('Jaribio la TSh 500 (ada halisi inabaki) na kughairi ombi ambalo push haiku
   assert.equal(cx.status, 200); assert.equal(cx.body.abandoned, true);
   const p2 = await call('POST', `/api/v1/billing/fees/${fee.id}/pay`, mgr, { ...PAYER, amount: '500' });
   assert.equal(p2.status, 201, 'Anaruhusiwa kuomba tena baada ya kughairi');
+  assert.equal(p2.body.payment.provider, 'ABLINER', 'Push ya TeePay haikufika -> ombi jipya linapitia njia ya pili');
 
   // Ombi la pili linalipwa -> jaribio limefanikiwa: risiti, lakini ada ya 45,000 inabaki
-  finish(p2.body.payment.reference, 'succeeded');
-  assert.equal((await webhook(p2.body.payment.reference)).status, 200);
+  const t2 = ab.txns.get(ab.creates.at(-1)!.key)!; t2.status = 'completed';
+  assert.equal((await abWebhook(t2)).status, 200);
   let b = (await call('GET', '/api/v1/billing', mgr)).body;
   f = b.fees[0];
   assert.equal(f.status, 'UNPAID'); assert.equal(f.paid, '0.00'); assert.equal(f.amount, '45000.00');
@@ -320,4 +359,53 @@ test('Jaribio la TSh 500 (ada halisi inabaki) na kughairi ombi ambalo push haiku
   assert.equal(b.fees[0].paid, '0.00');
   const od = await call('GET', `/api/v1/owner/fees/amcos/${aid}`, owner);
   assert.equal(od.status, 200);
+});
+
+test('Njia mbili za malipo: TeePay ikikataa, Abliner inajaribiwa papo hapo; webhook ya Abliner inafungua chama', async () => {
+  const mPhone = uniqPhone('25576');
+  const reg = await call('POST', '/api/v1/owner/amcos', owner, { name: `Njia2 ${RUN} AMCOS`, activate: true, manager: { fullName: 'Meneja Njia', phone: mPhone, password: 'Meneja#2026x' } });
+  const aid = reg.body.amcos.id;
+  const t = (await login(mPhone, 'Meneja#2026x')).body.token;
+  const mgr = (await call('POST', '/api/v1/auth/change-password', t, { currentPassword: 'Meneja#2026x', newPassword: 'Staff12345' })).body.token;
+  const fee = (await call('GET', '/api/v1/billing', mgr)).body.fees[0];
+  await setDue(fee.id, addDays(today, -1));
+
+  // TeePay inakataa (422) -> ombi linahamia Abliner moja kwa moja
+  const p = await call('POST', `/api/v1/billing/fees/${fee.id}/pay`, mgr, { ...PAYER, phone: '0700000001', amount: '45000' });
+  assert.equal(p.status, 201, JSON.stringify(p.body));
+  assert.equal(p.body.payment.provider, 'ABLINER'); assert.equal(p.body.payment.status, 'PENDING');
+  assert.equal(p.body.failedOver.from, 'TeePay'); assert.match(p.body.failedOver.reason, /invalid_request/);
+  const created = ab.creates.at(-1)!;
+  assert.equal(created.sigOk, true, 'Ombi la deposit limesainiwa kwa usahihi');
+  const sent = JSON.parse(created.body);
+  assert.deepEqual(sent, { amount: 45000, method: 'mobile', currency: 'TZS', phone: '255700000001', reference: created.key }, 'Shilingi kamili, simu 255…');
+  let ov = (await call('GET', '/api/v1/billing', mgr)).body;
+  const atts = ov.fees[0].mobilePayments;
+  assert.equal(atts.length, 2); assert.equal(atts.find((m: any) => m.provider === 'TEEPAY').status, 'FAILED');
+
+  // Webhook ya Abliner yenye saini mbaya inakataliwa; sahihi -> malipo yanarekodiwa, chama kinafunguka
+  const txn = ab.txns.get(created.key)!; txn.status = 'completed';
+  assert.equal((await abWebhook(txn, { badSig: true })).status, 401);
+  const w = await abWebhook(txn);
+  assert.equal(w.status, 200, JSON.stringify(w.body));
+  ov = (await call('GET', '/api/v1/billing', mgr)).body;
+  assert.equal(ov.fees[0].status, 'PAID'); assert.equal(ov.lock, null);
+  const rc = await call('GET', `/api/v1/billing/receipts/${ov.fees[0].payments[0].id}`, mgr);
+  assert.match(rc.body.receipt.method, /Abliner/); assert.match(rc.body.message, /mwaka mzima/);
+  await abWebhook(txn); // tena -> hakuna kurudia
+  assert.equal((await call('GET', '/api/v1/billing', mgr)).body.fees[0].payments.length, 1);
+
+  // Owner akichagua Abliner kuwa ya kwanza, ombi linaanzia Abliner
+  const st = (await call('GET', '/api/v1/owner/fees/settings', owner)).body;
+  assert.equal(st.abliner.enabled, true);
+  assert.equal((await call('PUT', '/api/v1/owner/fees/settings', owner, { ...st.settings, primaryProvider: 'ABLINER' })).status, 200);
+  const season = (await call('GET', '/api/v1/billing', mgr)).body.fees.find((f: any) => f.kind === 'SEASON');
+  const p2 = await call('POST', `/api/v1/billing/fees/${season.id}/pay`, mgr, { ...PAYER, amount: '350000' });
+  assert.equal(p2.body.payment.provider, 'ABLINER'); assert.equal(p2.body.failedOver, null);
+  // Abliner ikithibitisha kupitia kuhakiki (bila webhook)
+  ab.txns.get(ab.creates.at(-1)!.key)!.status = 'completed';
+  const sy = await call('POST', `/api/v1/billing/payments/${p2.body.payment.id}/sync`, mgr, {});
+  assert.equal(sy.body.status, 'SUCCEEDED');
+  await call('PUT', '/api/v1/owner/fees/settings', owner, { ...st.settings, primaryProvider: 'TEEPAY' });
+  assert.equal((await call('GET', `/api/v1/owner/fees/amcos/${aid}`, owner)).status, 200);
 });

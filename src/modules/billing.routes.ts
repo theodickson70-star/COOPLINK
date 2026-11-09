@@ -9,7 +9,7 @@ import { db, schema } from '../db';
 import { ah, decimalSchema, normalizePhone, uuidParam } from '../lib/http';
 import { AppError, badRequest, notFound } from '../lib/errors';
 import { requireRole } from '../middleware/auth';
-import { abandonMobilePayment, ensureSeasonFee, feeLock, feesOverview, receiptOf, requestMobilePayment, syncMobilePayment } from '../lib/fees';
+import { PROVIDER_NAME, type Provider, abandonMobilePayment, ensureSeasonFee, feeLock, feesOverview, receiptOf, requestMobilePayment, syncMobilePayment } from '../lib/fees';
 import { getSetting } from '../lib/settings';
 import { TeePayError } from '../lib/teepay';
 
@@ -23,7 +23,7 @@ const ownFee = async (req: Request, id: string) => {
   return f;
 };
 const teepayFail = (e: unknown) => {
-  if (e instanceof TeePayError) return new AppError(502, 'TEEPAY_ERROR', `TeePay: ${e.message}. Jaribu tena baada ya muda mfupi.`);
+  if (e instanceof TeePayError) return new AppError(502, 'PAYMENT_PROVIDER_ERROR', `Malipo: ${e.message}. Jaribu tena baada ya muda mfupi.`);
   return e;
 };
 
@@ -49,9 +49,10 @@ billingRouter.post('/fees/:id/pay', ah(async (req, res) => {
   // Ombi la zamani lililo wazi: lihakikiwe kwanza ili lisilipwe mara mbili
   const open = await db.select({ id: MP.id }).from(MP).where(and(eq(MP.feeId, id), inArray(MP.status, ['SENDING', 'PENDING'])));
   for (const o of open) await syncMobilePayment(o.id).catch(() => undefined);
-  const mp = await requestMobilePayment(id, b.amount, { phone, name: b.name, email: b.email }, req.auth!.userId).catch((e) => { throw teepayFail(e); });
-  const { request: _r, idempotencyKey: _k, ...out } = mp;
-  res.status(201).json({ payment: { ...out, phoneLocal: '0' + phone.slice(3) } });
+  const r = await requestMobilePayment(id, b.amount, { phone, name: b.name, email: b.email }, req.auth!.userId).catch((e) => { throw teepayFail(e); });
+  const { request: _r, idempotencyKey: _k, ...out } = r.mp;
+  const failedOver = r.tried.length > 1 ? { from: PROVIDER_NAME[r.tried[0].provider as Provider], to: PROVIDER_NAME[r.mp.provider as Provider], reason: r.tried[0].lastError } : null;
+  res.status(201).json({ payment: { ...out, phoneLocal: '0' + phone.slice(3), providerName: PROVIDER_NAME[r.mp.provider as Provider] }, failedOver });
 }));
 
 billingRouter.post('/payments/:id/sync', ah(async (req, res) => {

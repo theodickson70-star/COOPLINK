@@ -844,13 +844,14 @@ export const platformMobilePayments = pgTable('platform_mobile_payments', {
   feeId: uuid().notNull().references(() => platformFees.id),
   amcosId: uuid().notNull().references(() => amcos.id),
   amount: money().notNull(),
+  provider: text().notNull().default('TEEPAY'),   // TEEPAY | ABLINER — njia mbili; moja ikishindwa, nyingine inajaribiwa
   amountMinor: text().notNull(),
   phone: text().notNull(),
   payerName: text().notNull(),
   idempotencyKey: text().notNull().unique(),
   request: jsonb().notNull(),         // ombi lililotumwa TeePay — linarudiwa NENO KWA NENO na Idempotency-Key ileile
-  teepayId: text(),
-  reference: text().unique(),         // public_reference ya TeePay (webhook: data.reference)
+  teepayId: text(),                   // id ya muamala kwa mtoa huduma (TeePay au Abliner)
+  reference: text().unique(),         // reference ya mtoa huduma (TeePay public_reference / Abliner reference)
   status: mobilePaymentStatusEnum().notNull().default('SENDING'),
   statusDetail: text(),               // cancelled / expired
   channel: text(),

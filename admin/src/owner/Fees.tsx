@@ -5,33 +5,36 @@ import { api } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
 import { date, dateTime } from '../lib/format';
-import { Alert, Badge, Button, Empty, Loading, Modal, TextField } from '../components/ui';
+import { Alert, Badge, Button, Empty, Loading, Modal, SelectField, TextField } from '../components/ui';
 import { money, Section } from '../components/owner-ui';
 import type { BillingData } from '../pages/Billing';
 
-interface FeeSettings { enabled: boolean; entranceFee: number; entranceDays: number; seasonFee: number; seasonInstallments: number; deadlineMonth: number; deadlineDay: number }
+interface FeeSettings { enabled: boolean; entranceFee: number; entranceDays: number; seasonFee: number; seasonInstallments: number; deadlineMonth: number; deadlineDay: number; primaryProvider?: 'TEEPAY' | 'ABLINER' }
 const ST: Record<string, string> = { UNPAID: 'Haijalipwa', PARTIAL: 'Sehemu', PAID: 'Imelipwa', WAIVED: 'Imesamehewa' };
 const tone = (s: string | null) => (s === 'PAID' ? 'PAID' : s === 'WAIVED' ? 'COMPLETED' : s === 'PARTIAL' ? 'PARTIAL' : s ? 'PENDING' : 'DRAFT');
 
 export function OwnerFees() {
   const { has } = useAuth();
-  const st = useFetch<{ settings: FeeSettings; teepay: { enabled: boolean; webhook: boolean; mode: string | null } }>('/owner/fees/settings');
+  const st = useFetch<{ settings: FeeSettings; teepay: { enabled: boolean; webhook: boolean; mode: string | null }; abliner: { enabled: boolean; key: boolean; webhook: boolean } }>('/owner/fees/settings');
   const list = useFetch<{ data: Record<string, any>[] }>('/owner/fees');
   const [edit, setEdit] = useState(false);
   const [ok, setOk] = useState<string | null>(null);
   if (!st.data || !list.data) return <Loading />;
-  const s = st.data.settings, t = st.data.teepay;
+  const s = st.data.settings, t = st.data.teepay, ab = st.data.abliner;
   return (
     <div className="stack">
       <Alert kind="ok">{ok}</Alert>
-      {!t.enabled && <Alert kind="warn">TeePay haijaunganishwa: weka TEEPAY_API_KEY na TEEPAY_WEBHOOK_SECRET kwenye Railway Variables. Mpaka hapo vyama havifungwi kwa ada (hawana njia ya kulipa).</Alert>}
+      {!t.enabled && !ab.enabled && <Alert kind="warn">Hakuna njia ya malipo iliyounganishwa: weka TEEPAY_* au ABLINER_* kwenye Railway Variables. Mpaka hapo vyama havifungwi kwa ada (hawana njia ya kulipa).</Alert>}
+      {ab.key && !ab.webhook && <Alert kind="warn">ABLINER_WEBHOOK_SECRET haipo: Abliner wanadai kila ombi la malipo lisainiwe kwa siri hii, kwa hiyo Abliner haitatumika mpaka iwekwe.</Alert>}
       {t.enabled && !t.webhook && <Alert kind="warn">TEEPAY_WEBHOOK_SECRET haipo: malipo yatathibitishwa kwa kitufe cha "Hakiki" na kazi ya kila saa tu, si papo hapo.</Alert>}
       <Section title="Bei na utaratibu" actions={has('subscriptions.manage') && <Button size="sm" onClick={() => setEdit(true)}>Badilisha</Button>}>
         <dl className="dl">
           <dt>Ada ya kingilio</dt><dd><strong>{money(s.entranceFee)}</strong> · ndani ya siku {s.entranceDays} baada ya chama kufunguliwa</dd>
           <dt>Ada ya msimu</dt><dd><strong>{money(s.seasonFee)}</strong> · awamu {s.seasonInstallments} · mwisho {s.deadlineDay}/{s.deadlineMonth} kila mwaka</dd>
           <dt>Vyama vipya</dt><dd>{s.enabled ? 'Vinadaiwa kingilio vikifunguliwa' : 'Havidaiwi (ada zimezimwa)'}</dd>
+          <dt>Njia ya kwanza</dt><dd><strong>{s.primaryProvider === 'ABLINER' ? 'Abliner' : 'TeePay'}</strong> · ikishindwa, ombi linahamia njia nyingine papo hapo</dd>
           <dt>TeePay</dt><dd>{t.enabled ? `Imeunganishwa (${t.mode === 'live' ? 'LIVE' : 'majaribio'})` : 'Haijaunganishwa'}{t.webhook ? ' · webhook ipo' : ''}</dd>
+          <dt>Abliner</dt><dd>{ab.enabled ? 'Imeunganishwa · webhook/saini ipo' : ab.key ? 'Ufunguo upo, siri ya webhook haipo' : 'Haijaunganishwa'}</dd>
         </dl>
       </Section>
       <Section pad={false} title="Vyama na ada zao">
@@ -71,6 +74,7 @@ function SettingsModal({ s, onClose, onDone }: { s: FeeSettings; onClose: () => 
         <TextField label="Mwisho: siku" type="number" value={String(f.deadlineDay)} onChange={set('deadlineDay')} />
         <TextField label="Mwisho: mwezi" type="number" value={String(f.deadlineMonth)} onChange={set('deadlineMonth')} />
       </div>
+      <SelectField label="Njia ya kwanza ya malipo" value={String(f.primaryProvider ?? 'TEEPAY')} onChange={set('primaryProvider')} options={[{ value: 'TEEPAY', label: 'TeePay (kisha Abliner ikishindwa)' }, { value: 'ABLINER', label: 'Abliner (kisha TeePay ikishindwa)' }]} />
       <label className="check"><input type="checkbox" checked={!!f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.checked })} /> Vyama vipya vidaiwe ada ya kingilio vikifunguliwa</label>
     </Modal>
   );
@@ -105,7 +109,7 @@ export function AmcosFeesSection({ amcosId, active }: { amcosId: string; active:
               <td className={f.overdue ? 'text-bad' : ''}>{date(f.dueDate)}</td>
               <td><Badge status={tone(f.status)} label={f.overdue ? 'Imepita tarehe' : ST[f.status]} /></td>
               <td style={{ fontSize: 13 }}>
-                {f.mobilePayments.slice(0, 3).map((m) => <div key={m.id}>{m.phoneLocal} · {money(m.amount)} · <span className="muted">{m.status}{m.statusDetail ? ` (${m.statusDetail})` : ''}</span>{m.lastError ? <span className="text-bad"> · {m.lastError}</span> : null}
+                {f.mobilePayments.slice(0, 3).map((m) => <div key={m.id}>{m.provider === 'ABLINER' ? 'Abliner' : 'TeePay'} · {m.phoneLocal} · {money(m.amount)} · <span className="muted">{m.status}{m.statusDetail ? ` (${m.statusDetail})` : ''}</span>{m.lastError ? <span className="text-bad"> · {m.lastError}</span> : null}
                   {(m.status === 'PENDING' || m.status === 'SENDING') && <> · <a href="#" onClick={async (e) => { e.preventDefault(); if (await act.run(() => api(`/owner/fees/payments/${m.id}/sync`, { method: 'POST', body: {} }))) reload(); }}>hakiki</a></>}</div>)}
                 {f.payments.map((p) => <div key={p.id}><Link to={`/owner/fees/receipts/${p.id}`}>{p.receiptNo}</Link> · {money(p.amount)} · {dateTime(p.paidAt)}</div>)}
               </td>

@@ -1,0 +1,1 @@
+ALTER TABLE "platform_mobile_payments" ADD COLUMN "provider" text DEFAULT 'TEEPAY' NOT NULL;

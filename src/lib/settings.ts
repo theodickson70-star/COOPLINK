@@ -18,6 +18,7 @@ export interface FeeConfig {
   seasonInstallments: number;  // awamu (sawa kwa sawa)
   deadlineMonth: number;       // mwisho wa kulipa ada ya msimu: mwezi
   deadlineDay: number;         //   na siku (15/10)
+  primaryProvider?: 'TEEPAY' | 'ABLINER'; // njia ya kwanza ya malipo; ikishindwa, nyingine inajaribiwa
 }
 export interface Maintenance { enabled: boolean; message: string }
 export interface Banner { enabled: boolean; message: string; tone: 'info' | 'warn' }
@@ -28,7 +29,7 @@ export interface BusinessProfile {
 
 export const DEFAULTS = {
   config: { defaultTrialDays: 14, defaultGraceDays: 7, expiringWindowDays: 14, enforceSubscriptions: true, currency: 'TZS' } as PlatformConfig,
-  fees: { enabled: true, entranceFee: 45000, entranceDays: 3, seasonFee: 700000, seasonInstallments: 2, deadlineMonth: 10, deadlineDay: 15 } as FeeConfig,
+  fees: { enabled: true, entranceFee: 45000, entranceDays: 3, seasonFee: 700000, seasonInstallments: 2, deadlineMonth: 10, deadlineDay: 15, primaryProvider: 'TEEPAY' } as FeeConfig,
   maintenance: { enabled: false, message: 'Mfumo uko kwenye matengenezo. Tafadhali jaribu tena baadaye.' } as Maintenance,
   banner: { enabled: false, message: '', tone: 'info' } as Banner,
   'business.profile': {

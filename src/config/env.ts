@@ -16,6 +16,10 @@ const schema = z.object({
   TEEPAY_API_KEY: blankAsUndefined(z.string().regex(/^tp_(live|test)_/, 'TEEPAY_API_KEY ianze na tp_live_ au tp_test_').optional()),
   TEEPAY_WEBHOOK_SECRET: blankAsUndefined(z.string().startsWith('whsec_', 'TEEPAY_WEBHOOK_SECRET ianze na whsec_').optional()),
   TEEPAY_BASE_URL: z.string().url().default('https://api.teepay.me'),
+  // Abliner — njia ya PILI ya malipo kwa simu (inatumika TeePay ikishindwa, au kwanza ukichagua hivyo)
+  ABLINER_API_KEY: blankAsUndefined(z.string().startsWith('tsl_', 'ABLINER_API_KEY ianze na tsl_').optional()),
+  ABLINER_WEBHOOK_SECRET: blankAsUndefined(z.string().startsWith('whsec_', 'ABLINER_WEBHOOK_SECRET ianze na whsec_').optional()),
+  ABLINER_BASE_URL: z.string().url().default('https://abliner.net/api/v1'),
 });
 
 const parsed = schema.safeParse(process.env);

@@ -1,6 +1,6 @@
 // =====================================================================
-//  ADA YA COOPLINK (Meneja): kingilio + ada ya msimu kwa mitandao ya simu (TeePay).
-//  Malipo yakithibitishwa na TeePay chama kinafunguka papo hapo na risiti inatolewa.
+//  ADA YA COOPLINK (Meneja): kingilio + ada ya msimu kwa mitandao ya simu (TeePay au Abliner).
+//  Malipo yakithibitishwa na mtoa huduma, chama kinafunguka papo hapo na risiti inatolewa.
 // =====================================================================
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -14,7 +14,7 @@ import { Section } from '../components/owner-ui';
 import { LogoMark } from '../components/Logo';
 import { PrintButton } from './acc-common';
 
-interface MobilePay { id: string; amount: string; phoneLocal: string; payerName: string; reference: string | null; status: 'SENDING' | 'PENDING' | 'SUCCEEDED' | 'FAILED'; statusDetail: string | null; lastError: string | null; createdAt: string; platformPaymentId: string | null; isTest: boolean; abandonedAt: string | null }
+interface MobilePay { id: string; provider: 'TEEPAY' | 'ABLINER'; amount: string; phoneLocal: string; payerName: string; reference: string | null; status: 'SENDING' | 'PENDING' | 'SUCCEEDED' | 'FAILED'; statusDetail: string | null; lastError: string | null; createdAt: string; platformPaymentId: string | null; isTest: boolean; abandonedAt: string | null }
 interface Fee {
   id: string; kind: 'ENTRANCE' | 'SEASON'; label: string; amount: string; paid: string; outstanding: string; installments: number;
   dueDate: string; status: 'UNPAID' | 'PARTIAL' | 'PAID' | 'WAIVED'; overdue: boolean; allowed: string[]; waivedReason: string | null; testAmount: string | null;
@@ -67,6 +67,7 @@ export function Billing() {
   );
 }
 
+const PNAME: Record<string, string> = { TEEPAY: 'TeePay', ABLINER: 'Abliner' };
 const DETAIL: Record<string, string> = { cancelled: 'Ombi limeghairiwa kwenye simu', expired: 'Muda wa kuweka PIN umeisha' };
 
 function FeeCard({ f, canPay, onChange }: { f: Fee; canPay: boolean; onChange: (msg?: string) => void }) {
@@ -80,7 +81,7 @@ function FeeCard({ f, canPay, onChange }: { f: Fee; canPay: boolean; onChange: (
   const [waited, setWaited] = useState(0);
   useEffect(() => { if (!f.allowed.includes(amount)) setAmount(f.allowed[f.allowed.length - 1] ?? ''); }, [f.allowed.join()]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Ombi likiwa wazi: uliza TeePay kila sekunde 5 (webhook nayo inafungua chama yenyewe)
+  // Ombi likiwa wazi: uliza mtoa huduma kila sekunde 5 (webhook nayo inafungua chama yenyewe)
   useEffect(() => {
     if (!open) { setWaited(0); return; }
     let stop = false;
@@ -98,8 +99,9 @@ function FeeCard({ f, canPay, onChange }: { f: Fee; canPay: boolean; onChange: (
   }, [open?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pay = async () => {
-    const r = await act.run(() => api<{ payment: MobilePay }>(`/billing/fees/${f.id}/pay`, { method: 'POST', body: { amount, ...payer } }));
-    if (r) onChange(r.payment.status === 'FAILED' ? undefined : `Ombi la malipo la ${tsh(r.payment.amount)} limetumwa kwa ${r.payment.phoneLocal}. Thibitisha kwa PIN kwenye simu.`);
+    const r = await act.run(() => api<{ payment: MobilePay; failedOver: { from: string; to: string } | null }>(`/billing/fees/${f.id}/pay`, { method: 'POST', body: { amount, ...payer } }));
+    if (r) onChange(r.payment.status === 'FAILED' ? undefined
+      : `${r.failedOver ? `${r.failedOver.from} imeshindwa, kwa hiyo ombi limetumwa kupitia ${r.failedOver.to}. ` : ''}Ombi la malipo la ${tsh(r.payment.amount)} limetumwa kwa ${r.payment.phoneLocal}. Thibitisha kwa PIN kwenye simu.`);
   };
   return (
     <section className={`card fee-card ${f.overdue ? 'fee-overdue' : ''}`}>
@@ -121,7 +123,7 @@ function FeeCard({ f, canPay, onChange }: { f: Fee; canPay: boolean; onChange: (
 
       {open && (
         <div className="cn-box pay-wait">
-          <div className="cn-label">Inasubiri uthibitisho kwenye simu</div>
+          <div className="cn-label">Inasubiri uthibitisho kwenye simu · kupitia {PNAME[open.provider] ?? open.provider}</div>
           <div className="cn-number">{open.phoneLocal}</div>
           <div className="cn-amount">Ombi la kulipa <strong>{tsh(open.amount)}</strong> limetumwa</div>
           <p className="muted" style={{ margin: '6px 0 0' }}>
@@ -143,7 +145,7 @@ function FeeCard({ f, canPay, onChange }: { f: Fee; canPay: boolean; onChange: (
       )}
       {!open && canPay && f.allowed.length > 0 && (
         <div className="pay-form">
-          {last?.status === 'FAILED' && <Alert kind="warn">Malipo ya mwisho ({tsh(last.amount)} · {last.phoneLocal}) hayakufanikiwa: {last.statusDetail ? DETAIL[last.statusDetail] ?? last.statusDetail : last.lastError ?? 'yamekataliwa'}. Jaribu tena.</Alert>}
+          {last?.status === 'FAILED' && <Alert kind="warn">Malipo ya mwisho ({tsh(last.amount)} · {last.phoneLocal} · {PNAME[last.provider] ?? last.provider}) hayakufanikiwa: {last.statusDetail ? DETAIL[last.statusDetail] ?? last.statusDetail : last.lastError ?? 'yamekataliwa'}. Jaribu tena.</Alert>}
           {f.allowed.length > 1 && (
             <div className="choice-2">
               {f.allowed.map((a) => (
@@ -216,10 +218,10 @@ export function BillingReceipt({ base = '/billing' }: { base?: string }) {
           <dt>Imepokelewa kutoka</dt><dd><strong>{data.amcos.name}</strong> ({data.amcos.code})</dd>
           <dt>Kwa ajili ya</dt><dd>{f.label}</dd>
           <dt>Kiasi</dt><dd><strong>{tsh(r.amount)}</strong><div className="muted" style={{ fontSize: 13 }}>{amountInWords(r.amount)}</div></dd>
-          <dt>Njia ya malipo</dt><dd>{r.method} (TeePay){r.providerRef ? ` · kumb. ${r.providerRef}` : ''}</dd>
+          <dt>Njia ya malipo</dt><dd>{r.method}{r.providerRef ? ` · kumb. ${r.providerRef}` : ''}</dd>
           {f.kind === 'SEASON' && <><dt>Ada ya msimu</dt><dd>{tsh(f.amount)} · imelipwa {tsh(f.paidToDate)} · salio {tsh(f.balance)}{Number(f.balance) > 0 ? ` (mwisho ${date(f.dueDate)})` : ''}</dd></>}
         </dl>
-        <p className="muted" style={{ fontSize: 12, marginTop: 24 }}>Risiti hii imetolewa na mfumo wa {b.productName} baada ya malipo kuthibitishwa na TeePay. Haihitaji sahihi.</p>
+        <p className="muted" style={{ fontSize: 12, marginTop: 24 }}>Risiti hii imetolewa na mfumo wa {b.productName} baada ya malipo kuthibitishwa na mtoa huduma wa malipo. Haihitaji sahihi.</p>
       </section>
     </>
   );

@@ -8,15 +8,20 @@ import { badRequest, conflict, notFound } from '../../lib/errors';
 import { requirePermission } from '../../middleware/auth';
 import { audit } from '../../lib/audit';
 import { getSetting, setSetting } from '../../lib/settings';
-import { clearFeeLock, ensureEntranceFee, ensureSeasonFee, feesOverview, receiptOf, syncMobilePayment } from '../../lib/fees';
+import { anyProvider, clearFeeLock, ensureEntranceFee, ensureSeasonFee, feesOverview, receiptOf, syncMobilePayment } from '../../lib/fees';
 import { teepayConfig } from '../../lib/teepay';
+import { ablinerConfig } from '../../lib/abliner';
 
 export const ownerFeesRouter = Router();
 const F = schema.platformFees;
 
 ownerFeesRouter.get('/settings', requirePermission('subscriptions.read'), ah(async (_req, res) => {
-  const t = teepayConfig();
-  res.json({ settings: await getSetting('fees', { fresh: true }), teepay: { enabled: t.enabled, webhook: !!t.webhookSecret, mode: t.apiKey?.startsWith('tp_live_') ? 'live' : t.apiKey ? 'test' : null } });
+  const t = teepayConfig(), ab = ablinerConfig();
+  res.json({
+    settings: await getSetting('fees', { fresh: true }),
+    teepay: { enabled: t.enabled, webhook: !!t.webhookSecret, mode: t.apiKey?.startsWith('tp_live_') ? 'live' : t.apiKey ? 'test' : null },
+    abliner: { enabled: ab.enabled, key: !!ab.apiKey, webhook: !!ab.webhookSecret },
+  });
 }));
 
 ownerFeesRouter.put('/settings', requirePermission('subscriptions.manage'), ah(async (req, res) => {
@@ -28,6 +33,7 @@ ownerFeesRouter.put('/settings', requirePermission('subscriptions.manage'), ah(a
     seasonInstallments: z.coerce.number().int().min(1).max(4),
     deadlineMonth: z.coerce.number().int().min(1).max(12),
     deadlineDay: z.coerce.number().int().min(1).max(28),
+    primaryProvider: z.enum(['TEEPAY', 'ABLINER']).default('TEEPAY'),
   }).parse(req.body);
   const before = await getSetting('fees', { fresh: true });
   await db.transaction(async (tx) => {
@@ -49,7 +55,7 @@ ownerFeesRouter.get('/', requirePermission('subscriptions.read'), ah(async (_req
     left join lateral (select * from platform_fees s where s.amcos_id = a.id and s.kind = 'SEASON' order by s.due_date desc limit 1) s on true
     where a.status in ('ACTIVE', 'SUSPENDED')
     order by overdue desc, a.name`)).rows;
-  res.json({ data: rows, teepayEnabled: teepayConfig().enabled });
+  res.json({ data: rows, teepayEnabled: anyProvider() });
 }));
 
 ownerFeesRouter.get('/amcos/:id', requirePermission('subscriptions.read'), ah(async (req, res) => {

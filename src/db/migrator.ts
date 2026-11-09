@@ -83,6 +83,9 @@ const MARKERS: Record<string, string[]> = {
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'platform_fees' and column_name = 'test_amount')",
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'platform_mobile_payments' and column_name = 'abandoned_at')",
   ],
+  '0013_abliner_provider': [
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'platform_mobile_payments' and column_name = 'provider')",
+  ],
 };
 
 interface JournalEntry { tag: string; when: number }

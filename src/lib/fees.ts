@@ -3,18 +3,20 @@
 //   1. Ada ya kingilio: inadaiwa chama kikifunguliwa; mwisho siku N (3) baadaye.
 //   2. Ada ya msimu: kila mwaka, mwisho wa kulipa 15/10; awamu 2 sawa kwa sawa.
 //      Inaanza kudaiwa baada ya kingilio kulipwa (au kusamehewa).
-//   3. Malipo ni kwa MITANDAO YA SIMU kupitia TeePay (ombi la PIN kwenye simu ya mlipaji).
+//   3. Malipo ni kwa MITANDAO YA SIMU kupitia TeePay au Abliner (ombi la PIN kwenye simu ya mlipaji);
+//      njia moja ikishindwa, nyingine inajaribiwa.
 //      Yanarekodiwa tu TeePay ikisema "succeeded" — ombi la malipo pekee SI malipo.
 //   4. Ada ikipita tarehe bila kulipwa yote -> chama kizima kinafungwa (Meneja anaingia kulipa tu).
 //      Malipo yakithibitishwa -> kinafunguka papo hapo.
 // =====================================================================
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { db, schema, type DbOrTx } from '../db';
 import { D, fmt2, tshText } from './money';
 import { getSetting } from './settings';
 import { addDays, nextInvoiceNo, today } from './subscriptions';
 import { createCollection, fromMinor, getCollection, teepayConfig, TeePayError, toMinor, type Collection, type CollectionCreate } from './teepay';
+import { ablinerConfig, ablinerStatus, createDeposit, findDeposit, type AblinerTxn, type DepositCreate } from './abliner';
 import { badRequest, conflict, notFound } from './errors';
 
 const F = schema.platformFees;
@@ -81,9 +83,9 @@ export interface FeeLock { feeId: string; kind: 'ENTRANCE' | 'SEASON'; label: st
 const lockCache = new Map<string, { at: number; v: FeeLock | null }>();
 export const clearFeeLock = (amcosId?: string) => (amcosId ? lockCache.delete(amcosId) : lockCache.clear());
 
-/** Ada iliyopita tarehe bila kulipwa yote. Bila TeePay kuwashwa, hakuna chama kinachofungwa (hawana njia ya kulipa). */
+/** Ada iliyopita tarehe bila kulipwa yote. Bila njia yoyote ya malipo kuwashwa, hakuna chama kinachofungwa (hawana njia ya kulipa). */
 export async function feeLock(amcosId: string, opts: { fresh?: boolean } = {}): Promise<FeeLock | null> {
-  if (!teepayConfig().enabled) return null;
+  if (!anyProvider()) return null;
   const c = lockCache.get(amcosId);
   if (!opts.fresh && c && Date.now() - c.at < 15_000) return c.v;
   const [f] = await db.select().from(F)
@@ -110,131 +112,203 @@ export function allowedAmounts(f: Fee) {
 }
 
 // ---------------------------------------------------------------------
-//  Malipo kwa mitandao ya simu (TeePay mobile money push)
+//  Malipo kwa mitandao ya simu — NJIA MBILI: TeePay na Abliner.
+//  Njia ya kwanza ikikataa ombi waziwazi (jibu la 4xx), ombi linatumwa papo hapo kwa njia ya pili.
+//  Jibu lisilo wazi (mtandao/5xx) HALIHAMISHWI — huenda push ilishatumwa; linahakikiwa kwa Idempotency-Key ileile.
 // ---------------------------------------------------------------------
+export type Provider = 'TEEPAY' | 'ABLINER';
+export const PROVIDER_NAME: Record<Provider, string> = { TEEPAY: 'TeePay', ABLINER: 'Abliner' };
 const OPEN: MobilePay['status'][] = ['SENDING', 'PENDING'];
 const STALE_MS = 10 * 60_000; // ombi lisilojibiwa kwa dakika 10 haliwezi kuzuia ombi jipya
+const enabledOf = (p: Provider) => (p === 'TEEPAY' ? teepayConfig().enabled : ablinerConfig().enabled);
+export const anyProvider = () => teepayConfig().enabled || ablinerConfig().enabled;
 
-function mapStatus(c: Collection): MobilePay['status'] {
-  if (c.status === 'succeeded') return 'SUCCEEDED';
-  if (c.status === 'failed') return 'FAILED';
-  return 'PENDING'; // created / pending / processing (reversed/refunded hushughulikiwa kando)
+/** Hali ya muamala kwa mtoa huduma, kwa umbo moja */
+interface Remote { id?: string; reference?: string; status: 'SUCCEEDED' | 'FAILED' | 'PENDING'; detail?: string; amount?: string; channel?: string; providerFee?: string }
+
+const fromCollection = (c: Collection): Remote => ({
+  id: c.id, reference: c.public_reference, detail: c.status_detail, channel: c.channel ?? c.method,
+  status: c.status === 'succeeded' ? 'SUCCEEDED' : c.status === 'failed' ? 'FAILED' : 'PENDING',
+  amount: c.money?.amount_minor ? fromMinor(c.money.amount_minor) : undefined,
+  providerFee: c.fee?.amount_minor ? fromMinor(c.fee.amount_minor) : undefined,
+});
+const fromAbliner = (t: AblinerTxn): Remote => ({
+  id: t.id, reference: t.reference, status: ablinerStatus(t.status), channel: t.method,
+  amount: t.amount != null ? fmt2(t.amount) : t.amount_cents != null ? fmt2(D(t.amount_cents).dividedBy(100)) : undefined,
+  detail: ablinerStatus(t.status) === 'FAILED' ? String(t.status) : undefined,
+});
+
+/** Mpangilio wa njia: ya kwanza kwa mipangilio ya Owner. Njia iliyoshindwa yenyewe, au ambayo push yake haikufika (Meneja ameghairi),
+ *  ndani ya dakika 30 kwa ada hii inawekwa mwisho. Mteja akighairi mwenyewe kwenye simu, njia haibadilishwi. */
+async function providerOrder(feeId: string): Promise<Provider[]> {
+  const c = await getSetting('fees');
+  let order: Provider[] = c.primaryProvider === 'ABLINER' ? ['ABLINER', 'TEEPAY'] : ['TEEPAY', 'ABLINER'];
+  order = order.filter(enabledOf);
+  const [last] = await db.select().from(MP).where(eq(MP.feeId, feeId)).orderBy(sql`${MP.createdAt} desc`).limit(1);
+  if (order.length > 1 && last && last.provider === order[0] && ((last.status === 'FAILED' && !!last.lastError && !last.statusDetail) || last.abandonedAt) && Date.now() - last.createdAt.getTime() < 30 * 60_000) order.reverse();
+  return order;
 }
 
-async function sendCreate(mp: MobilePay) {
+/** Tuma ombi kwa mtoa huduma wa safu hii. definitive = mtoa huduma amekataa waziwazi (inaruhusu kuhamia njia nyingine). */
+async function sendCreate(mp: MobilePay): Promise<{ mp: MobilePay; definitive: boolean }> {
   try {
-    const r = await createCollection(mp.request as CollectionCreate, mp.idempotencyKey);
-    const c = r.data;
+    const remote = mp.provider === 'ABLINER'
+      ? fromAbliner((await createDeposit(mp.request as DepositCreate, mp.idempotencyKey)).data)
+      : fromCollection((await createCollection(mp.request as CollectionCreate, mp.idempotencyKey)).data);
     const [u] = await db.update(MP).set({
-      teepayId: c?.id ?? mp.teepayId, reference: c?.public_reference ?? mp.reference,
-      status: c ? (mapStatus(c) === 'SUCCEEDED' ? 'PENDING' : mapStatus(c)) : 'PENDING', // "succeeded" inarekodiwa na sync pekee
-      statusDetail: c?.status_detail ?? null, lastError: null, lastSyncedAt: new Date(),
+      teepayId: remote.id ?? mp.teepayId, reference: remote.reference ?? mp.reference,
+      status: remote.status === 'FAILED' ? 'FAILED' : 'PENDING', // "succeeded" inarekodiwa na sync pekee
+      statusDetail: remote.detail ?? null, lastError: null, lastSyncedAt: new Date(),
     }).where(eq(MP.id, mp.id)).returning();
-    return u;
+    return { mp: u, definitive: remote.status === 'FAILED' };
   } catch (e) {
     const err = e as TeePayError;
-    const permanent = err instanceof TeePayError && err.permanent && err.code !== 'idempotency_conflict';
-    const msg = `${err.code ?? 'error'}: ${err.message}${err.requestId ? ` (request_id ${err.requestId})` : ''}`.slice(0, 600);
-    const [u] = await db.update(MP).set({ status: permanent ? 'FAILED' : 'SENDING', lastError: msg, lastSyncedAt: new Date() }).where(eq(MP.id, mp.id)).returning();
-    return u;
+    const isProv = err instanceof TeePayError;
+    const code = isProv ? err.code : 'error';
+    const stillOpen = ['idempotency_conflict', 'request_in_progress'].includes(code);
+    const definitive = isProv && !stillOpen && code !== 'ussd_session_busy' && ((err.status >= 400 && err.status < 500) || code === 'not_configured');
+    const failed = isProv && !stillOpen && (definitive || code === 'ussd_session_busy');
+    const msg = `${PROVIDER_NAME[mp.provider as Provider] ?? mp.provider}: ${code}: ${err.message}${isProv && err.requestId ? ` (request_id ${err.requestId})` : ''}`.slice(0, 600);
+    const [u] = await db.update(MP).set({ status: failed ? 'FAILED' : 'SENDING', lastError: msg, lastSyncedAt: new Date() }).where(eq(MP.id, mp.id)).returning();
+    return { mp: u, definitive };
   }
 }
 
 export interface Payer { phone: string; name: string; email: string }
 
-/** Meneja anaomba kulipa ada: ombi la PIN linatumwa kwenye simu ya mlipaji. */
+async function newAttempt(tx: DbOrTx, f: Fee, a: { name: string; code: string }, provider: Provider, amount: string, payer: Payer, userId: string) {
+  const id = randomUUID();
+  const key = `cooplink_mm_${id.replace(/-/g, '')}`;
+  const request = provider === 'ABLINER'
+    ? ({ amount: Number(D(amount).toFixed(0)), method: 'mobile', currency: 'TZS', phone: payer.phone, reference: key } satisfies DepositCreate)
+    : ({
+      money: { amount_minor: toMinor(amount), currency: 'TZS' },
+      customer: { country: 'TZ', phone: `+${payer.phone}`, name: asciiText(payer.name, 120), email: payer.email.trim().toLowerCase() },
+      description: asciiText(`CoopLink ${f.label} - ${a.name} (${a.code})`, 240),
+    } satisfies CollectionCreate);
+  const [mp] = await tx.insert(MP).values({
+    id, feeId: f.id, amcosId: f.amcosId, provider, amount: fmt2(amount), amountMinor: toMinor(amount), phone: payer.phone, payerName: asciiText(payer.name, 120),
+    idempotencyKey: key, request, createdById: userId, isTest: !!f.testAmount,
+  }).returning();
+  await sysAudit(tx, 'FEE_MOBILE_PAYMENT_REQUEST', f.amcosId, f.id, { mobilePaymentId: mp.id, provider, amount: mp.amount, phone: localPhone(payer.phone) }, userId);
+  return mp;
+}
+
+/** Meneja anaomba kulipa ada: ombi la PIN linatumwa kwenye simu ya mlipaji (njia ya kwanza, ikishindwa — ya pili). */
 export async function requestMobilePayment(feeId: string, amount: string, payer: Payer, userId: string) {
-  if (!teepayConfig().enabled) throw badRequest('Malipo kwa simu bado hayajawashwa na CoopLink. Wasiliana na CoopLink.');
-  const prep = await db.transaction(async (tx) => {
+  if (!anyProvider()) throw badRequest('Malipo kwa simu bado hayajawashwa na CoopLink. Wasiliana na CoopLink.');
+  const order = await providerOrder(feeId);
+  const { first, f, a } = await db.transaction(async (tx) => {
     await tx.execute(sql`select 1 from platform_fees where id = ${feeId} for update`);
     const [f] = await tx.select().from(F).where(eq(F.id, feeId));
     if (!f) throw notFound('Ada');
     if (f.status === 'PAID' || f.status === 'WAIVED') throw conflict('Ada hii tayari imelipwa');
     const [open] = await tx.select().from(MP).where(and(eq(MP.feeId, feeId), inArray(MP.status, OPEN), isNull(MP.abandonedAt))).orderBy(sql`${MP.createdAt} desc`).limit(1);
     if (open && Date.now() - open.createdAt.getTime() < STALE_MS) {
-      throw conflict(`Ombi la malipo la ${tshText(open.amount)} kwenda ${localPhone(open.phone) ?? open.phone} bado linasubiri. Thibitisha kwa PIN kwenye simu, au subiri dakika chache kisha jaribu tena.`);
+      throw conflict(`Ombi la malipo la ${tshText(open.amount)} kwenda ${localPhone(open.phone) ?? open.phone} bado linasubiri. Thibitisha kwa PIN kwenye simu, au bonyeza "Push haijafika? Ghairi ombi".`);
     }
-    if (!allowedAmounts(f).includes(fmt2(amount))) throw badRequest(`Kiasi kinachoruhusiwa: ${allowedAmounts(f).map((a) => tshText(a)).join(' au ')}`);
+    if (!allowedAmounts(f).includes(fmt2(amount))) throw badRequest(`Kiasi kinachoruhusiwa: ${allowedAmounts(f).map((x) => tshText(x)).join(' au ')}`);
     const a = (await tx.query.amcos.findFirst({ where: eq(schema.amcos.id, f.amcosId) }))!;
-    const id = randomUUID();
-    const request: CollectionCreate = {
-      money: { amount_minor: toMinor(amount), currency: 'TZS' },
-      customer: { country: 'TZ', phone: `+${payer.phone}`, name: asciiText(payer.name, 120), email: payer.email.trim().toLowerCase() },
-      description: asciiText(`CoopLink ${f.label} - ${a.name} (${a.code})`, 240),
-    };
-    const [mp] = await tx.insert(MP).values({
-      id, feeId, amcosId: f.amcosId, amount: fmt2(amount), amountMinor: request.money.amount_minor, phone: payer.phone, payerName: request.customer.name,
-      idempotencyKey: `cooplink_mm_${id.replace(/-/g, '')}`, request, createdById: userId, isTest: !!f.testAmount,
-    }).returning();
-    await sysAudit(tx, 'FEE_MOBILE_PAYMENT_REQUEST', f.amcosId, f.id, { mobilePaymentId: mp.id, amount: mp.amount, phone: localPhone(payer.phone) }, userId);
-    return mp;
+    return { first: await newAttempt(tx, f, a, order[0], amount, payer, userId), f, a };
   });
-  return sendCreate(prep);
+  const tried: MobilePay[] = [];
+  let cur = first;
+  for (let i = 0; ; i++) {
+    const r = await sendCreate(cur);
+    tried.push(r.mp);
+    const next = order[i + 1];
+    if (!(r.mp.status === 'FAILED' && r.definitive && next)) return { mp: r.mp, tried };
+    console.warn(`[malipo] ${PROVIDER_NAME[cur.provider as Provider]} imeshindwa (${r.mp.lastError?.slice(0, 160)}) — inajaribu ${PROVIDER_NAME[next]}`);
+    cur = await db.transaction((tx) => newAttempt(tx, f, a, next, amount, payer, userId));
+  }
+}
+
+/** Soma hali ya ombi kwa mtoa huduma wake. */
+async function readRemote(mp: MobilePay): Promise<Remote | null> {
+  if (mp.provider === 'ABLINER') { const t = await findDeposit(mp.idempotencyKey); return t ? fromAbliner(t) : null; }
+  if (!mp.reference) return null;
+  return fromCollection((await getCollection(mp.reference)).data);
 }
 
 /**
- * Soma hali ya malipo kwenye TeePay; yakiwa "succeeded" rekodi malipo (mara moja tu), funga ada, fungua chama.
- * Inaitwa na webhook, kitufe/ukurasa wa Meneja (kila sekunde chache) na kazi ya nyuma — matokeo ni yaleyale.
+ * Soma hali ya malipo kwa mtoa huduma; yakiwa yamefanikiwa rekodi malipo (mara moja tu), funga ada, fungua chama.
+ * Inaitwa na webhook, ukurasa wa Meneja (kila sekunde chache) na kazi ya nyuma — matokeo ni yaleyale.
+ * `hint`: taarifa kutoka webhook iliyosainiwa (inatumika tu kama mtoa huduma hakupatikana kwa kusoma).
  */
-export async function syncMobilePayment(mpId: string) {
+export async function syncMobilePayment(mpId: string, hint?: Remote) {
   let [mp] = await db.select().from(MP).where(eq(MP.id, mpId));
   if (!mp) throw notFound('Malipo');
-  if (mp.status === 'SENDING') mp = await sendCreate(mp);
-  if (mp.status !== 'PENDING' || !mp.reference) return { mp, recorded: null as (typeof P.$inferSelect) | null };
-  let c: Collection;
+  if (mp.status === 'SENDING') mp = (await sendCreate(mp)).mp;
+  if (mp.status !== 'PENDING') return { mp, recorded: null as (typeof P.$inferSelect) | null };
+  let c: Remote | null;
   try {
-    c = (await getCollection(mp.reference)).data;
+    c = (await readRemote(mp)) ?? hint ?? null;
   } catch (e) {
-    await db.update(MP).set({ lastError: `${(e as TeePayError).code}: ${(e as Error).message}`.slice(0, 600), lastSyncedAt: new Date() }).where(eq(MP.id, mp.id));
-    throw e;
+    if (!hint) {
+      await db.update(MP).set({ lastError: `${(e as TeePayError).code}: ${(e as Error).message}`.slice(0, 600), lastSyncedAt: new Date() }).where(eq(MP.id, mp.id));
+      throw e;
+    }
+    c = hint;
   }
-  const st = mapStatus(c);
-  if (st === 'PENDING') {
+  if (!c || c.status === 'PENDING') {
     const [u] = await db.update(MP).set({ lastSyncedAt: new Date(), lastError: null }).where(eq(MP.id, mp.id)).returning();
     return { mp: u, recorded: null };
   }
-  if (st === 'FAILED') {
-    const [u] = await db.update(MP).set({ status: 'FAILED', statusDetail: c.status_detail ?? null, lastSyncedAt: new Date() }).where(and(eq(MP.id, mp.id), eq(MP.status, 'PENDING'))).returning();
+  if (c.status === 'FAILED') {
+    const [u] = await db.update(MP).set({ status: 'FAILED', statusDetail: c.detail ?? null, lastSyncedAt: new Date() }).where(and(eq(MP.id, mp.id), eq(MP.status, 'PENDING'))).returning();
     return { mp: u ?? mp, recorded: null };
   }
-  // succeeded
+  const remote = c;
+  const pname = PROVIDER_NAME[mp.provider as Provider] ?? mp.provider;
+  // imefanikiwa
   const result = await db.transaction(async (tx) => {
     await tx.execute(sql`select 1 from platform_fees where id = ${mp.feeId} for update`);
     const [cur] = await tx.select().from(MP).where(eq(MP.id, mp.id));
     if (cur.status === 'SUCCEEDED') return { mp: cur, recorded: null };
     const [f] = await tx.select().from(F).where(eq(F.id, mp.feeId));
-    const ref = `TEEPAY:${c.public_reference ?? c.id}`;
-    const amount = c.money?.amount_minor ? fromMinor(c.money.amount_minor) : mp.amount;
+    const ref = `${mp.provider}:${remote.reference ?? remote.id ?? mp.idempotencyKey}`;
+    const amount = remote.amount ?? mp.amount;
+    const via = `simu ${localPhone(mp.phone) ?? mp.phone} (${mp.payerName})${remote.channel ? ` · ${remote.channel}` : ''} · ${pname} ${remote.reference ?? remote.id ?? ''}`;
     let [row] = await tx.select().from(P).where(eq(P.providerRef, ref));
     if (!row && cur.isTest) {
       // JARIBIO: pesa imepokelewa na kurekodiwa (mapato), lakini ada halisi haipungui; kiasi cha majaribio kinaondolewa
       [row] = await tx.insert(P).values({
         invoiceNo: await nextInvoiceNo(tx), amcosId: f.amcosId, category: 'OTHER', amount, method: 'MOBILE_MONEY', providerRef: ref, status: 'VERIFIED',
-        paidAt: new Date(), verifiedAt: new Date(), feeId: f.id,
-        notes: `MAJARIBIO ya malipo (${f.label}) · simu ${localPhone(mp.phone) ?? mp.phone} (${mp.payerName})${c.channel ? ` · ${c.channel}` : ''} · TeePay ${c.public_reference ?? c.id}`,
+        paidAt: new Date(), verifiedAt: new Date(), feeId: f.id, notes: `MAJARIBIO ya malipo (${f.label}) · ${via}`,
       }).returning();
       await tx.update(F).set({ testAmount: null, updatedAt: new Date() }).where(eq(F.id, f.id));
-      await sysAudit(tx, 'FEE_TEST_PAYMENT_VERIFIED', f.amcosId, f.id, { invoiceNo: row.invoiceNo, amount, ref, feeAmount: f.amount });
+      await sysAudit(tx, 'FEE_TEST_PAYMENT_VERIFIED', f.amcosId, f.id, { invoiceNo: row.invoiceNo, amount, ref, provider: mp.provider, feeAmount: f.amount });
     }
     if (!row) {
       [row] = await tx.insert(P).values({
         invoiceNo: await nextInvoiceNo(tx), amcosId: f.amcosId, category: f.kind === 'ENTRANCE' ? 'SETUP' : 'SUBSCRIPTION',
         amount, method: 'MOBILE_MONEY', providerRef: ref, status: 'VERIFIED', paidAt: new Date(), verifiedAt: new Date(), feeId: f.id,
-        notes: `${f.label} · simu ${localPhone(mp.phone) ?? mp.phone} (${mp.payerName})${c.channel ? ` · ${c.channel}` : ''} · TeePay ${c.public_reference ?? c.id}${c.fee?.amount_minor ? ` · ada ya TeePay TSh ${fromMinor(c.fee.amount_minor)}` : ''}`,
+        notes: `${f.label} · ${via}${remote.providerFee ? ` · ada ya ${pname} TSh ${remote.providerFee}` : ''}`,
       }).returning();
       const paid = D(f.paid).plus(amount);
       const full = paid.gte(f.amount);
       const [fee] = await tx.update(F).set({ paid: fmt2(paid), status: f.status === 'WAIVED' ? 'WAIVED' : full ? 'PAID' : 'PARTIAL', paidAt: full ? new Date() : f.paidAt, updatedAt: new Date() })
         .where(eq(F.id, f.id)).returning();
-      await sysAudit(tx, 'FEE_PAYMENT_VERIFIED', f.amcosId, f.id, { invoiceNo: row.invoiceNo, amount, ref, paid: fee.paid, status: fee.status });
+      await sysAudit(tx, 'FEE_PAYMENT_VERIFIED', f.amcosId, f.id, { invoiceNo: row.invoiceNo, amount, ref, provider: mp.provider, paid: fee.paid, status: fee.status });
       if (fee.kind === 'ENTRANCE' && fee.status === 'PAID') await ensureSeasonFee(tx, fee.amcosId);
     }
-    const [u] = await tx.update(MP).set({ status: 'SUCCEEDED', statusDetail: null, channel: c.channel ?? c.method ?? null, paidAt: new Date(), platformPaymentId: row.id, lastError: null, lastSyncedAt: new Date() })
+    const [u] = await tx.update(MP).set({ status: 'SUCCEEDED', statusDetail: null, channel: remote.channel ?? null, reference: cur.reference ?? remote.reference ?? null, paidAt: new Date(), platformPaymentId: row.id, lastError: null, lastSyncedAt: new Date() })
       .where(eq(MP.id, mp.id)).returning();
     return { mp: u, recorded: row };
   });
   clearFeeLock(mp.amcosId);
   return result;
+}
+
+/** Webhook ya Abliner: tafuta ombi letu (customer_reference = Idempotency-Key yetu) na uhakiki. */
+export async function syncAblinerWebhook(data: AblinerTxn | undefined) {
+  if (!data) return null;
+  const keys = [data.customer_reference, data.reference, data.id].filter(Boolean) as string[];
+  if (!keys.length) return null;
+  const [mp] = await db.select().from(MP).where(and(eq(MP.provider, 'ABLINER'),
+    or(inArray(MP.idempotencyKey, keys), inArray(MP.reference, keys), inArray(MP.teepayId, keys)))).limit(1);
+  if (!mp) return null;
+  return syncMobilePayment(mp.id, fromAbliner(data));
 }
 
 /**
@@ -256,7 +330,7 @@ export async function runFeesSweep() {
   let seasons = 0;
   for (const { amcosId } of ids) if (await db.transaction((tx) => ensureSeasonFee(tx, amcosId))) seasons++;
   let synced = 0, recorded = 0, errors = 0;
-  if (teepayConfig().enabled) {
+  if (anyProvider()) {
     const open = await db.select({ id: MP.id }).from(MP)
       .where(and(inArray(MP.status, OPEN), sql`${MP.createdAt} > now() - interval '3 days'`)).orderBy(asc(MP.lastSyncedAt)).limit(100);
     for (const m of open) {
@@ -287,7 +361,7 @@ export async function receiptOf(paymentId: string, amcosId?: string) {
     : balance.lte(0)
       ? `${f.label} imelipwa kikamilifu (${tshText(f.amount)}). Asante — huduma ya CoopLink inaendelea.`
       : `Awamu ya ${f.label.toLowerCase()} ya ${tshText(p.amount)} imepokelewa. Salio ni ${tshText(balance)}, mwisho wa kulipa ni ${f.dueDate}.`;
-  const method = mp ? `Simu ${localPhone(mp.phone) ?? mp.phone} (${mp.payerName})${mp.channel ? ` · ${mp.channel}` : ''}` : cn ? `Control number ${cn.number ?? ''}` : 'TeePay';
+  const method = mp ? `Simu ${localPhone(mp.phone) ?? mp.phone} (${mp.payerName})${mp.channel ? ` · ${mp.channel}` : ''} · ${PROVIDER_NAME[mp.provider as Provider] ?? mp.provider}` : cn ? `Control number ${cn.number ?? ''} · TeePay` : 'TeePay';
   return {
     receipt: { id: p.id, receiptNo: p.invoiceNo, amount: p.amount, paidAt: p.paidAt, providerRef: p.providerRef?.replace(/^TEEPAY:/, '') ?? null, method },
     isTest,
@@ -305,7 +379,7 @@ export async function feesOverview(amcosId: string) {
   const pays = fees.length ? await db.select().from(P).where(and(eq(P.amcosId, amcosId), sql`${P.feeId} is not null`)).orderBy(sql`${P.paidAt} desc`) : [];
   const t = today();
   return {
-    teepayEnabled: teepayConfig().enabled,
+    teepayEnabled: anyProvider(),
     lock: await feeLock(amcosId, { fresh: true }),
     fees: fees.map((f) => ({
       ...f, outstanding: fmt2(outstandingOf(f).gt(0) ? outstandingOf(f) : 0), overdue: ['UNPAID', 'PARTIAL'].includes(f.status) && f.dueDate < t,
