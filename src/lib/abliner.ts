@@ -92,3 +92,15 @@ export function verifyAblinerSignature(rawBody: Buffer, timestamp: string | unde
   const a = Buffer.from(expected), b = Buffer.from(got);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
+
+/** Name Lookup: jina lililosajiliwa kwenye mobile money la namba hii. null = halijapatikana (404 name_not_found). */
+export async function lookupName(phone: string): Promise<{ phone: string; name: string; network?: string } | null> {
+  try {
+    const r = await request<unknown>('GET', `/lookup?phone=${encodeURIComponent(phone)}`);
+    const d = unwrap<{ phone?: string; name?: string; network?: string }>(r.data);
+    return d?.name ? { phone: d.phone ?? phone, name: String(d.name), network: d.network } : null;
+  } catch (e) {
+    if (e instanceof AblinerError && (e.status === 404 || e.code === 'name_not_found')) return null;
+    throw e;
+  }
+}

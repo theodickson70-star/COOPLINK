@@ -18,6 +18,8 @@ import { accountBalance, lockAccount, nextTxnNo } from '../lib/finance';
 import { computeLine, PAYROLL_RATES } from '../lib/payroll';
 import { ensureChart, glMap } from '../lib/gl';
 import { todayStr } from './accounting.routes';
+import { verifiedName } from '../lib/name-lookup';
+import { normalizePhone } from '../lib/http';
 import { assertOpen } from '../lib/periods';
 
 export const payrollRouter = Router();
@@ -53,6 +55,7 @@ const empBody = z.object({
 
 payrollRouter.post('/employees', requireAmcosPerm('payroll.manage'), ah(async (req, res) => {
   const body = empBody.parse(req.body);
+  if (body.phone && normalizePhone(body.phone)) body.fullName = (await verifiedName(normalizePhone(body.phone), body.fullName))!; // jina kutoka mobile money
   const amcosId = await resolveWriteAmcosId(req);
   const emp = await db.transaction(async (tx) => {
     const n = await nextNumber(tx, amcosId, 'employee');
@@ -68,6 +71,8 @@ payrollRouter.patch('/employees/:id', requireAmcosPerm('payroll.manage'), ah(asy
   const body = empBody.partial().extend({ isActive: z.boolean().optional() }).parse(req.body);
   const [before] = await db.select().from(E).where(and(eq(E.id, id), amcosScope(req, E.amcosId)));
   if (!before) throw notFound('Mfanyakazi');
+  const ph = body.phone !== undefined ? body.phone : before.phone;
+  if ((body.fullName !== undefined || body.phone !== undefined) && ph && normalizePhone(ph)) body.fullName = (await verifiedName(normalizePhone(ph), body.fullName ?? before.fullName))!;
   const emp = await db.transaction(async (tx) => {
     const [e] = await tx.update(E).set(body).where(eq(E.id, id)).returning();
     await audit(tx, req, { action: 'EMPLOYEE_UPDATE', entity: 'Employee', entityId: id, amcosId: before.amcosId, before, after: e });

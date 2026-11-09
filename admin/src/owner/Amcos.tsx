@@ -8,6 +8,7 @@ import { Alert, Button, Empty, Input, Loading, Modal, PageHead, Pager, Select, S
 import { ConfirmDialog, money, nfmt, Pill, Section } from '../components/owner-ui';
 import { AssignPlanModal, type Plan } from './Subscriptions';
 import { AmcosFeesSection } from './Fees';
+import { PhoneNameFields } from '../components/PhoneName';
 import { RecordPaymentModal } from './Finance';
 
 interface Row {
@@ -130,8 +131,7 @@ function AmcosFormModal({ initial, onClose, onSaved }: { initial?: AmcosFull; on
         <TextField label="Kijiji" value={f.village} onChange={set('village')} />
         <TextField label="Simu ya chama" type="tel" value={f.phone} onChange={set('phone')} />
         <TextField label="Email" type="email" value={f.email} onChange={set('email')} />
-        <TextField label="Mtu wa mawasiliano" value={f.contactName} onChange={set('contactName')} />
-        <TextField label="Simu ya mawasiliano" type="tel" value={f.contactPhone} onChange={set('contactPhone')} />
+        <PhoneNameFields phoneLabel="Simu ya mawasiliano" phone={f.contactPhone} onPhone={set('contactPhone')} nameLabel="Mtu wa mawasiliano" name={f.contactName} onName={(v) => set('contactName')(v)} optionalPhone />
       </div>
       {!initial && has('amcos.staff') && (
         <fieldset className="perm-box">
@@ -142,8 +142,7 @@ function AmcosFormModal({ initial, onClose, onSaved }: { initial?: AmcosFull; on
           {withManager && (
             <>
               <div className="form-grid">
-                <TextField label="Jina kamili la Meneja *" value={mgr.fullName} onChange={(v) => setMgr({ ...mgr, fullName: v })} />
-                <TextField label="Simu ya Meneja (ya kuingia) *" type="tel" value={mgr.phone} onChange={(v) => setMgr({ ...mgr, phone: v })} />
+                <PhoneNameFields phoneLabel="Simu ya Meneja (ya kuingia) *" phone={mgr.phone} onPhone={(v) => setMgr((m) => ({ ...m, phone: v }))} nameLabel="Jina kamili la Meneja" name={mgr.fullName} onName={(v) => setMgr((m) => ({ ...m, fullName: v }))} />
                 <TextField label="Email ya Meneja" type="email" value={mgr.email} onChange={(v) => setMgr({ ...mgr, email: v })} />
                 <span />
                 <TextField label="Nenosiri la kuanzia *" type={showPw ? 'text' : 'password'} autoComplete="new-password" value={mgr.password} onChange={(v) => setMgr({ ...mgr, password: v })}
@@ -401,8 +400,7 @@ function AssignStaff({ amcosId, slot, onClose, onDone }: { amcosId: string; slot
       {replace && <Alert kind="warn"><strong>{slot.holder!.fullName}</strong> atazimwa (hafutwi) na kutolewa kwenye mfumo mara moja. Rekodi na audit zake zinabaki.</Alert>}
       <Alert>{error}</Alert>
       <div className="form-grid">
-        <TextField label="Jina kamili *" value={fullName} onChange={setFullName} />
-        <TextField label="Simu (ya kuingia) *" type="tel" value={ph} onChange={setPh} />
+        <PhoneNameFields phoneLabel="Simu (ya kuingia) *" phone={ph} onPhone={setPh} name={fullName} onName={(v) => setFullName(v)} />
         <TextField label="Email" type="email" value={email} onChange={setEmail} />
       </div>
       <div className="form-grid">

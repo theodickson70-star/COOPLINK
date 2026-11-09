@@ -57,7 +57,7 @@ function startMock() {
 }
 // Abliner ya kuigiza
 const AB_SECRET = 'whsec_ab_' + RUN;
-const ab = { txns: new Map<string, any>(), creates: [] as { key: string; body: string; sigOk: boolean }[] };
+const ab = { txns: new Map<string, any>(), creates: [] as { key: string; body: string; sigOk: boolean }[], lookups: 0 };
 function abliner(req: http.IncomingMessage, body: string, send: (s: number, j: unknown) => void) {
   if (req.headers.authorization !== 'Bearer tsl_live_mock') return send(401, { status: 'error', code: 'unauthorized', message: 'bad key' });
   if (req.method === 'POST' && req.url === '/ab/deposits') {
@@ -70,6 +70,12 @@ function abliner(req: http.IncomingMessage, body: string, send: (s: number, j: u
     const t = ab.txns.get(key) ?? { id: 'tx_' + crypto.randomBytes(5).toString('hex'), type: 'deposit', flow: 'push', status: 'pending', amount: j.amount, currency: 'TZS', method: 'mobile', reference: 'ABL' + crypto.randomBytes(4).toString('hex').toUpperCase(), customer_reference: j.reference, idempotency_key: key };
     ab.txns.set(key, t);
     return send(201, { status: 'success', data: { ...t, payment_url: null, message: 'Mobile money push sent.' } });
+  }
+  if (req.method === 'GET' && req.url?.startsWith('/ab/lookup')) {
+    ab.lookups++;
+    const ph = new URL(req.url, 'http://x').searchParams.get('phone');
+    if (ph === '255700000009') return send(404, { status: 'error', code: 'name_not_found', message: 'Name not found' });
+    return send(200, { status: 'success', data: { phone: ph, name: 'JOHN JUMA DOE', network: 'vodacom' } });
   }
   if (req.method === 'GET' && req.url?.startsWith('/ab/transactions')) {
     const key = new URL(req.url, 'http://x').searchParams.get('idempotency_key');
@@ -185,7 +191,7 @@ test('Kingilio: kinadaiwa chama kikifunguliwa, chama kinafungwa baada ya siku 3,
   const sent = JSON.parse(mock.creates[0].body);
   assert.deepEqual(sent.money, { amount_minor: '4500000', currency: 'TZS' }, 'TSh 45,000 = 4500000 minor units');
   assert.equal(sent.customer.phone, '+255712345678'); assert.equal(sent.customer.country, 'TZ');
-  assert.equal(sent.customer.name, 'Theo Baruth'); assert.equal(sent.customer.email, 'meneja@example.com');
+  assert.equal(sent.customer.name, 'John Juma Doe', 'Jina la mlipaji linatoka mobile money'); assert.equal(sent.customer.email, 'meneja@example.com');
   // Ombi likiwa wazi, jingine haliruhusiwi (lisilipwe mara mbili)
   assert.equal((await call('POST', `/api/v1/billing/fees/${entrance.id}/pay`, manager, { ...PAYER, amount: '45000' })).status, 409);
 
@@ -408,4 +414,44 @@ test('Njia mbili za malipo: TeePay ikikataa, Abliner inajaribiwa papo hapo; webh
   assert.equal(sy.body.status, 'SUCCEEDED');
   await call('PUT', '/api/v1/owner/fees/settings', owner, { ...st.settings, primaryProvider: 'TEEPAY' });
   assert.equal((await call('GET', `/api/v1/owner/fees/amcos/${aid}`, owner)).status, 200);
+});
+
+test('Majina kutoka namba ya simu (Abliner Name Lookup): yanajitokeza, hayaandikwi kwa mkono', async () => {
+  // Kitafutaji cha jina
+  const l1 = await call('GET', '/api/v1/lookup/name?phone=0712345678', manager);
+  assert.equal(l1.status, 200);
+  assert.equal(l1.body.status, 'FOUND'); assert.equal(l1.body.name, 'John Juma Doe');
+  assert.equal(l1.body.firstName, 'John'); assert.equal(l1.body.middleName, 'Juma'); assert.equal(l1.body.lastName, 'Doe');
+  const before = ab.lookups;
+  await call('GET', '/api/v1/lookup/name?phone=+255712345678', manager);
+  assert.equal(ab.lookups, before, 'Jibu linatoka kwenye akiba (hakuna gharama ya pili)');
+  assert.equal((await call('GET', '/api/v1/lookup/name?phone=0700000009', manager)).body.status, 'NOT_FOUND');
+  assert.equal((await call('GET', '/api/v1/lookup/name?phone=0712345678')).status, 401, 'Lazima kuingia');
+
+  // Mkulima: majina yaliyoandikwa yanapuuzwa — yanatoka kwenye mobile money ya namba yake
+  const mphone = '07' + String(Date.now()).slice(-8);
+  const c = await call('POST', '/api/v1/members', manager, { firstName: 'Bandia', lastName: 'Kabisa', gender: 'MALE', phone: mphone, guarantorName: 'Mzamini Bandia', guarantorPhone: '0712345678', mobileMoneyNumber: mphone, preferredPayment: 'MOBILE_MONEY', mobileMoneyProvider: 'MPESA' });
+  assert.equal(c.status, 201, JSON.stringify(c.body));
+  const mem = (await call('GET', `/api/v1/members/${c.body.member.id}`, manager)).body.member;
+  assert.equal(mem.firstName, 'John'); assert.equal(mem.middleName, 'Juma'); assert.equal(mem.lastName, 'Doe');
+  assert.equal(mem.guarantorName, 'John Juma Doe'); assert.equal(mem.mobileMoneyName, 'John Juma Doe');
+  // Namba isiyosajiliwa kwenye mobile money -> inakataliwa
+  const bad = await call('POST', '/api/v1/members', manager, { firstName: 'Asha', lastName: 'Juma', gender: 'FEMALE', phone: '0700000009' });
+  assert.equal(bad.status, 400); assert.match(bad.body.error.message, /haijasajiliwa kwenye mobile money/);
+  // Mkulima asiye na simu: jina linaandikwa
+  const nophone = await call('POST', '/api/v1/members', manager, { firstName: 'Asha', lastName: 'Bila Simu', gender: 'FEMALE' });
+  assert.equal(nophone.status, 201); assert.equal(nophone.body.member.lastName, 'Bila Simu');
+
+  // Mtumishi (Owner anaunda): jina lililoandikwa linapuuzwa
+  const sp = uniqPhone('25576');
+  const st = await call('POST', `/api/v1/owner/amcos/${amcosId}/staff`, owner, { role: 'ACCOUNTANT', fullName: 'Jina Bandia', phone: sp, replace: false });
+  assert.equal(st.status, 201, JSON.stringify(st.body)); assert.equal(st.body.user.fullName, 'John Juma Doe');
+
+  // Huduma ikizimwa: majina yanaandikwa kama kawaida (kazi haisimami)
+  const k = process.env.ABLINER_API_KEY; delete process.env.ABLINER_API_KEY;
+  const l2 = await call('GET', '/api/v1/lookup/name?phone=0712345678', manager);
+  assert.equal(l2.body.status, 'DISABLED'); assert.equal(l2.body.enabled, false);
+  const m2 = await call('POST', '/api/v1/members', manager, { firstName: 'Zuhura', lastName: 'Ally', gender: 'FEMALE', phone: '07' + String(Date.now() + 7).slice(-8) });
+  assert.equal(m2.status, 201); assert.equal(m2.body.member.firstName, 'Zuhura');
+  process.env.ABLINER_API_KEY = k;
 });

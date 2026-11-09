@@ -31,6 +31,7 @@ import { assetsRouter } from './modules/assets.routes';
 import { groupsRouter } from './modules/groups.routes';
 import { kuniRouter } from './modules/kuni.routes';
 import { billingRouter, feeGuard } from './modules/billing.routes';
+import { lookupRouter } from './modules/lookup.routes';
 import { startupState } from './lib/startup';
 import { superAdminStatus } from './lib/super-admin';
 
@@ -75,6 +76,7 @@ export function createApp() {
   api.use(maintenanceGuard);
   api.use('/owner', ownerRouter);              // Owner Control Panel (wasimamizi wa jukwaa tu)
   api.use('/announcements', announcementsRouter);
+  api.use('/lookup', lookupRouter);              // Jina la mwenye namba ya simu (Abliner) — kwa fomu zote
   api.use(blockPlatformStaff);                 // wafanyakazi wa jukwaa hawaingii data za vyama
   api.use('/billing', billingRouter);           // Ada ya CoopLink (Meneja) — inapatikana hata chama kikiwa kimefungwa
   api.use(feeGuard);                            // ada iliyopita tarehe bila kulipwa -> chama kimefungwa

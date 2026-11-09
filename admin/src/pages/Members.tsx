@@ -1,9 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, type Paged } from '../lib/api';
 import { useAction, useDebounced, useFetch } from '../lib/hooks';
 import { date, phone } from '../lib/format';
 import { useAuth } from '../lib/auth';
+import { NameNote, PhoneNameFields, usePhoneName } from '../components/PhoneName';
 import { Alert, Badge, Button, Empty, Input, Loading, PageHead, Pager, Select, SelectField, TextField } from '../components/ui';
 
 export interface Member {
@@ -195,6 +196,19 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
   };
   const shown = photo?.preview ?? currentPhoto ?? null;
   const fullNameStr = [f.firstName, f.middleName, f.lastName].filter((x) => x.trim()).join(' ');
+  // Majina ya mkulima yanatoka kwenye usajili wa mobile money wa simu yake (hayaandikwi kwa mkono)
+  const own = usePhoneName(f.phone);
+  const filled = useRef('');
+  useEffect(() => {
+    if (own.state === 'found' && own.parts) {
+      filled.current = own.name;
+      setF((s) => ({ ...s, firstName: own.parts!.firstName, middleName: own.parts!.middleName ?? '', lastName: own.parts!.lastName }));
+    } else if ((own.state === 'not_found' || own.state === 'typing') && filled.current) {
+      // majina yaliyojazwa na namba iliyopita yasibaki kwenye namba nyingine
+      filled.current = '';
+      setF((s) => ({ ...s, firstName: '', middleName: '', lastName: '' }));
+    }
+  }, [own.state, own.name]); // eslint-disable-line react-hooks/exhaustive-deps
   const R = ({ k, v }: { k: string; v: React.ReactNode }) => <><dt>{k}</dt><dd>{v || <span className="muted">—</span>}</dd></>;
 
   return (
@@ -241,12 +255,15 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
             <TextField label="Namba ya uanachama" value={f.memberNo} onChange={(v) => set('memberNo')(v.toUpperCase())} disabled={!canEditNo}
               placeholder={editing ? '' : 'mf. URM/0123 — au acha wazi'}
               help={editing ? 'Inabadilishwa na Meneja tu' : 'Namba aliyopewa na chama. Ukiacha wazi, mfumo utatoa mpya.'} />
-            <TextField label="Jina la kwanza *" value={f.firstName} onChange={set('firstName')} autoFocus={!editing} />
-            <TextField label="Jina la kati" value={f.middleName} onChange={set('middleName')} />
-            <TextField label="Jina la ukoo *" value={f.lastName} onChange={set('lastName')} />
+            <div>
+              <TextField label="Simu ya mkulima" type="tel" inputMode="tel" placeholder="0712 345 678" value={f.phone} onChange={set('phone')} autoFocus={!editing} />
+              <NameNote state={own.state} network={own.network} emptyHint="Weka namba ya simu — majina yatajitokeza yenyewe. Mkulima asiye na simu: acha wazi na uandike majina." />
+            </div>
+            <div className={own.locked ? 'locked-field' : undefined}><TextField label="Jina la kwanza *" value={f.firstName} onChange={set('firstName')} readOnly={own.locked} tabIndex={own.locked ? -1 : undefined} /></div>
+            <div className={own.locked ? 'locked-field' : undefined}><TextField label="Jina la kati" value={f.middleName} onChange={set('middleName')} readOnly={own.locked} tabIndex={own.locked ? -1 : undefined} /></div>
+            <div className={own.locked ? 'locked-field' : undefined}><TextField label="Jina la ukoo *" value={f.lastName} onChange={set('lastName')} readOnly={own.locked} tabIndex={own.locked ? -1 : undefined} /></div>
             <SelectField label="Jinsia *" value={f.gender} onChange={set('gender')} options={[{ value: 'MALE', label: 'Mwanaume' }, { value: 'FEMALE', label: 'Mwanamke' }]} />
             <TextField label="Tarehe ya kuzaliwa" type="date" value={f.dateOfBirth} onChange={set('dateOfBirth')} />
-            <TextField label="Simu" type="tel" placeholder="0712 345 678" value={f.phone} onChange={set('phone')} />
             <SelectField label="Aina ya kitambulisho" value={idType} onChange={(v) => setIdType(v as IdType)}
               options={[{ value: 'NIDA', label: 'NIDA' }, { value: 'VOTER', label: 'Kadi ya mpiga kura' }, { value: 'NONE', label: 'Hana kitambulisho kwa sasa' }]} />
             {idType === 'NIDA' && <TextField label="Namba ya NIDA" help={`Tarakimu 20 (${f.nidaNumber.length}/20)`} inputMode="numeric" maxLength={20} value={f.nidaNumber} onChange={(v) => set('nidaNumber')(v.replace(/\D/g, ''))} />}
@@ -274,12 +291,10 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
             {!paidInSystem && f.entryFeePaid === 'no' && <p className="muted form-note">Mkulima akilipa, Mhasibu atarekodi kwenye <strong>Fedha → + Mapato → Ada za uanachama</strong> akimchagua mkulima huyu; hali itabadilika kuwa "Kimelipwa" yenyewe.</p>}
 
             <div className="form-section">Mzamini wa mkulima</div>
-            <TextField label="Majina ya mzamini" value={f.guarantorName} onChange={set('guarantorName')} />
-            <TextField label="Simu ya mzamini" type="tel" value={f.guarantorPhone} onChange={set('guarantorPhone')} />
+            <PhoneNameFields phoneLabel="Simu ya mzamini" phone={f.guarantorPhone} onPhone={set('guarantorPhone')} nameLabel="Majina ya mzamini" name={f.guarantorName} onName={(v) => set('guarantorName')(v)} optionalPhone />
 
             <div className="form-section">Mrithi / ndugu wa karibu</div>
-            <TextField label="Jina la mrithi" value={f.nextOfKinName} onChange={set('nextOfKinName')} />
-            <TextField label="Simu ya mrithi" type="tel" value={f.nextOfKinPhone} onChange={set('nextOfKinPhone')} />
+            <PhoneNameFields phoneLabel="Simu ya mrithi" phone={f.nextOfKinPhone} onPhone={set('nextOfKinPhone')} nameLabel="Jina la mrithi" name={f.nextOfKinName} onName={(v) => set('nextOfKinName')(v)} optionalPhone />
             <TextField label="Uhusiano" placeholder="mf. Mke, Mtoto" value={f.nextOfKinRelation} onChange={set('nextOfKinRelation')} />
           </div>
         )}
@@ -296,9 +311,8 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
             {f.preferredPayment === 'MOBILE_MONEY' && (
               <div className="form-grid">
                 <SelectField label="Mtandao wa simu" value={f.mobileMoneyProvider} onChange={set('mobileMoneyProvider')} options={Object.entries(PROVIDERS).map(([value, label]) => ({ value, label }))} />
-                <TextField label="Namba ya malipo ya simu" type="tel" value={f.mobileMoneyNumber} onChange={set('mobileMoneyNumber')} />
-                <TextField label="Jina lililosajiliwa kwenye namba" value={f.mobileMoneyName} onChange={set('mobileMoneyName')} />
-                {f.phone && !f.mobileMoneyNumber && <div className="field"><label>&nbsp;</label><Button size="sm" variant="ghost" onClick={() => setF((s) => ({ ...s, mobileMoneyNumber: s.phone, mobileMoneyName: s.mobileMoneyName || fullNameStr }))}>Tumia simu yake ({f.phone})</Button></div>}
+                <PhoneNameFields phoneLabel="Namba ya malipo ya simu" phone={f.mobileMoneyNumber} onPhone={set('mobileMoneyNumber')} nameLabel="Jina lililosajiliwa kwenye namba" name={f.mobileMoneyName} onName={(v) => set('mobileMoneyName')(v)} optionalPhone />
+                {f.phone && !f.mobileMoneyNumber && <div className="field"><label>&nbsp;</label><Button size="sm" variant="ghost" onClick={() => setF((s) => ({ ...s, mobileMoneyNumber: s.phone }))}>Tumia simu yake ({f.phone})</Button></div>}
               </div>
             )}
             {f.preferredPayment === 'BANK' && (

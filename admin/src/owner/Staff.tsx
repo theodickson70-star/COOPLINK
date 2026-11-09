@@ -4,6 +4,7 @@ import { useAction, useFetch } from '../lib/hooks';
 import type { Permission, Role } from '../lib/auth';
 import { dateTime, phone, ROLE_LABEL, OWNER_ROLE_LABEL } from '../lib/format';
 import { Alert, Button, Empty, Loading, Modal, PageHead, SelectField, TextField } from '../components/ui';
+import { LockedNameField, PhoneNameFields } from '../components/PhoneName';
 import { Pill, Tabs } from '../components/owner-ui';
 
 interface Staff {
@@ -96,8 +97,7 @@ function StaffForm({ cat, onClose, onSaved }: { cat: Catalog; onClose: () => voi
       }}>Unda</Button></>}>
       <Alert>{error}</Alert>
       <div className="form-grid">
-        <TextField label="Jina kamili *" value={fullName} onChange={setFullName} />
-        <TextField label="Simu *" type="tel" value={ph} onChange={setPh} />
+        <PhoneNameFields phoneLabel="Simu *" phone={ph} onPhone={setPh} name={fullName} onName={(v) => setFullName(v)} />
         <TextField label="Email" type="email" value={email} onChange={setEmail} />
         <TextField label="Cheo" placeholder="mf. Afisa Mauzo" value={jobTitle} onChange={setJobTitle} />
         <SelectField label="Role *" value={role} onChange={(v) => { setRole(v as Role); setPerms(null); }} options={cat.roles.map((r) => ({ value: r, label: ROLE_LABEL[r] }))} />
@@ -123,7 +123,7 @@ function StaffDetail({ staff, cat, onClose, onChanged }: { staff: Staff; cat: Ca
       {tab === 'edit' && (
         <>
           <div className="form-grid">
-            <TextField label="Jina" value={fullName} onChange={setFullName} />
+            <LockedNameField label="Jina" phone={staff.phone} value={fullName} onChange={setFullName} />
             <TextField label="Cheo" value={jobTitle} onChange={setJobTitle} />
             <SelectField label="Role" value={role} onChange={(v) => { setRole(v as Role); setPerms(null); }} options={cat.roles.map((r) => ({ value: r, label: ROLE_LABEL[r] }))} />
           </div>

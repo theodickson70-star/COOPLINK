@@ -9,6 +9,7 @@ import { useAuth } from '../lib/auth';
 import { date, dateTime, num, tsh } from '../lib/format';
 import { Alert, Badge, Button, Empty, Loading, Modal, PageHead, SelectField, TextField } from '../components/ui';
 import { Kpi, Section, Tabs } from '../components/owner-ui';
+import { PhoneNameFields } from '../components/PhoneName';
 import { DocHead, PrintButton, Signatures, thisMonth, today } from './acc-common';
 
 interface Employee {
@@ -136,14 +137,13 @@ function EmployeeForm({ emp, onClose, onDone }: { emp: Employee | null; onClose:
       }}>Hifadhi</Button></>}>
       <Alert>{error}</Alert>
       <div className="form-grid">
-        <TextField label="Jina kamili *" value={f.fullName} onChange={s('fullName')} />
+        <PhoneNameFields phoneLabel="Simu" phone={f.phone} onPhone={(v) => setF((x) => ({ ...x, phone: v }))} nameLabel="Jina kamili *" name={f.fullName} onName={(v) => setF((x) => ({ ...x, fullName: v }))} optionalPhone />
         <TextField label="Cheo / kazi *" value={f.position} onChange={s('position')} placeholder="mf. Mlinzi wa ghala" />
         <TextField label="Mshahara wa msingi (TSh) *" type="number" min="0" value={f.basicSalary} onChange={s('basicSalary')} />
         <TextField label="Posho (TSh)" type="number" min="0" value={f.allowances} onChange={s('allowances')} />
         <TextField label="Makato mengine kwa mwezi" type="number" min="0" value={f.otherDeductions} onChange={s('otherDeductions')} help="mf. marejesho ya mkopo wa mshahara" />
         <TextField label="Namba ya NSSF" value={f.nssfNo} onChange={s('nssfNo')} />
         <TextField label="TIN" value={f.tin} onChange={s('tin')} />
-        <TextField label="Simu" value={f.phone} onChange={s('phone')} />
         <SelectField label="Njia ya malipo" value={f.paymentMethod} onChange={s('paymentMethod')} options={[{ value: 'BANK', label: 'Benki' }, { value: 'MOBILE_MONEY', label: 'Simu' }, { value: 'CASH', label: 'Taslimu' }]} />
         {f.paymentMethod === 'BANK' && <TextField label="Benki" value={f.bankName} onChange={s('bankName')} />}
         {f.paymentMethod === 'BANK' && <TextField label="Namba ya akaunti" value={f.accountNumber} onChange={s('accountNumber')} />}

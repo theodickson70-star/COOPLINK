@@ -9,6 +9,7 @@ import { requireRole, ROLES, type Role } from '../middleware/auth';
 import { canAccessAmcos } from '../middleware/tenant';
 import { audit } from '../lib/audit';
 import { isPlatformRole, isStaffRole } from '../lib/permissions';
+import { verifiedName } from '../lib/name-lookup';
 import { assertSlotFree } from '../lib/amcos-staff';
 
 export const usersRouter = Router();
@@ -87,6 +88,8 @@ usersRouter.post(
         amcosId: z.string().uuid().optional(),
       })
       .parse(req.body);
+    // Jina linatoka kwenye usajili wa mobile money wa namba hii (haliandikwi kwa mkono)
+    body.fullName = (await verifiedName(body.phone, body.fullName))!;
 
     // Wafanyakazi wa jukwaa wanasimamiwa kwenye Owner > Staff Management
     if (isStaffRole(body.role)) throw badRequest('Tumia Staff Management kuunda wafanyakazi wa CoopLink');
@@ -138,6 +141,7 @@ usersRouter.patch(
 
     const existing = await db.query.users.findFirst({ where: eq(schema.users.id, id) });
     if (!existing) throw notFound('Mtumiaji');
+    if (body.fullName !== undefined) body.fullName = (await verifiedName(existing.phone, body.fullName))!;
     if (existing.id === req.auth!.userId && (body.isActive === false || body.role)) {
       throw forbidden('Huwezi kubadilisha role au kujizima mwenyewe');
     }

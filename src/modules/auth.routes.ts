@@ -14,6 +14,7 @@ import { effectivePermissions, isPlatformRole } from '../lib/permissions';
 import { getSetting } from '../lib/settings';
 import { decryptSecret, encryptSecret, newTotpSecret, otpauthUri, verifyTotp } from '../lib/totp';
 import { feeLock } from '../lib/fees';
+import { verifiedName } from '../lib/name-lookup';
 import { sendSms } from '../lib/notify';
 
 export const authRouter = Router();
@@ -160,6 +161,7 @@ authRouter.patch(
   ah(async (req, res) => {
     const body = z.object({ fullName: z.string().trim().min(3).optional(), email: z.string().email().nullable().optional() }).parse(req.body);
     const before = await db.query.users.findFirst({ where: eq(schema.users.id, req.auth!.userId) });
+    if (body.fullName !== undefined && before) body.fullName = (await verifiedName(before.phone, body.fullName))!; // jina kutoka mobile money
     const [u] = await db.transaction(async (tx) => {
       const r = await tx.update(schema.users).set(body).where(eq(schema.users.id, req.auth!.userId)).returning();
       await audit(tx, req, { action: 'PROFILE_UPDATE', entity: 'User', entityId: req.auth!.userId, before: { fullName: before?.fullName, email: before?.email }, after: body });

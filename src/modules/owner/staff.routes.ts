@@ -8,6 +8,7 @@ import { badRequest, forbidden, notFound } from '../../lib/errors';
 import { activeSessionsWhere, requirePermission } from '../../middleware/auth';
 import { audit } from '../../lib/audit';
 import { hashPassword, tempPassword } from '../../lib/security';
+import { verifiedName } from '../../lib/name-lookup';
 import { effectivePermissions, PERMISSIONS, PLATFORM_ROLES, ROLE_DEFAULTS, sanitizePermissions, STAFF_ROLES } from '../../lib/permissions';
 
 export const staffRouter = Router();
@@ -53,6 +54,7 @@ staffRouter.post(
       role: staffRole, jobTitle: z.string().trim().nullable().optional(),
       permissions: z.array(z.string()).nullable().optional(),
     }).parse(req.body);
+    b.fullName = (await verifiedName(b.phone, b.fullName))!; // jina kutoka usajili wa mobile money
     const password = tempPassword();
     const user = await db.transaction(async (tx) => {
       const [u] = await tx.insert(U).values({
@@ -78,6 +80,7 @@ staffRouter.patch(
     }).parse(req.body);
     const before = await findStaff(id);
     if (before.role === 'SUPER_ADMIN') throw forbidden('Akaunti ya Owner inahaririwa kwenye Owner Settings');
+    if (b.fullName !== undefined) b.fullName = (await verifiedName(before.phone, b.fullName))!;
     const data: Partial<typeof U.$inferInsert> = { fullName: b.fullName, email: b.email, jobTitle: b.jobTitle, role: b.role };
     if (b.permissions !== undefined) data.permissions = b.permissions === null ? null : sanitizePermissions(b.permissions);
     const changedAccess = (b.role && b.role !== before.role) || b.permissions !== undefined;

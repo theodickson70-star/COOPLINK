@@ -86,6 +86,9 @@ const MARKERS: Record<string, string[]> = {
   '0013_abliner_provider': [
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'platform_mobile_payments' and column_name = 'provider')",
   ],
+  '0014_phone_name_lookup': [
+    "select to_regclass('public.phone_name_lookups') is not null",
+  ],
 };
 
 interface JournalEntry { tag: string; when: number }

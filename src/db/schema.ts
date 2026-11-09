@@ -865,6 +865,15 @@ export const platformMobilePayments = pgTable('platform_mobile_payments', {
   createdAt: createdAt(),
 }, (t) => [index().on(t.feeId), index().on(t.status)]);
 
+// Majina yaliyosajiliwa kwenye mobile money (Abliner Name Lookup) — akiba ili kupunguza gharama na kuongeza kasi
+export const phoneNameLookups = pgTable('phone_name_lookups', {
+  phone: text().primaryKey(),         // 2557XXXXXXXX
+  status: text().notNull(),           // FOUND | NOT_FOUND
+  name: text(),                       // jina kama lilivyosajiliwa (mf. "JOHN JUMA DOE")
+  network: text(),
+  checkedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+});
+
 // Kila tukio la webhook ya TeePay linaandikwa mara moja tu (X-TeePay-Event-ID)
 export const teepayEvents = pgTable('teepay_events', {
   id: text().primaryKey(),

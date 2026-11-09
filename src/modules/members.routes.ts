@@ -8,6 +8,7 @@ import { requireAmcosPerm } from '../middleware/auth';
 import { activeGroups } from '../lib/groups';
 import { hasAmcosPerm } from '../lib/amcos-permissions';
 import { createApproval } from '../lib/approvals';
+import { lookupNameOrNull, splitName } from '../lib/name-lookup';
 import { amcosScope, resolveWriteAmcosId } from '../middleware/tenant';
 import { nextNumber, pad } from '../lib/counter';
 import { audit } from '../lib/audit';
@@ -54,6 +55,25 @@ const memberBody = z.object({
   guarantorName: opt(z.string().trim().min(3, 'Jina la mzamini angalau herufi 3')),
   guarantorPhone: opt(phoneSchema),
 });
+
+type MemberNames = Partial<Pick<z.infer<typeof memberBody>, 'firstName' | 'middleName' | 'lastName' | 'phone' | 'guarantorName' | 'guarantorPhone' | 'nextOfKinName' | 'nextOfKinPhone' | 'mobileMoneyNumber' | 'mobileMoneyName'>>;
+/**
+ * Majina yanatoka kwenye usajili wa mobile money wa namba husika (Abliner Name Lookup) — hayaandikwi kwa mkono.
+ * Mkulima asiye na simu: jina lake linaandikwa (hakuna namba ya kuthibitisha).
+ */
+async function verifyMemberNames(body: MemberNames, before?: { phone: string | null }) {
+  const ph = body.phone !== undefined ? body.phone : before?.phone;
+  const touchesName = body.phone !== undefined || body.firstName !== undefined || body.middleName !== undefined || body.lastName !== undefined;
+  if (ph && touchesName) {
+    const n = await lookupNameOrNull(ph, 'Simu ya mkulima');
+    if (n) Object.assign(body, splitName(n));
+  }
+  const pairs = [['guarantorPhone', 'guarantorName', 'Simu ya mzamini'], ['nextOfKinPhone', 'nextOfKinName', 'Simu ya mrithi'], ['mobileMoneyNumber', 'mobileMoneyName', 'Namba ya malipo ya simu']] as const;
+  for (const [pk, nk, label] of pairs) {
+    const v = body[pk];
+    if (v) { const n = await lookupNameOrNull(v, label); if (n) body[nk] = n; }
+  }
+}
 
 function checkEntryFee(b: { entryFeePaid?: boolean; entryFeeReference?: string | null }, before?: { entryFeeReference: string | null }) {
   if (b.entryFeePaid && !(b.entryFeeReference ?? before?.entryFeeReference)) throw badRequest('Weka namba ya risiti ya kiingilio');
@@ -132,6 +152,7 @@ membersRouter.post(
     const amcosId = await resolveWriteAmcosId(req, body.amcosId);
     const amcos = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId) }))!;
     checkEntryFee(body);
+    await verifyMemberNames(body);
     await assertUnique(amcosId, body);
     const { memberNo: givenNo, amcosId: _ignored, ...data } = body;
 
@@ -189,6 +210,7 @@ membersRouter.patch(
       if (!body.memberNo) throw badRequest('Namba ya uanachama haiwezi kuwa tupu');
     }
     checkEntryFee(body, before);
+    await verifyMemberNames(body, before);
     await assertUnique(before.amcosId, body, id);
     const member = await db.transaction(async (tx) => {
       const [row] = await tx.update(m).set({ ...body, memberNo: body.memberNo ?? undefined }).where(eq(m.id, id)).returning();

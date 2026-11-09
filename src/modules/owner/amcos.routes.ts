@@ -12,6 +12,7 @@ import { ensureEntranceFee } from '../../lib/fees';
 import { hashPassword, passwordSchemaRule, tempPassword } from '../../lib/security';
 import { generateAmcosCode } from '../../lib/amcos-code';
 import { AMCOS_STAFF_ROLES, STAFF_TITLE, type AmcosStaffRole } from '../../lib/amcos-permissions';
+import { lookupNameOrNull, verifiedName } from '../../lib/name-lookup';
 import { assertSlotFree } from '../../lib/amcos-staff';
 
 export const ownerAmcosRouter = Router();
@@ -89,6 +90,7 @@ ownerAmcosRouter.post(
         password: z.string().refine(passwordSchemaRule.test, passwordSchemaRule.message),
       }).optional(),
     }).parse(req.body);
+    if (b.contactPhone) b.contactName = (await lookupNameOrNull(b.contactPhone, 'Simu ya mawasiliano')) ?? b.contactName ?? null;
     if (b.manager) {
       if (!req.auth!.permissions.includes('amcos.staff')) throw forbidden('Huna ruhusa ya kuunda watumishi wa chama');
       if (await db.query.users.findFirst({ where: eq(schema.users.phone, b.manager.phone), columns: { id: true } })) {
@@ -103,6 +105,7 @@ ownerAmcosRouter.post(
     const plan = b.trialPlanId ? await db.query.subscriptionPlans.findFirst({ where: eq(schema.subscriptionPlans.id, b.trialPlanId) }) : null;
     if (b.trialPlanId && !plan) throw badRequest('Mpango haupo');
     const { activate: _a, trialPlanId: _t, manager, ...data } = b;
+    if (manager) manager.fullName = (await verifiedName(manager.phone, manager.fullName, 'Simu ya Meneja'))!; // jina kutoka mobile money
     const result = await db.transaction(async (tx) => {
       const code = data.code ?? (await generateAmcosCode(tx, data.name));
       if (data.code && (await tx.query.amcos.findFirst({ where: eq(A.code, data.code), columns: { id: true } }))) throw conflict('Code hii tayari inatumika');
@@ -165,6 +168,8 @@ ownerAmcosRouter.patch(
     const { id } = uuidParam.parse(req.params);
     const b = body.partial().omit({ code: true }).parse(req.body);
     const before = await findAmcos(id);
+    const cph = b.contactPhone !== undefined ? b.contactPhone : before.contactPhone;
+    if (cph && (b.contactPhone !== undefined || b.contactName !== undefined)) b.contactName = (await lookupNameOrNull(cph, 'Simu ya mawasiliano')) ?? b.contactName ?? before.contactName;
     const row = await db.transaction(async (tx) => {
       const [a] = await tx.update(A).set(b).where(eq(A.id, id)).returning();
       await audit(tx, req, { action: 'AMCOS_BUSINESS_UPDATE', entity: 'Amcos', entityId: id, amcosId: id, before, after: a });
@@ -284,6 +289,7 @@ ownerAmcosRouter.post('/:id/staff', requirePermission('amcos.staff'), ah(async (
     // Hiari: nenosiri la kuanzia lililowekwa na Owner. Lisipowekwa, mfumo unatoa la muda.
     password: z.string().refine(passwordSchemaRule.test, passwordSchemaRule.message).optional(),
   }).parse(req.body);
+  body.fullName = (await verifiedName(body.phone, body.fullName))!; // jina kutoka mobile money
   const a = await findAmcos(id);
   if (a.status === 'REJECTED') throw badRequest('Chama hiki kimekataliwa');
   const holder = await db.query.users.findFirst({ where: and(eq(U.amcosId, id), eq(U.role, body.role), eq(U.isActive, true)) });

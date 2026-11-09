@@ -4,6 +4,7 @@ import { useAction, useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
 import { dateTime, phone, ROLE_LABEL, OWNER_ROLE_LABEL } from '../lib/format';
 import { Alert, Button, Empty, Loading, PageHead, TextField } from '../components/ui';
+import { LockedNameField } from '../components/PhoneName';
 import { ConfirmDialog, Pill, Section, Tabs } from '../components/owner-ui';
 
 const device = (ua: string | null) => !ua ? '—' : /Android/i.test(ua) ? 'Android' : /iPhone|iPad/i.test(ua) ? 'iPhone/iPad' : /Windows/i.test(ua) ? 'Windows' : /Mac OS/i.test(ua) ? 'Mac' : /Linux/i.test(ua) ? 'Linux' : 'Kifaa kingine';
@@ -34,7 +35,7 @@ function Profile() {
       <Alert>{act.error}</Alert>
       <Alert kind="ok">{ok ? 'Imehifadhiwa.' : null}</Alert>
       <div className="form-grid">
-        <TextField label="Jina kamili" value={fullName} onChange={setFullName} />
+        <LockedNameField phone={user.phone} value={fullName} onChange={setFullName} />
         <TextField label="Email" type="email" value={email} onChange={setEmail} />
         <TextField label="Simu (namba ya kuingia)" value={phone(user.phone)} disabled onChange={() => undefined} />
         <TextField label="Nafasi" value={user.role === 'SUPER_ADMIN' ? OWNER_ROLE_LABEL : ROLE_LABEL[user.role] ?? user.role} disabled onChange={() => undefined} />

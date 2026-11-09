@@ -5,6 +5,7 @@ import { api, type Paged } from '../lib/api';
 import { useAction, useDebounced, useFetch } from '../lib/hooks';
 import { date, dateTime, phone, ROLE_LABEL, tsh } from '../lib/format';
 import { useAuth, type Role } from '../lib/auth';
+import { PhoneNameFields } from '../components/PhoneName';
 import { Alert, Badge, Button, Empty, Input, Loading, Modal, PageHead, Pager, Select, SelectField, TextField } from '../components/ui';
 
 // ------------------------------ MADENI ------------------------------
@@ -150,8 +151,7 @@ function NewUser({ open, onClose, onCreated }: { open: boolean; onClose: () => v
     <Modal open={open} title="Mtumiaji mpya" onClose={onClose}
       footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={fullName.length < 3 || !ph || (needsAmcos && !amcosId) || (needsUnion && !unionId)} onClick={save}>Unda mtumiaji</Button></>}>
       <Alert>{error}</Alert>
-      <TextField label="Jina kamili *" value={fullName} onChange={setFullName} />
-      <TextField label="Namba ya simu *" help="Atatumia namba hii kuingia" type="tel" value={ph} onChange={setPh} />
+      <PhoneNameFields phoneLabel="Namba ya simu *" phoneHelp="Atatumia namba hii kuingia" phone={ph} onPhone={setPh} nameLabel="Jina kamili" name={fullName} onName={(v) => setFullName(v)} />
       <SelectField label="Wadhifa *" value={role} onChange={(v) => setRole(v as Role)} options={roles.map((r) => ({ value: r, label: ROLE_LABEL[r] }))} />
       {needsAmcos && <SelectField label="Chama *" value={amcosId} onChange={setAmcosId} placeholder="Chagua chama…" options={(amcos.data?.data ?? []).map((a) => ({ value: a.id, label: `${a.name} (${a.code})` }))} />}
       {needsUnion && <SelectField label="Chama Kikuu *" value={unionId} onChange={setUnionId} placeholder="Chagua Union…" options={(unions.data?.data ?? []).map((u) => ({ value: u.id, label: u.name }))} />}

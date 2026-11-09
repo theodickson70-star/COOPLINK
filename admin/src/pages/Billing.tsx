@@ -12,6 +12,7 @@ import { amountInWords } from '../lib/words';
 import { Alert, Badge, Button, Empty, Loading, PageHead, TextField } from '../components/ui';
 import { Section } from '../components/owner-ui';
 import { LogoMark } from '../components/Logo';
+import { PhoneNameFields } from '../components/PhoneName';
 import { PrintButton } from './acc-common';
 
 interface MobilePay { id: string; provider: 'TEEPAY' | 'ABLINER'; amount: string; phoneLocal: string; payerName: string; reference: string | null; status: 'SENDING' | 'PENDING' | 'SUCCEEDED' | 'FAILED'; statusDetail: string | null; lastError: string | null; createdAt: string; platformPaymentId: string | null; isTest: boolean; abandonedAt: string | null }
@@ -156,8 +157,7 @@ function FeeCard({ f, canPay, onChange }: { f: Fee; canPay: boolean; onChange: (
             </div>
           )}
           <div className="form-grid">
-            <TextField label="Namba ya simu itakayolipa *" value={payer.phone} onChange={(v) => setPayer({ ...payer, phone: v })} placeholder="07xxxxxxxx" help="Ombi la PIN litakuja kwenye simu hii" />
-            <TextField label="Jina kamili la mwenye namba *" value={payer.name} onChange={(v) => setPayer({ ...payer, name: v })} help="La kwanza na la mwisho" />
+            <PhoneNameFields phoneLabel="Namba ya simu itakayolipa *" phone={payer.phone} onPhone={(v) => setPayer((p) => ({ ...p, phone: v }))} phoneHelp="Ombi la PIN litakuja kwenye simu hii" nameLabel="Jina la mwenye namba" name={payer.name} onName={(v) => setPayer((p) => ({ ...p, name: v }))} />
             <TextField label="Email *" type="email" value={payer.email} onChange={(v) => setPayer({ ...payer, email: v })} help="TeePay wanaihitaji kwa malipo ya Tanzania" />
           </div>
           <div className="actions"><Button busy={act.busy} disabled={!amount || !payer.phone || !payer.name || !payer.email} onClick={pay}>Lipa {amount ? tsh(amount) : ''} kwa simu</Button></div>

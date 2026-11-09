@@ -11,6 +11,7 @@ import { AppError, badRequest, notFound } from '../lib/errors';
 import { requireRole } from '../middleware/auth';
 import { PROVIDER_NAME, type Provider, abandonMobilePayment, ensureSeasonFee, feeLock, feesOverview, receiptOf, requestMobilePayment, syncMobilePayment } from '../lib/fees';
 import { getSetting } from '../lib/settings';
+import { lookupNameOrNull } from '../lib/name-lookup';
 import { TeePayError } from '../lib/teepay';
 
 export const billingRouter = Router();
@@ -45,6 +46,7 @@ billingRouter.post('/fees/:id/pay', ah(async (req, res) => {
   }).parse(req.body);
   const phone = normalizePhone(b.phone);
   if (!phone || !/^255[67]\d{8}$/.test(phone)) throw badRequest('Namba ya simu si sahihi. Mfano: 0712345678');
+  b.name = (await lookupNameOrNull(phone, 'Namba ya simu itakayolipa')) ?? b.name; // jina kutoka mobile money
   await ownFee(req, id);
   // Ombi la zamani lililo wazi: lihakikiwe kwanza ili lisilipwe mara mbili
   const open = await db.select({ id: MP.id }).from(MP).where(and(eq(MP.feeId, id), inArray(MP.status, ['SENDING', 'PENDING'])));
