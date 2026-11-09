@@ -1326,3 +1326,54 @@ export const inputIssueLinesRelations = relations(inputIssueLines, ({ one }) => 
   inputIssue: one(inputIssues, { fields: [inputIssueLines.inputIssueId], references: [inputIssues.id] }),
   inputItem: one(inputItems, { fields: [inputIssueLines.inputItemId], references: [inputItems.id] }),
 }));
+
+// ---------------------------------------------------------------------
+//  TIKETI ZA MSAADA — watumishi wa chama wanaomba msaada; timu ya NAYA inajibu.
+//  Muda wa jibu la kwanza (SLA, Mkataba Kifungu 9.4): Dharura saa 2, Kubwa saa 8, Kawaida siku 2.
+// ---------------------------------------------------------------------
+export const ticketCategoryEnum = pgEnum('ticket_category', ['PAYMENT', 'BUG', 'TRAINING', 'FEATURE', 'OTHER']);
+export const ticketPriorityEnum = pgEnum('ticket_priority', ['URGENT', 'HIGH', 'NORMAL']);
+export const ticketStatusEnum = pgEnum('ticket_status', ['OPEN', 'IN_PROGRESS', 'ANSWERED', 'CLOSED']);
+
+export const supportTickets = pgTable('support_tickets', {
+  id: id(),
+  ticketNo: integer().generatedAlwaysAsIdentity({ startWith: 1001 }),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  createdById: uuid().notNull().references(() => users.id),
+  category: ticketCategoryEnum().notNull(),
+  priority: ticketPriorityEnum().notNull().default('NORMAL'),
+  status: ticketStatusEnum().notNull().default('OPEN'),
+  subject: text().notNull(),
+  context: jsonb(),                                  // ukurasa, toleo la mfumo, kivinjari
+  assignedToId: uuid().references(() => users.id),   // mfanyakazi wa NAYA
+  dueAt: timestamp({ withTimezone: true }).notNull(), // mwisho wa jibu la kwanza
+  firstResponseAt: timestamp({ withTimezone: true }),
+  lastAmcosAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  lastPlatformAt: timestamp({ withTimezone: true }),
+  amcosSeenAt: timestamp({ withTimezone: true }),
+  closedAt: timestamp({ withTimezone: true }),
+  closedById: uuid(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex().on(t.ticketNo), index().on(t.amcosId, t.status), index().on(t.status, t.dueAt), index().on(t.assignedToId)]);
+
+export const supportMessages = pgTable('support_messages', {
+  id: id(),
+  ticketId: uuid().notNull().references(() => supportTickets.id),
+  authorId: uuid().notNull().references(() => users.id),
+  side: text().notNull(),                            // AMCOS | PLATFORM
+  internal: boolean().notNull().default(false),      // maelezo ya ndani ya timu ya NAYA (chama hakioni)
+  body: text().notNull(),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.ticketId, t.createdAt)]);
+
+/** Picha za skrini (JPEG iliyopunguzwa) — kwenye database kwa sababu diski ya Railway hufutika kila deploy. */
+export const supportAttachments = pgTable('support_attachments', {
+  id: id(),
+  ticketId: uuid().notNull().references(() => supportTickets.id),
+  messageId: uuid().notNull().references(() => supportMessages.id),
+  mimeType: text().notNull(),
+  data: text().notNull(),                            // base64
+  sizeBytes: integer().notNull(),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.messageId)]);

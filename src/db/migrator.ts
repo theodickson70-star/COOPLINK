@@ -92,6 +92,11 @@ const MARKERS: Record<string, string[]> = {
   '0015_member_name_override': [
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'members' and column_name = 'name_override_reason')",
   ],
+  '0016_support_tickets': [
+    "select to_regclass('public.support_tickets') is not null",
+    "select to_regclass('public.support_messages') is not null",
+    "select to_regclass('public.support_attachments') is not null",
+  ],
 };
 
 interface JournalEntry { tag: string; when: number }

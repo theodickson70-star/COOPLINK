@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth, type Permission } from '../lib/auth';
+import { useFetch } from '../lib/hooks';
 import { OWNER_ROLE_LABEL, ROLE_LABEL } from '../lib/format';
 import { LogoMark, Wordmark } from '../components/Logo';
 import { Button } from '../components/ui';
@@ -11,6 +12,7 @@ const ic = (d: ReactNode) => <svg viewBox="0 0 24 24" fill="none" stroke="curren
 const I = {
   dash: ic(<><rect x="3" y="3" width="7" height="9" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" /><rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="16" width="7" height="5" rx="1.5" /></>),
   amcos: ic(<><path d="M3 21h18M5 21V9l7-5 7 5v12" /><path d="M9 21v-6h6v6" /></>),
+  support: ic(<><circle cx="12" cy="12" r="9" /><path d="M9.5 9.3a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.3-2.5 3.8" /><path d="M12 17v.01" /></>),
   subs: ic(<><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M7 15h4" /></>),
   finance: ic(<><path d="M3 17l5-5 4 4 8-8" /><path d="M15 8h5v5" /></>),
   staff: ic(<><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /><path d="M17 11l2 2 3-3" /></>),
@@ -27,6 +29,7 @@ const I = {
 export const OWNER_NAV: { to: string; label: string; sub: string; icon: ReactNode; perm?: Permission; group: string }[] = [
   { to: '/owner', label: 'Owner Dashboard', sub: 'Muhtasari wa biashara', icon: I.dash, perm: 'platform.dashboard', group: 'Muhtasari' },
   { to: '/owner/amcos', label: 'AMCOS Management', sub: 'Wateja (vyama)', icon: I.amcos, perm: 'amcos.read', group: 'Wateja' },
+  { to: '/owner/support', label: 'Support Tickets', sub: 'Msaada kwa vyama', icon: I.support, perm: 'support.read', group: 'Wateja' },
   { to: '/owner/subscriptions', label: 'Subscriptions & Pricing', sub: 'Mipango na bei', icon: I.subs, perm: 'subscriptions.read', group: 'Wateja' },
   { to: '/owner/finance', label: 'Finance & Revenue', sub: 'Fedha za kampuni', icon: I.finance, perm: 'finance.read', group: 'Fedha na Biashara' },
   { to: '/owner/business', label: 'NAYA Group Business', sub: 'Malengo na ukuaji', icon: I.business, perm: 'business.read', group: 'Fedha na Biashara' },
@@ -45,6 +48,8 @@ export function OwnerLayout() {
   const indicator = useNavIndicator(navRef);
   const loc = useLocation();
   useEffect(() => setOpen(false), [loc.pathname]);
+  // Tiketi zinazosubiri jibu la timu (alama kwenye menyu)
+  const support = useFetch<{ waiting: number; overdue: number }>(user && has('support.read') ? '/owner/support/summary' : null, { p: loc.pathname });
   if (!user) return null;
   const isOwner = user.role === 'SUPER_ADMIN';
   const items = OWNER_NAV.filter((n) => !n.perm || has(n.perm));
@@ -75,6 +80,7 @@ export function OwnerLayout() {
                   <NavLink key={it.to} to={it.to} end={it.to === '/owner'} style={{ animationDelay: `${60 + n++ * 35}ms` }}>
                     <span className="nav-icon">{it.icon}</span>
                     <span className="nav-text"><span>{it.label}</span><small>{it.sub}</small></span>
+                    {it.to === '/owner/support' && !!support.data?.waiting && <span className={`nav-count${support.data.overdue ? ' bad' : ''}`} title={support.data.overdue ? `${support.data.overdue} zimechelewa` : 'Zinasubiri jibu'}>{support.data.waiting}</span>}
                   </NavLink>
                 ))}
               </div>

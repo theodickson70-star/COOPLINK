@@ -206,6 +206,7 @@ export function OwnerAmcosDetail() {
     <>
       <PageHead title={a.name} sub={<>{a.code} · <Pill value={a.status} />{a.statusReason ? <span className="muted"> · {a.statusReason === 'SUBSCRIPTION_EXPIRED' ? 'Subscription imeisha' : a.statusReason}</span> : null}</>}>
         <Link className="btn btn-secondary" to="/owner/amcos">← Orodha</Link>
+        {has('support.read') && <Link className="btn btn-secondary" to={`/owner/support?amcosId=${a.id}`}>Tiketi za msaada</Link>}
         {has('amcos.create') && <Button variant="secondary" onClick={() => setModal('edit')}>Hariri</Button>}
         {a.status === 'PENDING' && has('amcos.approve') && <><Button onClick={() => setModal('approve')}>Idhinisha</Button><Button variant="danger" onClick={() => setModal('reject')}>Kataa</Button></>}
         {a.status === 'ACTIVE' && has('amcos.suspend') && <Button variant="danger" onClick={() => setModal('suspend')}>Sitisha</Button>}

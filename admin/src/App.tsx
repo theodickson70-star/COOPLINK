@@ -38,6 +38,8 @@ import { OwnerBackup } from './owner/Backup';
 import { OwnerBusiness } from './owner/Business';
 import { OwnerSettings } from './owner/Settings';
 import { MemberImport } from './pages/MemberImport';
+import { Support, SupportDetail, SupportNew } from './pages/Support';
+import { OwnerSupport, OwnerSupportDetail } from './owner/Support';
 import type { AmcosPermission, Permission } from './lib/auth';
 
 function Splash() {
@@ -119,12 +121,17 @@ export default function App() {
             <Route path="security" element={<Perm p="security.read"><OwnerSecurity /></Perm>} />
             <Route path="backup" element={<Perm p="backup.read"><OwnerBackup /></Perm>} />
             <Route path="business" element={<Perm p="business.read"><OwnerBusiness /></Perm>} />
+            <Route path="support" element={<Perm p="support.read"><OwnerSupport /></Perm>} />
+            <Route path="support/:id" element={<Perm p="support.read"><OwnerSupportDetail /></Perm>} />
             <Route path="settings" element={<OwnerSettings />} />
             <Route path="*" element={<Empty>Ukurasa haupo.</Empty>} />
           </Route>
           <Route element={<Protected><Layout /></Protected>}>
             <Route index element={<Workspace />} />
             <Route path="approvals" element={<Need p={['approvals.read']}><Approvals /></Need>} />
+            <Route path="support" element={<Support />} />
+            <Route path="support/new" element={<SupportNew />} />
+            <Route path="support/:id" element={<SupportDetail />} />
             <Route path="finance" element={<Need p={['finance.read']}><Finance /></Need>} />
             <Route path="accounting" element={<Need p={['accounting.read']}><AccountingHome /></Need>} />
             <Route path="accounting/reports" element={<Need p={['accounting.read']}><FinancialReports /></Need>} />

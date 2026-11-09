@@ -32,6 +32,7 @@ const I = {
   payroll: <><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="11" r="2.2" /><path d="M5.5 16.5c.6-1.8 2-2.6 3.5-2.6s2.9.8 3.5 2.6M15 10h3M15 13.5h3" /></>,
   building: <><rect x="4" y="3" width="16" height="18" rx="1" /><path d="M8 7h2M14 7h2M8 11h2M14 11h2M8 15h2M14 15h2M10 21v-3h4v3" /></>,
   report: <><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z" /><path d="M14 3v5h5" /><path d="M9 17v-3M12 17v-6M15 17v-4" /></>,
+  help: <><circle cx="12" cy="12" r="9" /><path d="M9.5 9.3a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.3-2.5 3.8" /><path d="M12 17v.01" /></>,
 };
 
 function Icon({ d }: { d: ReactNode }) {
@@ -85,6 +86,7 @@ const NAV: { section?: string; items: NavItem[] }[] = [
     items: [
       { to: '/users', label: 'Watumishi', icon: I.users, roles: ['SUPER_ADMIN', 'UNION_ADMIN', 'AMCOS_ADMIN'] },
       { to: '/billing', label: 'Ada ya CoopLink', icon: I.wallet, roles: ['AMCOS_ADMIN', 'ACCOUNTANT'] },
+      { to: '/support', label: 'Msaada', icon: I.help, roles: ['AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK', 'AMCOS_VIEWER'] },
       { to: '/organizations', label: 'Vyama na Misimu', icon: I.org, roles: ROLE_GROUPS.ORGS },
       { to: '/audit', label: 'Kumbukumbu (Audit)', icon: I.audit, perm: ['audit.read'] },
     ],
@@ -118,6 +120,8 @@ export function Layout() {
   const pending = useFetch<{ total: number }>(user?.amcosId && may('approvals.read') ? '/approvals/summary' : null);
   const [open, setOpen] = useState(false);
   const loc = useLocation();
+  // Tiketi zenye majibu mapya ya timu ya CoopLink (inasomwa upya ukibadili ukurasa)
+  const support = useFetch<{ count: number }>(user?.amcosId ? '/support/unread' : null, { p: loc.pathname.startsWith('/support') ? loc.pathname : 'x' });
   useEffect(() => setOpen(false), [loc.pathname]);
   // Ada ya CoopLink: Mhasibu analipa (Meneja kama hakuna Mhasibu); Meneja anaona hali yake.
   // Chama kikifungwa, mlipaji anabaki kwenye ukurasa wa malipo tu; wengine wote wanaona skrini ya kufungwa.
@@ -135,7 +139,7 @@ export function Layout() {
   if (!user) return null;
   const multi = !user.amcosId;
   const feeLocked = isPayer ? !!fees.data?.lock : !!lockMsg || (feeRole && !!fees.error && /imefungwa/i.test(fees.error));
-  if (isPayer && feeLocked && !loc.pathname.startsWith('/billing')) return <Navigate to="/billing" replace />;
+  if (isPayer && feeLocked && !loc.pathname.startsWith('/billing') && !loc.pathname.startsWith('/support')) return <Navigate to="/billing" replace />;
   const due = feeRole && !feeLocked ? fees.data?.fees.find((f) => (f.status === 'UNPAID' || f.status === 'PARTIAL') && (Date.parse(f.dueDate) - Date.now()) / 86_400_000 <= 30) : undefined;
 
   return (
@@ -151,7 +155,7 @@ export function Layout() {
         <nav className="nav nav-animated" ref={navRef}>
           <NavIndicator box={indicator} />
           {(() => { let n = 0; return NAV.map((g, i) => {
-            const items = g.items.filter((it) => (!it.roles || can(...it.roles)) && (!it.perm || may(...it.perm)) && (!feeLocked || it.to === '/billing'));
+            const items = g.items.filter((it) => (!it.roles || can(...it.roles)) && (!it.perm || may(...it.perm)) && (!feeLocked || it.to === '/billing' || it.to === '/support'));
             if (!items.length) return null;
             return (
               <div key={i} style={{ display: 'contents' }}>
@@ -160,6 +164,7 @@ export function Layout() {
                   <NavLink key={it.to} to={it.to} end={it.to === '/' || it.to === '/accounting'} style={{ animationDelay: `${60 + n++ * 35}ms` }}>
                     <span className="nav-icon"><Icon d={it.icon} /></span>{it.to === '/approvals' && !decider ? 'Maombi yangu' : it.label}
                     {it.to === '/approvals' && decider && !!pending.data?.total && <span className="nav-count">{pending.data.total}</span>}
+                    {it.to === '/support' && !!support.data?.count && <span className="nav-count" title="Majibu mapya">{support.data.count}</span>}
                   </NavLink>
                 ))}
               </div>
@@ -176,6 +181,11 @@ export function Layout() {
           {multi ? <AmcosSwitcher /> : <strong style={{ fontFamily: 'var(--font-head)', color: 'var(--forest)' }}>{amcos?.name}</strong>}
           <div className="grow" />
           {user.role === 'SUPER_ADMIN' && <Link className="btn btn-primary btn-sm hide-sm" to="/owner">Owner Panel</Link>}
+          {user.amcosId && !loc.pathname.startsWith('/support') && (
+            <Link className="btn btn-ghost btn-sm help-btn" to={`/support/new?from=${encodeURIComponent(loc.pathname)}`} title="Pata msaada kutoka timu ya CoopLink">
+              <Icon d={I.help} /><span className="hide-sm">Pata msaada</span>
+            </Link>
+          )}
           <div className="user-chip">
             <span className="avatar" aria-hidden="true">{user.fullName.charAt(0)}</span>
             <span className="who">{user.fullName}<small>{ROLE_LABEL[user.role]}{amcos && user.amcosId ? ` · ${amcos.code}` : ''}</small></span>

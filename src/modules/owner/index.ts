@@ -13,6 +13,7 @@ import { securityRouter } from './security.routes';
 import { backupRouter } from './backup.routes';
 import { businessRouter } from './business.routes';
 import { ownerFeesRouter } from './fees.routes';
+import { ownerSupportRouter } from './support.routes';
 
 export const ownerRouter = Router();
 ownerRouter.use(requirePlatform);
@@ -27,3 +28,4 @@ ownerRouter.use('/security', securityRouter);
 ownerRouter.use('/backup', backupRouter);
 ownerRouter.use('/business', businessRouter);
 ownerRouter.use('/fees', ownerFeesRouter);
+ownerRouter.use('/support', ownerSupportRouter);

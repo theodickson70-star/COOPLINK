@@ -32,6 +32,7 @@ import { groupsRouter } from './modules/groups.routes';
 import { kuniRouter } from './modules/kuni.routes';
 import { billingRouter, feeGuard } from './modules/billing.routes';
 import { lookupRouter } from './modules/lookup.routes';
+import { supportRouter } from './modules/support.routes';
 import { startupState } from './lib/startup';
 import { superAdminStatus } from './lib/super-admin';
 
@@ -79,6 +80,7 @@ export function createApp() {
   api.use('/lookup', lookupRouter);              // Jina la mwenye namba ya simu (Abliner) — kwa fomu zote
   api.use(blockPlatformStaff);                 // wafanyakazi wa jukwaa hawaingii data za vyama
   api.use('/billing', billingRouter);           // Ada ya CoopLink (Meneja) — inapatikana hata chama kikiwa kimefungwa
+  api.use('/support', supportRouter);           // Tiketi za msaada — hata chama kikiwa kimefungwa
   api.use(feeGuard);                            // ada iliyopita tarehe bila kulipwa -> chama kimefungwa
   api.use('/users', usersRouter);
   api.use('/unions', unionsRouter);

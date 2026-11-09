@@ -29,6 +29,8 @@ export const PERMISSIONS = {
   'backup.manage': 'Kuchukua export / kuomba restore',
   'business.read': 'Kuona NAYA Group Business',
   'business.manage': 'Kuhariri malengo na wasifu wa biashara',
+  'support.read': 'Kuona tiketi za msaada za vyama',
+  'support.manage': 'Kujibu, kugawa na kufunga tiketi za msaada',
 } as const;
 export type Permission = keyof typeof PERMISSIONS;
 export const ALL_PERMISSIONS = Object.keys(PERMISSIONS) as Permission[];
@@ -40,9 +42,9 @@ export const isPlatformRole = (r: Role) => PLATFORM_ROLES.includes(r);
 export const isStaffRole = (r: Role) => STAFF_ROLES.includes(r);
 
 export const ROLE_DEFAULTS: Record<string, Permission[]> = {
-  FINANCE_MANAGER: ['platform.dashboard', 'amcos.read', 'subscriptions.read', 'subscriptions.manage', 'finance.read', 'finance.manage', 'business.read'],
-  TECH_SUPPORT: ['platform.dashboard', 'amcos.read', 'system.read', 'system.manage', 'backup.read', 'security.read'],
-  CUSTOMER_SUPPORT: ['platform.dashboard', 'amcos.read', 'amcos.create', 'subscriptions.read', 'comms.read', 'comms.send'],
+  FINANCE_MANAGER: ['platform.dashboard', 'amcos.read', 'subscriptions.read', 'subscriptions.manage', 'finance.read', 'finance.manage', 'business.read', 'support.read', 'support.manage'],
+  TECH_SUPPORT: ['platform.dashboard', 'amcos.read', 'system.read', 'system.manage', 'backup.read', 'security.read', 'support.read', 'support.manage'],
+  CUSTOMER_SUPPORT: ['platform.dashboard', 'amcos.read', 'amcos.create', 'subscriptions.read', 'comms.read', 'comms.send', 'support.read', 'support.manage'],
   MARKETING_MANAGER: ['platform.dashboard', 'amcos.read', 'comms.read', 'comms.send', 'business.read'],
 };
 

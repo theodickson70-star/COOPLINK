@@ -9,7 +9,8 @@ export type Permission =
   | 'platform.dashboard' | 'amcos.read' | 'amcos.create' | 'amcos.approve' | 'amcos.suspend'
   | 'subscriptions.read' | 'subscriptions.manage' | 'finance.read' | 'finance.manage' | 'staff.manage'
   | 'system.read' | 'system.manage' | 'comms.read' | 'comms.send' | 'security.read' | 'security.manage'
-  | 'backup.read' | 'backup.manage' | 'business.read' | 'business.manage' | 'amcos.staff';
+  | 'backup.read' | 'backup.manage' | 'business.read' | 'business.manage' | 'amcos.staff'
+  | 'support.read' | 'support.manage';
 
 /** Ruhusa za watumishi wa AMCOS (zinatoka backend kwenye /auth/me; backend inazikagua tena kila ombi). */
 export type AmcosPermission =

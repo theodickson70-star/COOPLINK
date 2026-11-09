@@ -18,8 +18,9 @@ interface Dash {
 }
 
 export function OwnerDashboard() {
-  const { user } = useAuth();
+  const { user, has } = useAuth();
   const [range, setRange] = useState<Range>(presetRange('30d'));
+  const support = useFetch<{ open: number; waiting: number; overdue: number; unassigned: number }>(has('support.read') ? '/owner/support/summary' : null);
   const { data, error, loading } = useFetch<Dash>('/owner/dashboard', { from: range.from, to: range.to });
 
   return (
@@ -30,6 +31,14 @@ export function OwnerDashboard() {
       <Alert>{error}</Alert>
       {loading && !data ? <Loading /> : data && (
         <div className="stack">
+          {support.data && support.data.open > 0 && (
+            <Link to={`/owner/support${support.data.overdue ? '?view=overdue' : ''}`} className={`support-strip${support.data.overdue ? ' bad' : ''}`}>
+              <strong>Support Tickets:</strong> {support.data.waiting} zinasubiri jibu
+              {support.data.overdue > 0 && <> · <span className="money-neg">{support.data.overdue} zimechelewa</span></>}
+              {support.data.unassigned > 0 && <> · {support.data.unassigned} hazijagawiwa</>}
+              <span className="grow" />Fungua foleni →
+            </Link>
+          )}
           <div className="grid grid-kpi">
             <Kpi tone="dark" label="AMCOS zilizosajiliwa" value={nfmt(data.amcos.total)} hint={`+${data.amcos.new_in_range} kwenye kipindi hiki`} />
             <Kpi label="AMCOS hai" value={nfmt(data.amcos.active)} />
