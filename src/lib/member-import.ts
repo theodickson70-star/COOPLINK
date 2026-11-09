@@ -70,9 +70,19 @@ const validDate = (d: string) => {
 export async function checkRows(amcosId: string, raw: RawRow[]): Promise<CheckedRow[]> {
   const out: CheckedRow[] = raw.map((r, i) => {
     const errors: string[] = [], warnings: string[] = [];
-    const firstName = titleCase(str(r.firstName)), lastName = titleCase(str(r.lastName)), middleName = opt(r.middleName) ? titleCase(str(r.middleName)) : null;
-    if (firstName.length < 2) errors.push('Jina la kwanza linakosekana');
-    if (lastName.length < 2) errors.push('Jina la ukoo linakosekana');
+    // Daftari lenye safu moja ya "Majina kamili": la kwanza = neno la kwanza, la ukoo = la mwisho, la kati = yaliyobaki
+    let fn = str(r.firstName), mn = str(r.middleName), ln = str(r.lastName);
+    const full = str(r.fullName);
+    if (full && !fn && !ln) {
+      const w = full.split(' ').filter(Boolean);
+      if (w.length < 2) errors.push(`Majina kamili "${full}" yawe angalau mawili (la kwanza na la ukoo)`);
+      else { fn = w[0]; ln = w[w.length - 1]; mn = w.slice(1, -1).join(' '); }
+    }
+    const firstName = titleCase(fn), lastName = titleCase(ln), middleName = mn ? titleCase(mn) : null;
+    if (!full || fn || ln) {
+      if (firstName.length < 2) errors.push('Jina la kwanza linakosekana');
+      if (lastName.length < 2) errors.push('Jina la ukoo linakosekana');
+    } else if (errors.length === 0 && (firstName.length < 2 || lastName.length < 2)) errors.push(`Majina kamili "${full}" si sahihi`);
     const g = gender(r.gender);
     if (!g) errors.push(`Jinsia "${str(r.gender) || '—'}" haieleweki (tumia M/F au ME/KE)`);
     const memberNo = opt(r.memberNo)?.toUpperCase() ?? null;

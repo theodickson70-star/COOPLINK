@@ -539,6 +539,19 @@ test('Kupakia wakulima wengi (CSV) na hatua za kuanza', async () => {
   const again = await call('POST', '/api/v1/members/import', manager, { rows: rows.slice(0, 1), dryRun: true });
   assert.match(again.body.rows[0].errors[0], /tayari ni ya Asha Juma/);
 
+  // Daftari lenye safu moja ya "Majina kamili"
+  const fullRows = [
+    { fullName: 'ZUHURA hamisi MBWANA ally', gender: 'KE' },
+    { fullName: 'Petro Kasimu', gender: 'ME' },
+    { fullName: 'Mjomba', gender: 'ME' },
+  ];
+  const pf = await call('POST', '/api/v1/members/import', manager, { rows: fullRows, dryRun: false, skipInvalid: true, confirmPassword: 'Staff12345' });
+  assert.equal(pf.status, 201, JSON.stringify(pf.body)); assert.equal(pf.body.summary.created, 2); assert.equal(pf.body.summary.errors, 1);
+  const z = (await call('GET', `/api/v1/members/${pf.body.created[0].id}`, manager)).body.member;
+  assert.equal(z.firstName, 'Zuhura'); assert.equal(z.middleName, 'Hamisi Mbwana'); assert.equal(z.lastName, 'Ally');
+  const pk = (await call('GET', `/api/v1/members/${pf.body.created[1].id}`, manager)).body.member;
+  assert.equal(pk.firstName, 'Petro'); assert.equal(pk.middleName, null); assert.equal(pk.lastName, 'Kasimu');
+
   // Hatua za kuanza (Meneja)
   const st = await call('GET', '/api/v1/workspace/setup', manager);
   assert.equal(st.status, 200);

@@ -11,7 +11,8 @@ import { ConfirmDialog, Kpi, Section } from '../components/owner-ui';
 
 const COLS: [key: string, header: string, aliases: string[], example: string][] = [
   ['memberNo', 'Namba ya uanachama', ['namba', 'namba ya mwanachama', 'member no', 'memberno', 'namba ya uanachama'], 'URM/0001'],
-  ['firstName', 'Jina la kwanza', ['jina la kwanza', 'first name', 'firstname', 'jina'], 'Asha'],
+  ['fullName', 'Majina kamili (badala ya safu 3 za majina)', ['majina kamili', 'jina kamili', 'majina', 'full name', 'fullname', 'name', 'jina la mkulima', 'majina ya mkulima', 'jina', 'majina kamili (badala ya safu 3 za majina)'], ''],
+  ['firstName', 'Jina la kwanza', ['jina la kwanza', 'first name', 'firstname'], 'Asha'],
   ['middleName', 'Jina la kati', ['jina la kati', 'middle name', 'middlename'], 'Hamisi'],
   ['lastName', 'Jina la ukoo', ['jina la ukoo', 'jina la mwisho', 'last name', 'lastname', 'surname', 'ukoo'], 'Juma'],
   ['gender', 'Jinsia (ME/KE)', ['jinsia', 'gender', 'sex', 'jinsia (me/ke)'], 'KE'],
@@ -29,6 +30,7 @@ const COLS: [key: string, header: string, aliases: string[], example: string][] 
   ['bankAccountNumber', 'Namba ya akaunti ya benki', ['namba ya akaunti ya benki', 'namba ya akaunti', 'account number', 'akaunti'], ''],
   ['bankAccountName', 'Jina la akaunti ya benki', ['jina la akaunti ya benki', 'jina la akaunti', 'account name'], ''],
 ];
+const TEMPLATE = COLS.filter((c) => c[0] !== 'fullName'); // kiolezo kina safu 3 za majina
 const ALIASES = Object.fromEntries(COLS.map(([k, h, a]) => [k, [h, k, ...a]]));
 
 interface Checked { row: number; ok: boolean; errors: string[]; warnings: string[]; name: string }
@@ -51,9 +53,16 @@ export function MemberImport() {
     if (!/\.csv$/i.test(f.name)) { setError('Chagua faili la CSV. Kwenye Excel: File → Save As → "CSV UTF-8 (Comma delimited)".'); return; }
     const parsed = rowsToObjects(parseCsv(await f.text()), ALIASES);
     const n: string[] = [];
-    if (parsed.missing.includes('firstName') || parsed.missing.includes('lastName') || parsed.missing.includes('gender')) {
-      setError('Faili halina safu za lazima: Jina la kwanza, Jina la ukoo na Jinsia. Tumia kiolezo.'); return;
+    // "Jina" + "Ukoo" bila "Jina la kwanza": safu ya "Jina" ni jina la kwanza
+    if (!parsed.missing.includes('fullName') && !parsed.missing.includes('lastName') && parsed.missing.includes('firstName')) {
+      parsed.data = parsed.data.map(({ fullName, ...r }) => ({ ...r, firstName: fullName ?? '' }));
+      parsed.missing = parsed.missing.filter((k) => k !== 'firstName').concat('fullName');
     }
+    const splitNames = !parsed.missing.includes('firstName') && !parsed.missing.includes('lastName');
+    if ((!splitNames && parsed.missing.includes('fullName')) || parsed.missing.includes('gender')) {
+      setError('Faili halina safu za lazima: majina (Jina la kwanza + Jina la ukoo, AU safu moja ya "Majina kamili") na Jinsia. Tumia kiolezo.'); return;
+    }
+    if (!splitNames) n.push('Majina yanachukuliwa kutoka safu ya "Majina kamili": neno la kwanza = jina la kwanza, la mwisho = jina la ukoo, yaliyobaki = jina la kati.');
     if (parsed.unknown.length) n.push(`Safu hizi hazitumiki na zimerukwa: ${parsed.unknown.join(', ')}`);
     if (!parsed.data.length) { setError('Faili halina wakulima'); return; }
     if (parsed.data.length > 2000) { setError(`Faili lina wakulima ${parsed.data.length}. Pakia 2,000 au chini kwa mara moja (gawanya faili).`); return; }
@@ -80,12 +89,12 @@ export function MemberImport() {
         <>
           <Section title="1 · Andaa faili">
             <ol className="rules">
-              <li>Pakua <b>kiolezo</b>, kifungue kwenye Excel na ujaze mkulima mmoja kila mstari. Safu za lazima: <b>Jina la kwanza, Jina la ukoo, Jinsia</b> (ME au KE).</li>
+              <li>Pakua <b>kiolezo</b>, kifungue kwenye Excel na ujaze mkulima mmoja kila mstari. Safu za lazima: <b>majina</b> na <b>Jinsia</b> (ME au KE). Majina yanaweza kuwa safu tatu (la kwanza, la kati, la ukoo) <b>au</b> safu moja ya "Majina kamili", mf. "Asha Hamisi Juma".</li>
               <li>Namba ya uanachama ikiachwa wazi, mfumo utatoa mpya. Tarehe ziandikwe <b>DD/MM/YYYY</b>.</li>
               <li>Hifadhi kwenye Excel kama <b>CSV UTF-8</b> (File → Save As), kisha pakia hapa chini.</li>
             </ol>
             <div className="actions">
-              <Button variant="secondary" onClick={() => downloadCsv('kiolezo-wakulima.csv', [COLS.map((c) => c[1]), COLS.map((c) => c[3])])}>Pakua kiolezo (CSV)</Button>
+              <Button variant="secondary" onClick={() => downloadCsv('kiolezo-wakulima.csv', [TEMPLATE.map((c) => c[1]), TEMPLATE.map((c) => c[3])])}>Pakua kiolezo (CSV)</Button>
               <label className="btn btn-primary" style={{ cursor: 'pointer' }}>
                 {busy ? 'Inakagua…' : file ? 'Chagua faili jingine' : 'Chagua faili la CSV'}
                 <input type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void load(f); e.target.value = ''; }} />
