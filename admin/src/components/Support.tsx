@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { apiBlobUrl } from '../lib/api';
 import { dateTime } from '../lib/format';
 import { Button, Textarea } from './ui';
+import { tr, useT } from '../lib/prefs';
 
 export type TicketStatus = 'OPEN' | 'IN_PROGRESS' | 'ANSWERED' | 'CLOSED';
 export type TicketPriority = 'URGENT' | 'HIGH' | 'NORMAL';
@@ -30,10 +31,12 @@ export const STATUS: Record<TicketStatus, { label: string; tone: string }> = {
 };
 
 export function StatusPill({ s }: { s: TicketStatus }) {
-  return <span className={`badge badge-${STATUS[s].tone}`}>{STATUS[s].label}</span>;
+  const t = useT();
+  return <span className={`badge badge-${STATUS[s].tone}`}>{t(STATUS[s].label)}</span>;
 }
 export function PriorityPill({ p }: { p: TicketPriority }) {
-  return <span className={`tk-prio tk-prio-${p.toLowerCase()}`}>{PRIORITY[p].label}</span>;
+  const t = useT();
+  return <span className={`tk-prio tk-prio-${p.toLowerCase()}`}>{t(PRIORITY[p].label)}</span>;
 }
 
 export interface Attachment { id: string; mimeType: string; sizeBytes: number }
@@ -42,10 +45,10 @@ export interface NewFile { mimeType: string; data: string; preview: string; name
 
 /** Picha ya skrini inapunguzwa kwenye kifaa (upana 1600px, JPEG) kabla ya kutumwa. */
 export async function shrinkImage(file: File): Promise<NewFile> {
-  if (!file.type.startsWith('image/')) throw new Error('Weka picha tu (JPEG, PNG)');
+  if (!file.type.startsWith('image/')) throw new Error(tr('Weka picha tu (JPEG, PNG)'));
   const url = URL.createObjectURL(file);
   try {
-    const img = await new Promise<HTMLImageElement>((ok, fail) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => fail(new Error('Picha haisomeki')); i.src = url; });
+    const img = await new Promise<HTMLImageElement>((ok, fail) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => fail(new Error(tr('Picha haisomeki'))); i.src = url; });
     const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
     const c = document.createElement('canvas');
     c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
@@ -60,25 +63,27 @@ export async function shrinkImage(file: File): Promise<NewFile> {
 
 /** Picha iliyoambatishwa (inahitaji token, kwa hiyo inapakuliwa kama blob) */
 function AttachmentThumb({ path }: { path: string }) {
+  const t = useT();
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     let url: string | null = null, live = true;
     apiBlobUrl(path).then((u) => { url = u; if (live) setSrc(u); });
     return () => { live = false; if (url) URL.revokeObjectURL(url); };
   }, [path]);
-  if (!src) return <span className="tk-thumb tk-thumb-wait" aria-label="Inapakia picha" />;
-  return <a className="tk-thumb" href={src} target="_blank" rel="noreferrer"><img src={src} alt="Picha iliyoambatishwa" /></a>;
+  if (!src) return <span className="tk-thumb tk-thumb-wait" aria-label={t('Inapakia picha')} />;
+  return <a className="tk-thumb" href={src} target="_blank" rel="noreferrer"><img src={src} alt={t('Picha iliyoambatishwa')} /></a>;
 }
 
 /** Mazungumzo ya tiketi. `mine` = upande wa anayesoma (AMCOS au PLATFORM). */
 export function Thread({ messages, mine, attachmentBase }: { messages: Message[]; mine: 'AMCOS' | 'PLATFORM'; attachmentBase: string }) {
+  const t = useT();
   return (
     <ol className="tk-thread">
       {messages.map((m) => (
         <li key={m.id} className={`tk-msg ${m.side === mine ? 'mine' : 'theirs'}${m.internal ? ' internal' : ''}`}>
           <div className="tk-meta">
-            <strong>{m.author}</strong>
-            {m.internal && <span className="tk-internal-tag">Ndani ya timu tu</span>}
+            <strong>{m.author.replace('Timu ya CoopLink', t('Timu ya CoopLink'))}</strong>
+            {m.internal && <span className="tk-internal-tag">{t('Ndani ya timu tu')}</span>}
             <time>{dateTime(m.createdAt)}</time>
           </div>
           <div className="tk-body">{m.body}</div>
@@ -90,10 +95,11 @@ export function Thread({ messages, mine, attachmentBase }: { messages: Message[]
 }
 
 /** Kisanduku cha kuandika ujumbe pamoja na picha za skrini (hadi 3). */
-export function Composer({ onSend, busy, placeholder, internalOption, submitLabel = 'Tuma' }: {
+export function Composer({ onSend, busy, placeholder, internalOption, submitLabel }: {
   onSend: (v: { body: string; attachments: { mimeType: string; data: string }[]; internal: boolean }) => Promise<boolean>;
   busy?: boolean; placeholder?: string; internalOption?: boolean; submitLabel?: string;
 }) {
+  const t = useT();
   const [body, setBody] = useState('');
   const [files, setFiles] = useState<NewFile[]>([]);
   const [internal, setInternal] = useState(false);
@@ -113,13 +119,13 @@ export function Composer({ onSend, busy, placeholder, internalOption, submitLabe
       if (await onSend({ body: body.trim(), attachments: files.map(({ mimeType, data }) => ({ mimeType, data })), internal })) { setBody(''); setFiles([]); setInternal(false); }
     }}
       onPaste={(e) => { if (e.clipboardData.files.length) add(e.clipboardData.files); }}>
-      <Textarea id="tk-body" rows={4} value={body} onChange={(e) => setBody(e.target.value)} placeholder={placeholder ?? 'Andika ujumbe…'} aria-label="Ujumbe" />
+      <Textarea id="tk-body" rows={4} value={body} onChange={(e) => setBody(e.target.value)} placeholder={placeholder ?? t('Andika ujumbe…')} aria-label={t('Ujumbe')} />
       {files.length > 0 && (
         <div className="tk-files">
           {files.map((f, i) => (
             <span key={i} className="tk-thumb">
               <img src={f.preview} alt={f.name} />
-              <button type="button" className="tk-x" aria-label="Ondoa picha" onClick={() => setFiles(files.filter((_, k) => k !== i))}>✕</button>
+              <button type="button" className="tk-x" aria-label={t('Ondoa picha')} onClick={() => setFiles(files.filter((_, k) => k !== i))}>✕</button>
             </span>
           ))}
         </div>
@@ -128,12 +134,12 @@ export function Composer({ onSend, busy, placeholder, internalOption, submitLabe
       <div className="tk-composer-bar">
         <div className="tk-composer-tools">
           <input ref={inp} id="tk-file" type="file" accept="image/*" multiple hidden onChange={(e) => add(e.target.files)} />
-          <Button type="button" variant="ghost" size="sm" disabled={files.length >= 3} onClick={() => inp.current?.click()}>📎 Picha ya skrini</Button>
+          <Button type="button" variant="ghost" size="sm" disabled={files.length >= 3} onClick={() => inp.current?.click()}>📎 {t('Picha ya skrini')}</Button>
           {internalOption && (
-            <label className="tk-internal-toggle"><input id="tk-internal" type="checkbox" checked={internal} onChange={(e) => setInternal(e.target.checked)} /> Maelezo ya ndani (chama hakioni)</label>
+            <label className="tk-internal-toggle"><input id="tk-internal" type="checkbox" checked={internal} onChange={(e) => setInternal(e.target.checked)} /> {t('Maelezo ya ndani (chama hakioni)')}</label>
           )}
         </div>
-        <Button type="submit" busy={busy} disabled={body.trim().length < 2}>{internal ? 'Hifadhi maelezo' : submitLabel}</Button>
+        <Button type="submit" busy={busy} disabled={body.trim().length < 2}>{internal ? t('Hifadhi maelezo') : submitLabel ?? t('Tuma')}</Button>
       </div>
     </form>
   );
@@ -144,6 +150,6 @@ export function slaText(dueAt: string, firstResponseAt: string | null, status: T
   if (firstResponseAt || status === 'CLOSED') return null;
   const ms = new Date(dueAt).getTime() - Date.now();
   const h = Math.abs(ms) / 3_600_000;
-  const t = h < 1 ? `dakika ${Math.max(1, Math.round(h * 60))}` : h < 48 ? `saa ${Math.round(h)}` : `siku ${Math.round(h / 24)}`;
-  return ms < 0 ? { late: true, text: `Imechelewa ${t}` } : { late: false, text: `Zimebaki ${t}` };
+  const d = h < 1 ? tr('dakika {n}', { n: Math.max(1, Math.round(h * 60)) }) : h < 48 ? tr('saa {n}', { n: Math.round(h) }) : tr('siku {n}', { n: Math.round(h / 24) });
+  return ms < 0 ? { late: true, text: tr('Imechelewa {d}', { d }) } : { late: false, text: tr('Zimebaki {d}', { d }) };
 }

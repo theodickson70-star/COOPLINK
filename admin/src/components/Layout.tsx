@@ -8,6 +8,7 @@ import { ROLE_LABEL } from '../lib/format';
 import { LogoMark, Wordmark } from './Logo';
 import { Button } from './ui';
 import { AnnouncementBar, MaintenanceOverlay, SystemBanner } from './Notices';
+import { PrefSwitches, useT } from '../lib/prefs';
 import type { BillingData } from '../pages/Billing';
 import { date, tsh } from '../lib/format';
 
@@ -95,6 +96,7 @@ const NAV: { section?: string; items: NavItem[] }[] = [
 
 /** Kwa Super/Union admin: chagua chama unachofanyia kazi. */
 function AmcosSwitcher() {
+  const t = useT();
   const [list, setList] = useState<{ id: string; name: string; code: string }[]>([]);
   const [value, setValue] = useState(getSelectedAmcos() ?? '');
   useEffect(() => {
@@ -102,10 +104,10 @@ function AmcosSwitcher() {
   }, []);
   return (
     <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <span className="muted" style={{ fontSize: 13 }}>Chama:</span>
+      <span className="muted" style={{ fontSize: 13 }}>{t('Chama:')}</span>
       <select className="select" style={{ minWidth: 220 }} value={value}
         onChange={(e) => { setSelectedAmcos(e.target.value || null); setValue(e.target.value); window.location.reload(); }}>
-        <option value="">Vyama vyote (kusoma tu)</option>
+        <option value="">{t('Vyama vyote (kusoma tu)')}</option>
         {list.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.code})</option>)}
       </select>
     </label>
@@ -115,6 +117,7 @@ function AmcosSwitcher() {
 export function Layout() {
   const { user, amcos, logout, can, may } = useAuth();
   const decider = may('approvals.decide');
+  const t = useT();
   const navRef = useRef<HTMLElement>(null);
   const indicator = useNavIndicator(navRef);
   const pending = useFetch<{ total: number }>(user?.amcosId && may('approvals.read') ? '/approvals/summary' : null);
@@ -144,12 +147,12 @@ export function Layout() {
 
   return (
     <div className="shell">
-      <aside className={`sidebar ${open ? 'open' : ''}`} aria-label="Menyu kuu">
+      <aside className={`sidebar ${open ? 'open' : ''}`} aria-label={t('Menyu kuu')}>
         <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <LogoMark size={42} animate />
           <div>
             <Wordmark size={24} animate delay={0.9} />
-            <div style={{ fontSize: 11, color: '#8FB3A1', marginTop: 4, letterSpacing: '.08em' }}>VYAMA VYA MSINGI</div>
+            <div style={{ fontSize: 11, color: '#8FB3A1', marginTop: 4, letterSpacing: '.08em' }}>{t('VYAMA VYA MSINGI')}</div>
           </div>
         </div>
         <nav className="nav nav-animated" ref={navRef}>
@@ -159,53 +162,54 @@ export function Layout() {
             if (!items.length) return null;
             return (
               <div key={i} style={{ display: 'contents' }}>
-                {g.section && <div className="nav-section">{g.section}</div>}
+                {g.section && <div className="nav-section">{t(g.section)}</div>}
                 {items.map((it) => (
                   <NavLink key={it.to} to={it.to} end={it.to === '/' || it.to === '/accounting'} style={{ animationDelay: `${60 + n++ * 35}ms` }}>
-                    <span className="nav-icon"><Icon d={it.icon} /></span>{it.to === '/approvals' && !decider ? 'Maombi yangu' : it.label}
+                    <span className="nav-icon"><Icon d={it.icon} /></span>{it.to === '/approvals' && !decider ? t('Maombi yangu') : t(it.label)}
                     {it.to === '/approvals' && decider && !!pending.data?.total && <span className="nav-count">{pending.data.total}</span>}
-                    {it.to === '/support' && !!support.data?.count && <span className="nav-count" title="Majibu mapya">{support.data.count}</span>}
+                    {it.to === '/support' && !!support.data?.count && <span className="nav-count" title={t('Majibu mapya')}>{support.data.count}</span>}
                   </NavLink>
                 ))}
               </div>
             );
           }); })()}
         </nav>
-        <div className="sidebar-foot">CoopLink v{__APP_VERSION__}<br />Uwazi · Haki · Maendeleo</div>
+        <div className="sidebar-foot">CoopLink v{__APP_VERSION__}<br />{t('Uwazi · Haki · Maendeleo')}</div>
       </aside>
-      {open && <button type="button" className="nav-scrim" aria-label="Funga menyu" onClick={() => setOpen(false)} />}
+      {open && <button type="button" className="nav-scrim"  aria-label={t('Funga menyu')} onClick={() => setOpen(false)} />}
 
       <div className="main">
         <header className="topbar">
-          <Button variant="secondary" size="sm" className="menu-btn" onClick={() => setOpen(true)} aria-label="Fungua menyu"><Icon d={I.menu} /></Button>
-          {multi ? <AmcosSwitcher /> : <strong style={{ fontFamily: 'var(--font-head)', color: 'var(--forest)' }}>{amcos?.name}</strong>}
+          <Button variant="secondary" size="sm" className="menu-btn" onClick={() => setOpen(true)} aria-label={t('Fungua menyu')}><Icon d={I.menu} /></Button>
+          {multi ? <AmcosSwitcher /> : <strong style={{ fontFamily: 'var(--font-head)', color: 'var(--head)' }}>{amcos?.name}</strong>}
           <div className="grow" />
           {user.role === 'SUPER_ADMIN' && <Link className="btn btn-primary btn-sm hide-sm" to="/owner">Owner Panel</Link>}
           {user.amcosId && !loc.pathname.startsWith('/support') && (
-            <Link className="btn btn-ghost btn-sm help-btn" to={`/support/new?from=${encodeURIComponent(loc.pathname)}`} title="Pata msaada kutoka timu ya CoopLink">
-              <Icon d={I.help} /><span className="hide-sm">Pata msaada</span>
+            <Link className="btn btn-ghost btn-sm help-btn" to={`/support/new?from=${encodeURIComponent(loc.pathname)}`} title={t('Pata msaada kutoka timu ya CoopLink')}>
+              <Icon d={I.help} /><span className="hide-sm">{t('Pata msaada')}</span>
             </Link>
           )}
+          <PrefSwitches compact />
           <div className="user-chip">
             <span className="avatar" aria-hidden="true">{user.fullName.charAt(0)}</span>
-            <span className="who">{user.fullName}<small>{ROLE_LABEL[user.role]}{amcos && user.amcosId ? ` · ${amcos.code}` : ''}</small></span>
+            <span className="who">{user.fullName}<small>{t(ROLE_LABEL[user.role])}{amcos && user.amcosId ? ` · ${amcos.code}` : ''}</small></span>
           </div>
-          <Button variant="ghost" size="sm" onClick={logout}>Toka</Button>
+          <Button variant="ghost" size="sm" onClick={logout}>{t('Toka')}</Button>
         </header>
         <SystemBanner />
         <main className="content">
           {user.amcosId && <AnnouncementBar />}
           {due && !loc.pathname.startsWith('/billing') && (
             <div className="fee-banner">
-              <span><strong>{due.label}</strong>: salio {tsh(due.outstanding)}, mwisho wa kulipa {date(due.dueDate)}.{!isPayer && fees.data?.payer ? ` ${fees.data.payer.label} ndiye analipa.` : ''} Ada isipolipwa kufikia tarehe hiyo, chama kitafungwa.</span>
-              <Link className="btn btn-primary btn-sm" to="/billing">{isPayer ? 'Lipa sasa' : 'Angalia ada'}</Link>
+              <span><strong>{t(due.label)}</strong>: {t('salio {amount}, mwisho wa kulipa {date}.', { amount: tsh(due.outstanding), date: date(due.dueDate) })}{!isPayer && fees.data?.payer ? ` ${t('{who} ndiye analipa.', { who: t(fees.data.payer.label) })}` : ''} {t('Ada isipolipwa kufikia tarehe hiyo, chama kitafungwa.')}</span>
+              <Link className="btn btn-primary btn-sm" to="/billing">{isPayer ? t('Lipa sasa') : t('Angalia ada')}</Link>
             </div>
           )}
           {!isPayer && feeLocked ? (
             <section className="card lock-screen">
-              <h2>Chama kimefungwa kwa muda</h2>
+              <h2>{t('Chama kimefungwa kwa muda')}</h2>
               <p>{lockMsg ?? fees.error}</p>
-              <Button onClick={logout}>Toka</Button>
+              <Button onClick={logout}>{t('Toka')}</Button>
             </section>
           ) : <Outlet />}
         </main>

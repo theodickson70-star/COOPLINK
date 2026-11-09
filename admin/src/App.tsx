@@ -38,15 +38,16 @@ import { OwnerBackup } from './owner/Backup';
 import { OwnerBusiness } from './owner/Business';
 import { OwnerSettings } from './owner/Settings';
 import { MemberImport } from './pages/MemberImport';
+import { PrefsProvider, tr } from './lib/prefs';
 import { Support, SupportDetail, SupportNew } from './pages/Support';
 import { OwnerSupport, OwnerSupportDetail } from './owner/Support';
 import type { AmcosPermission, Permission } from './lib/auth';
 
 function Splash() {
   return (
-    <div className="center cl-loading cl-splash" role="status" aria-label="Inapakia" style={{ minHeight: '100%', background: 'var(--forest)' }}>
+    <div className="center cl-loading cl-splash" role="status" aria-label={tr('Inapakia')} style={{ minHeight: '100%', background: 'var(--forest)' }}>
       <LogoMark size={120} spin />
-      <div className="cl-loading-txt">Inapakia<span className="cl-dots" aria-hidden="true" /></div>
+      <div className="cl-loading-txt">{tr('Inapakia')}<span className="cl-dots" aria-hidden="true" /></div>
     </div>
   );
 }
@@ -103,6 +104,7 @@ function NeedsUser({ children }: { children: ReactNode }) {
 
 export default function App() {
   return (
+    <PrefsProvider>
     <AuthProvider>
       <BrowserRouter>
         <Routes>
@@ -175,5 +177,6 @@ export default function App() {
         </Routes>
       </BrowserRouter>
     </AuthProvider>
+    </PrefsProvider>
   );
 }

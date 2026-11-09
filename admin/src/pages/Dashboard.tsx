@@ -63,8 +63,8 @@ export function Dashboard() {
         <section className="card card-pad">
           <h2>Mzunguko wa msimu</h2>
           <ol style={{ margin: 0, paddingLeft: 20, lineHeight: 1.9, color: 'var(--muted)' }}>
-            <li><strong style={{ color: 'var(--forest)' }}>Usajili na makisio</strong> — wanachama, mashamba, kilo zinazotarajiwa</li>
-            <li><strong style={{ color: 'var(--forest)' }}>Pembejeo kwa mkopo</strong> — kila mfuko unaingia kwenye ledger ya mkulima</li>
+            <li><strong style={{ color: 'var(--head)' }}>Usajili na makisio</strong> — wanachama, mashamba, kilo zinazotarajiwa</li>
+            <li><strong style={{ color: 'var(--head)' }}>Pembejeo kwa mkopo</strong> — kila mfuko unaingia kwenye ledger ya mkulima</li>
             <li>Masoko — mabelo, madaraja na bei <span className="badge badge-neutral">Awamu 2</span></li>
             <li>Makato na malipo kwa M-Pesa / benki <span className="badge badge-neutral">Awamu 2</span></li>
           </ol>

@@ -23,7 +23,7 @@ export interface FeeConfig {
 export interface Maintenance { enabled: boolean; message: string }
 export interface Banner { enabled: boolean; message: string; tone: 'info' | 'warn' }
 export interface BusinessProfile {
-  companyName: string; productName: string; slogan: string; ownerName: string;
+  companyName: string; productName: string; slogan: string; ownerName: string; poweredBy: string;
   phone: string; email: string; address: string; tin: string; website: string;
 }
 
@@ -34,7 +34,7 @@ export const DEFAULTS = {
   banner: { enabled: false, message: '', tone: 'info' } as Banner,
   'business.profile': {
     companyName: 'NAYA GROUP', productName: 'CoopLink', slogan: 'Connecting Cooperatives. Empowering Farmers.',
-    ownerName: '', phone: '', email: '', address: '', tin: '', website: '',
+    ownerName: '', phone: '', email: '', address: '', tin: '', website: '', poweredBy: 'DUKALANGU SOLUTION',
   } as BusinessProfile,
 };
 type Key = keyof typeof DEFAULTS;

@@ -13,7 +13,7 @@ export const publicRouter = Router();
 // Hali ya mfumo kwa ukurasa wa kuingia (maintenance + tangazo) — hakuna siri
 publicRouter.get('/status', ah(async (_req, res) => {
   const [m, b, p] = await Promise.all([getSetting('maintenance'), getSetting('banner'), getSetting('business.profile')]);
-  res.json({ maintenance: m, banner: b.enabled ? b : null, brand: { productName: p.productName, companyName: p.companyName, slogan: p.slogan } });
+  res.json({ maintenance: m, banner: b.enabled ? b : null, brand: { productName: p.productName, companyName: p.companyName, slogan: p.slogan, poweredBy: p.poweredBy || 'DUKALANGU SOLUTION' } });
 }));
 
 export const announcementsRouter = Router();

@@ -20,7 +20,7 @@ businessRouter.get('/profile', requirePermission('business.read'), ah(async (_re
 businessRouter.put('/profile', requirePermission('business.manage'), ah(async (req, res) => {
   const s = z.string().trim().max(200);
   const b = z.object({
-    companyName: s.min(2), productName: s.min(2), slogan: s, ownerName: s, phone: s, email: s, address: s, tin: s, website: s,
+    companyName: s.min(2), productName: s.min(2), slogan: s, ownerName: s, phone: s, email: s, address: s, tin: s, website: s, poweredBy: s.default('DUKALANGU SOLUTION'),
   }).parse(req.body);
   const before = await getSetting('business.profile', { fresh: true });
   await db.transaction(async (tx) => {

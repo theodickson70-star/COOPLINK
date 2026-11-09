@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth, type Permission } from '../lib/auth';
 import { useFetch } from '../lib/hooks';
+import { PrefSwitches, useT } from '../lib/prefs';
 import { OWNER_ROLE_LABEL, ROLE_LABEL } from '../lib/format';
 import { LogoMark, Wordmark } from '../components/Logo';
 import { Button } from '../components/ui';
@@ -43,6 +44,7 @@ export const OWNER_NAV: { to: string; label: string; sub: string; icon: ReactNod
 
 export function OwnerLayout() {
   const { user, logout, has } = useAuth();
+  const t = useT();
   const [open, setOpen] = useState(false);
   const navRef = useRef<HTMLElement>(null);
   const indicator = useNavIndicator(navRef);
@@ -75,12 +77,12 @@ export function OwnerLayout() {
             let n = 0;
             return groups.map((g) => (
               <div key={g.name} className="nav-group">
-                <div className="nav-section">{g.name}</div>
+                <div className="nav-section">{t(g.name)}</div>
                 {g.items.map((it) => (
                   <NavLink key={it.to} to={it.to} end={it.to === '/owner'} style={{ animationDelay: `${60 + n++ * 35}ms` }}>
                     <span className="nav-icon">{it.icon}</span>
-                    <span className="nav-text"><span>{it.label}</span><small>{it.sub}</small></span>
-                    {it.to === '/owner/support' && !!support.data?.waiting && <span className={`nav-count${support.data.overdue ? ' bad' : ''}`} title={support.data.overdue ? `${support.data.overdue} zimechelewa` : 'Zinasubiri jibu'}>{support.data.waiting}</span>}
+                    <span className="nav-text"><span>{t(it.label)}</span><small>{t(it.sub)}</small></span>
+                    {it.to === '/owner/support' && !!support.data?.waiting && <span className={`nav-count${support.data.overdue ? ' bad' : ''}`} title={support.data.overdue ? t('{n} zimechelewa', { n: support.data.overdue }) : t('Zinasubiri jibu')}>{support.data.waiting}</span>}
                   </NavLink>
                 ))}
               </div>
@@ -88,24 +90,25 @@ export function OwnerLayout() {
           })()}
         </nav>
         <div className="sidebar-foot">
-          Powered by <strong>NAYA GROUP</strong><br />
+          Powered by <strong>DUKALANGU SOLUTION</strong><br />
           <em>Connecting Cooperatives. Empowering Farmers.</em><br />
           CoopLink v{__APP_VERSION__}
         </div>
       </aside>
 
-      {open && <button type="button" className="nav-scrim" aria-label="Funga menyu" onClick={() => setOpen(false)} />}
+      {open && <button type="button" className="nav-scrim" aria-label={t('Funga menyu')} onClick={() => setOpen(false)} />}
       <div className="main">
         <header className="topbar">
-          <Button variant="secondary" size="sm" className="menu-btn" onClick={() => setOpen(true)} aria-label="Fungua menyu">{I.menu}</Button>
+          <Button variant="secondary" size="sm" className="menu-btn" onClick={() => setOpen(true)} aria-label={t('Fungua menyu')}>{I.menu}</Button>
           <strong className="owner-title">Owner Control Panel</strong>
           <div className="grow" />
-          {isOwner && <Link className="btn btn-secondary btn-sm hide-sm" to="/">Mwonekano wa Vyama</Link>}
+          {isOwner && <Link className="btn btn-secondary btn-sm hide-sm" to="/">{t('Mwonekano wa Vyama')}</Link>}
+          <PrefSwitches compact />
           <div className="user-chip">
             <span className="avatar owner-avatar" aria-hidden="true">{user.fullName.charAt(0)}</span>
-            <span className="who">{user.fullName}<small>{isOwner ? OWNER_ROLE_LABEL : ROLE_LABEL[user.role]}</small></span>
+            <span className="who">{user.fullName}<small>{isOwner ? OWNER_ROLE_LABEL : t(ROLE_LABEL[user.role])}</small></span>
           </div>
-          <Button variant="ghost" size="sm" onClick={logout}>Toka</Button>
+          <Button variant="ghost" size="sm" onClick={logout}>{t('Toka')}</Button>
         </header>
         <SystemBanner />
         <main className="content owner-content">

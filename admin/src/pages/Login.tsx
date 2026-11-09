@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 import { playTone, setSoundEnabled, soundEnabled } from '../lib/tone';
 import { LogoMark, Wordmark } from '../components/Logo';
 import { Alert, Button, TextField } from '../components/ui';
+import { PrefSwitches, useT } from '../lib/prefs';
 
 // Picha za mzunguko mzima wa tumbaku: shamba -> kukausha -> daraja -> ghala -> chama -> soko
 const SLIDES = [
@@ -34,6 +35,7 @@ function useReducedMotion() {
 }
 
 function AuthHero() {
+  const t = useT();
   const [idx, setIdx] = useState(0);
   const reduced = useReducedMotion();
 
@@ -60,15 +62,15 @@ function AuthHero() {
       <div className="hero-content">
         <LogoMark size={190} animate />
         <div className="hero-word"><Wordmark size={72} animate /></div>
-        <div className="tagline">Uwazi · Haki · Maendeleo</div>
-        <p className="sub">Mfumo wa kisasa wa kusimamia Vyama vya Msingi: wanachama, pembejeo, masoko na malipo, kila shilingi ikiwa wazi.</p>
+        <div className="tagline">{t('Uwazi · Haki · Maendeleo')}</div>
+        <p className="sub">{t('Mfumo wa kisasa wa kusimamia Vyama vya Msingi: wanachama, pembejeo, masoko na malipo, kila shilingi ikiwa wazi.')}</p>
       </div>
 
       <div className="hero-caption">
-        <p aria-live="polite"><strong>{s.title}</strong><span> · {s.text}</span></p>
-        <div className="hero-dots" role="group" aria-label="Chagua picha">
+        <p aria-live="polite"><strong>{t(s.title)}</strong><span> · {t(s.text)}</span></p>
+        <div className="hero-dots" role="group" aria-label={t('Chagua picha')}>
           {SLIDES.map((sl, i) => (
-            <button key={sl.src} type="button" aria-label={`Picha ${i + 1}: ${sl.title}`} aria-pressed={i === idx}
+            <button key={sl.src} type="button" aria-label={`${t('Picha')} ${i + 1}: ${t(sl.title)}`} aria-pressed={i === idx}
               className={i === idx ? 'on' : ''} onClick={() => setIdx(i)} />
           ))}
         </div>
@@ -77,10 +79,11 @@ function AuthHero() {
   );
 }
 
-interface PublicStatus { maintenance: { enabled: boolean; message: string }; banner: { message: string; tone: 'info' | 'warn' } | null; brand: { companyName: string; slogan: string } }
+interface PublicStatus { maintenance: { enabled: boolean; message: string }; banner: { message: string; tone: 'info' | 'warn' } | null; brand: { companyName: string; slogan: string; poweredBy?: string } }
 
 export function Login() {
   const { login, verify2fa } = useAuth();
+  const t = useT();
   const nav = useNavigate();
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -128,41 +131,42 @@ export function Login() {
     <div className="auth">
       <AuthHero />
       <section className="auth-form">
+        <div className="auth-prefs"><PrefSwitches /></div>
         <form className="auth-card" onSubmit={submit}>
-          {status?.maintenance.enabled && <Alert kind="warn"><strong>Matengenezo:</strong> {status.maintenance.message}</Alert>}
+          {status?.maintenance.enabled && <Alert kind="warn"><strong>{t('Matengenezo:')}</strong> {status.maintenance.message}</Alert>}
           {status?.banner && <Alert kind={status.banner.tone === 'warn' ? 'warn' : 'ok'}>{status.banner.message}</Alert>}
           {!challenge ? (
             <>
               <div>
-                <h1>Karibu tena</h1>
-                <p className="muted" style={{ margin: '6px 0 0' }}>Ingia kwa namba yako ya simu na nenosiri.</p>
+                <h1>{t('Karibu tena')}</h1>
+                <p className="muted" style={{ margin: '6px 0 0' }}>{t('Ingia kwa namba yako ya simu na nenosiri.')}</p>
               </div>
               <Alert>{error}</Alert>
-              <TextField label="Namba ya simu" type="tel" inputMode="tel" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="0712 345 678" value={phone} onChange={setPhone} required />
-              <TextField label="Nenosiri" type={showPw ? 'text' : 'password'} autoComplete="current-password" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={password} onChange={setPassword} required />
+              <TextField label={t('Namba ya simu')} type="tel" inputMode="tel" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="0712 345 678" value={phone} onChange={setPhone} required />
+              <TextField label={t('Nenosiri')} type={showPw ? 'text' : 'password'} autoComplete="current-password" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={password} onChange={setPassword} required />
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--muted)', marginTop: -8 }}>
-                <input type="checkbox" checked={showPw} onChange={(e) => setShowPw(e.target.checked)} /> Onyesha nenosiri
+                <input type="checkbox" checked={showPw} onChange={(e) => setShowPw(e.target.checked)} /> {t('Onyesha nenosiri')}
               </label>
-              <Button type="submit" variant="primary" busy={busy} style={{ minHeight: 48 }}>Ingia</Button>
+              <Button type="submit" variant="primary" busy={busy} style={{ minHeight: 48 }}>{t('Ingia')}</Button>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--muted)' }}>
                 <input type="checkbox" checked={sound} onChange={(e) => { setSound(e.target.checked); setSoundEnabled(e.target.checked); }} />
-                Cheza tone ya CoopLink nikiingia
+                {t('Cheza tone ya CoopLink nikiingia')}
               </label>
             </>
           ) : (
             <>
               <div>
-                <h1>Uthibitisho wa hatua mbili</h1>
-                <p className="muted" style={{ margin: '6px 0 0' }}>Weka msimbo wa tarakimu 6 kutoka kwenye app yako ya Authenticator.</p>
+                <h1>{t('Uthibitisho wa hatua mbili')}</h1>
+                <p className="muted" style={{ margin: '6px 0 0' }}>{t('Weka msimbo wa tarakimu 6 kutoka kwenye app yako ya Authenticator.')}</p>
               </div>
               <Alert>{error}</Alert>
-              <TextField label="Msimbo wa 2FA" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="123456" value={code} onChange={(v) => setCode(v.replace(/\D/g, ''))} required autoFocus />
-              <Button type="submit" variant="primary" busy={busy} disabled={code.length !== 6} style={{ minHeight: 48 }}>Thibitisha</Button>
-              <Button variant="ghost" onClick={() => { setChallenge(null); setCode(''); setError(null); }}>Rudi nyuma</Button>
+              <TextField label={t('Msimbo wa 2FA')} inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="123456" value={code} onChange={(v) => setCode(v.replace(/\D/g, ''))} required autoFocus />
+              <Button type="submit" variant="primary" busy={busy} disabled={code.length !== 6} style={{ minHeight: 48 }}>{t('Thibitisha')}</Button>
+              <Button variant="ghost" onClick={() => { setChallenge(null); setCode(''); setError(null); }}>{t('Rudi nyuma')}</Button>
             </>
           )}
           <p className="muted" style={{ fontSize: 12, margin: '8px 0 0', textAlign: 'center' }}>
-            CoopLink v{__APP_VERSION__} · Powered by <strong>{status?.brand.companyName ?? 'NAYA GROUP'}</strong>
+            CoopLink v{__APP_VERSION__} · Powered by <strong>{status?.brand.poweredBy ?? 'DUKALANGU SOLUTION'}</strong>
           </p>
         </form>
       </section>
@@ -172,6 +176,7 @@ export function Login() {
 
 export function ChangePassword() {
   const { changePassword, user, logout } = useAuth();
+  const t = useT();
   const nav = useNavigate();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
@@ -181,7 +186,7 @@ export function ChangePassword() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (next !== confirm) return setError('Nenosiri jipya na uthibitisho havilingani');
+    if (next !== confirm) return setError(t('Nenosiri jipya na uthibitisho havilingani'));
     setBusy(true);
     setError(null);
     try {
@@ -198,19 +203,20 @@ export function ChangePassword() {
     <div className="auth">
       <AuthHero />
       <section className="auth-form">
+        <div className="auth-prefs"><PrefSwitches /></div>
         <form className="auth-card" onSubmit={submit}>
           <div>
-            <h1>Weka nenosiri jipya</h1>
+            <h1>{t('Weka nenosiri jipya')}</h1>
             <p className="muted" style={{ margin: '6px 0 0' }}>
-              {user?.mustChangePassword ? 'Kwa usalama, badilisha nenosiri la muda ulilopewa kabla ya kuendelea.' : 'Badilisha nenosiri lako.'}
+              {user?.mustChangePassword ? t('Kwa usalama, badilisha nenosiri la muda ulilopewa kabla ya kuendelea.') : t('Badilisha nenosiri lako.')}
             </p>
           </div>
           <Alert>{error}</Alert>
-          <TextField label="Nenosiri la sasa (la muda)" type="password" autoComplete="current-password" value={current} onChange={setCurrent} required />
-          <TextField label="Nenosiri jipya" help="Herufi 8 au zaidi, liwe na herufi na namba" type="password" autoComplete="new-password" value={next} onChange={setNext} required />
-          <TextField label="Rudia nenosiri jipya" type="password" autoComplete="new-password" value={confirm} onChange={setConfirm} required />
-          <Button type="submit" busy={busy} style={{ minHeight: 48 }}>Hifadhi na endelea</Button>
-          <Button variant="ghost" onClick={logout}>Toka</Button>
+          <TextField label={t('Nenosiri la sasa (la muda)')} type="password" autoComplete="current-password" value={current} onChange={setCurrent} required />
+          <TextField label={t('Nenosiri jipya')} help={t('Herufi 8 au zaidi, liwe na herufi na namba')} type="password" autoComplete="new-password" value={next} onChange={setNext} required />
+          <TextField label={t('Rudia nenosiri jipya')} type="password" autoComplete="new-password" value={confirm} onChange={setConfirm} required />
+          <Button type="submit" busy={busy} style={{ minHeight: 48 }}>{t('Hifadhi na endelea')}</Button>
+          <Button variant="ghost" onClick={logout}>{t('Toka')}</Button>
         </form>
       </section>
     </div>

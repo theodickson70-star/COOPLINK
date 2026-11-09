@@ -129,7 +129,7 @@ export function InputIssueNew() {
           </div>
           <div className="actions" style={{ justifyContent: 'space-between' }}>
             <Button variant="secondary" onClick={() => setLines((ls) => [...ls, { inputItemId: '', quantity: '' }])}>+ Ongeza pembejeo</Button>
-            <div style={{ fontFamily: 'var(--font-head)', fontSize: 22, fontWeight: 700, color: 'var(--forest)' }}>Jumla: {tsh(total)}</div>
+            <div style={{ fontFamily: 'var(--font-head)', fontSize: 22, fontWeight: 700, color: 'var(--head)' }}>Jumla: {tsh(total)}</div>
           </div>
           <TextField label="Maelezo" value={notes} onChange={setNotes} />
         </section>

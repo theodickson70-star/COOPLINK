@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { LogoMark } from './Logo';
+import { useT } from '../lib/prefs';
 import { STATUS_LABEL } from '../lib/format';
 import { useDebounced, useFetch } from '../lib/hooks';
 import type { Paged } from '../lib/api';
@@ -82,10 +83,11 @@ export function PageHead({ title, sub, children }: { title: ReactNode; sub?: Rea
 }
 
 export function Loading() {
+  const t = useT();
   return (
-    <div className="center cl-loading" role="status" aria-label="Inapakia">
+    <div className="center cl-loading" role="status" aria-label={t('Inapakia')}>
       <LogoMark size={56} spin onDark={false} />
-      <div className="cl-loading-txt">Inapakia<span className="cl-dots" aria-hidden="true" /></div>
+      <div className="cl-loading-txt">{t('Inapakia')}<span className="cl-dots" aria-hidden="true" /></div>
     </div>
   );
 }
@@ -95,21 +97,23 @@ export function Empty({ children }: { children: ReactNode }) {
 }
 
 export function Pager({ meta, onPage }: { meta?: Paged<unknown>['meta']; onPage: (p: number) => void }) {
+  const t = useT();
   if (!meta || meta.total === 0) return null;
   const from = (meta.page - 1) * meta.pageSize + 1;
   const to = Math.min(meta.total, meta.page * meta.pageSize);
   return (
     <div className="pager">
-      <span>{from}–{to} kati ya {meta.total}</span>
+      <span>{from}–{to} {t('kati ya')} {meta.total}</span>
       <div className="actions">
-        <Button variant="secondary" size="sm" disabled={meta.page <= 1} onClick={() => onPage(meta.page - 1)}>Nyuma</Button>
-        <Button variant="secondary" size="sm" disabled={meta.page >= meta.pages} onClick={() => onPage(meta.page + 1)}>Mbele</Button>
+        <Button variant="secondary" size="sm" disabled={meta.page <= 1} onClick={() => onPage(meta.page - 1)}>{t('Nyuma')}</Button>
+        <Button variant="secondary" size="sm" disabled={meta.page >= meta.pages} onClick={() => onPage(meta.page + 1)}>{t('Mbele')}</Button>
       </div>
     </div>
   );
 }
 
 export function Modal({ open, title, onClose, children, footer }: { open: boolean; title: string; onClose: () => void; children: ReactNode; footer?: ReactNode }) {
+  const t = useT();
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -122,7 +126,7 @@ export function Modal({ open, title, onClose, children, footer }: { open: boolea
       <div className="modal" role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-head">
           <h2>{title}</h2>
-          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Funga">✕</Button>
+          <Button variant="ghost" size="sm" onClick={onClose} aria-label={t('Funga')}>✕</Button>
         </div>
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-foot">{footer}</div>}
