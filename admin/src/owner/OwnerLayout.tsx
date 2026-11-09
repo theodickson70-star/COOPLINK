@@ -60,7 +60,7 @@ export function OwnerLayout() {
         <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <LogoMark size={40} />
           <div>
-            <Wordmark size={23} />
+            <Wordmark size={23} animate />
             <div className="owner-tag">OWNER CONTROL</div>
           </div>
         </div>

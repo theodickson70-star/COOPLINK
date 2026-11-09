@@ -144,7 +144,7 @@ export function Layout() {
         <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <LogoMark size={42} />
           <div>
-            <Wordmark size={24} />
+            <Wordmark size={24} animate />
             <div style={{ fontSize: 11, color: '#8FB3A1', marginTop: 4, letterSpacing: '.08em' }}>VYAMA VYA MSINGI</div>
           </div>
         </div>

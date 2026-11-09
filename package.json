@@ -1,6 +1,6 @@
 {
   "name": "cooplink",
-  "version": "0.12.4",
+  "version": "0.12.5",
   "description": "CoopLink - mfumo wa kisasa wa kusimamia vyama vya msingi (AMCOS): backend + admin web",
   "main": "dist/server.js",
   "scripts": {

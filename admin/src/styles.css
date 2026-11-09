@@ -218,7 +218,7 @@ table.table { width: 100%; border-collapse: collapse; }
 }
 .hero-content { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 20px; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.45); }
 .hero-content .cl-mark { width: clamp(120px, 16vw, 190px); height: auto; filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.35)); }
-.hero-word > span { font-size: clamp(46px, 6.2vw, 72px) !important; }
+.hero-word > svg { width: clamp(200px, 27vw, 320px) !important; height: auto !important; }
 
 .hero-caption {
   position: absolute; left: 32px; right: 32px; bottom: 26px; z-index: 1;
@@ -261,7 +261,13 @@ table.table { width: 100%; border-collapse: collapse; }
 .cl-anim .mk-v3 { animation-delay: .74s; }
 .cl-anim .mk-core { transform-box: view-box; transform-origin: 60px 60px; animation: mkCore .8s cubic-bezier(.3,1.6,.5,1) .85s both, mkPulse 3s ease-in-out 2.5s infinite; }
 .cl-anim .mk-ring { transform-box: view-box; transform-origin: 60px 60px; animation: mkRingIn 1s ease-out .6s both, mkSpin 40s linear 1.6s infinite; }
-.cl-anim .wm span { display: inline-block; animation: wmRise .7s cubic-bezier(.2,.8,.2,1) both; }
+/* Wordmark: kila herufi inachorwa (mstari), kisha inajazwa rangi; mwisho mwanga unapita juu ya neno */
+.cl-wm-anim .wm-ch { stroke-dasharray: 1 1; stroke-dashoffset: 1; fill-opacity: 0;
+  animation: wmDraw .75s cubic-bezier(.55,.1,.35,1) calc(.35s + var(--i) * .16s) forwards, wmFill .45s ease-out calc(.8s + var(--i) * .16s) forwards; }
+.cl-wm-anim .wm-gleam { animation: wmGleam 7s cubic-bezier(.45,0,.25,1) 2.1s infinite; transform-box: view-box; }
+@keyframes wmDraw { to { stroke-dashoffset: 0; } }
+@keyframes wmFill { to { fill-opacity: 1; stroke-width: 0; } }
+@keyframes wmGleam { 0% { transform: skewX(-18deg) translateX(0); } 18%, 100% { transform: skewX(-18deg) translateX(560px); } }
 @keyframes mkGrow { 0% { transform: scale(0) rotate(-40deg); opacity: 0; } 70% { transform: scale(1.08) rotate(4deg); opacity: 1; } 100% { transform: none; opacity: 1; } }
 @keyframes mkVein { to { stroke-dashoffset: 0; } }
 @keyframes mkCore { 0% { transform: scale(0); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
@@ -271,6 +277,8 @@ table.table { width: 100%; border-collapse: collapse; }
 @keyframes wmRise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
   .cl-anim *, .cl-anim .wm span { animation: none !important; opacity: 1 !important; stroke-dashoffset: 0 !important; }
+  .cl-wm-anim .wm-ch { animation: none !important; fill-opacity: 1 !important; stroke-width: 0 !important; }
+  .cl-wm-anim .wm-gleam { display: none; }
 }
 
 @media print {
