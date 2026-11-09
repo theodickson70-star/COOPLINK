@@ -144,18 +144,31 @@ export async function maintenanceGuard(req: Request, _res: Response, next: NextF
  * Uthibitisho wa ziada kwa vitendo nyeti (kuthibitisha/kurudisha malipo, maintenance, export, restore...).
  * Body lazima iwe na confirmPassword (na confirmCode ikiwa 2FA imewashwa).
  */
+// Makosa ya nenosiri la uthibitisho: 5 ndani ya dakika 15 -> kusubiri dakika 15 (kuzuia kubahatisha nenosiri)
+const REAUTH_MAX = 5, REAUTH_WINDOW = 15 * 60_000;
+const reauthFails = new Map<string, { count: number; first: number }>();
+
 export async function requireReauth(req: Request) {
   const body = (req.body ?? {}) as { confirmPassword?: string; confirmCode?: string };
   if (!body.confirmPassword) throw new AppError(403, 'REAUTH_REQUIRED', 'Thibitisha kwa nenosiri lako ili kuendelea');
-  const user = await db.query.users.findFirst({ where: eq(schema.users.id, req.auth!.userId) });
-  if (!user || !(await verifyPassword(body.confirmPassword, user.passwordHash))) {
-    throw new AppError(403, 'REAUTH_FAILED', 'Nenosiri la uthibitisho si sahihi');
+  const uid = req.auth!.userId;
+  const f = reauthFails.get(uid);
+  if (f && Date.now() - f.first < REAUTH_WINDOW && f.count >= REAUTH_MAX) {
+    throw new AppError(429, 'REAUTH_LOCKED', 'Nenosiri limekosewa mara nyingi. Subiri dakika 15 kisha jaribu tena.');
   }
+  const fail = (msg: string) => {
+    const cur = reauthFails.get(uid);
+    const next = cur && Date.now() - cur.first < REAUTH_WINDOW ? { count: cur.count + 1, first: cur.first } : { count: 1, first: Date.now() };
+    reauthFails.set(uid, next);
+    const left = REAUTH_MAX - next.count;
+    return new AppError(403, 'REAUTH_FAILED', left > 0 ? `${msg}. Umebakiza majaribio ${left}.` : `${msg}. Subiri dakika 15 kisha jaribu tena.`);
+  };
+  const user = await db.query.users.findFirst({ where: eq(schema.users.id, uid) });
+  if (!user || !(await verifyPassword(body.confirmPassword, user.passwordHash))) throw fail('Nenosiri la uthibitisho si sahihi');
   if (user.totpEnabled && user.totpSecret) {
-    if (!body.confirmCode || !verifyTotp(decryptSecret(user.totpSecret), body.confirmCode)) {
-      throw new AppError(403, 'REAUTH_FAILED', 'Msimbo wa 2FA si sahihi');
-    }
+    if (!body.confirmCode || !verifyTotp(decryptSecret(user.totpSecret), body.confirmCode)) throw fail('Msimbo wa 2FA si sahihi');
   }
+  reauthFails.delete(uid);
 }
 
 export const activeSessionsWhere = (userId: string) => and(eq(schema.userSessions.userId, userId), isNull(schema.userSessions.revokedAt));

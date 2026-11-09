@@ -86,6 +86,8 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
   const rp = a.type === 'STOCK_RECEIPT' ? (a.payload as { quantity: string; unitPrice: string; currentPrice: string | null; unitCost: string | null; unit: string; itemName: string; source: string | null; reference: string; newItem: { name: string; category: string; unit: string } | null; prNo: string | null } | null) : null;
   const [qty, setQty] = useState(rp ? String(Number(rp.quantity)) : '');
   const [price, setPrice] = useState(rp ? String(Number(rp.unitPrice)) : '');
+  const [pw, setPw] = useState('');
+  const [code, setCode] = useState('');
   const { busy, error, run } = useAction();
   const mine = a.requestedById === user?.id;
   const canDecide = a.status === 'PENDING' && may('approvals.decide') && !mine;
@@ -94,7 +96,8 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
   const act = async (decision: 'APPROVED' | 'REJECTED' | 'CANCEL') => {
     const r = await run(() => decision === 'CANCEL'
       ? api(`/approvals/${a.id}/cancel`, { method: 'POST', body: { note } })
-      : api(`/approvals/${a.id}/decide`, { method: 'POST', body: { decision, note, ...(rp && decision === 'APPROVED' && (Number(qty) !== Number(rp.quantity) || Number(price) !== Number(rp.unitPrice)) ? { changes: { quantity: qty, unitPrice: price } } : {}) } }));
+      : api(`/approvals/${a.id}/decide`, { method: 'POST', body: { decision, note, ...(decision === 'APPROVED' ? { confirmPassword: pw, confirmCode: user?.totpEnabled ? code : undefined } : {}), ...(rp && decision === 'APPROVED' && (Number(qty) !== Number(rp.quantity) || Number(price) !== Number(rp.unitPrice)) ? { changes: { quantity: qty, unitPrice: price } } : {}) } }));
+    if (!r) setPw('');
     if (r) onDone(decision === 'APPROVED' ? `${a.requestNo} imeidhinishwa` : decision === 'REJECTED' ? `${a.requestNo} imekataliwa` : `${a.requestNo} imeondolewa`);
   };
   const p = a.payload as { balanceAtRequest?: string; kind?: string; date?: string; lines?: { code: string; name: string; debit?: string; credit?: string; memo?: string | null }[]; totals?: { farmers: number; kg: string; grossTzs: string; deductions: string; netTzs: string; debit?: string; credit?: string; equity?: string; income?: string; expense?: string; surplus?: string }; farmers?: { memberNo: string; name: string; debt?: string | null; credit?: string | null }[]; lockedThrough?: string; closeDate?: string; openTransactions?: number; members?: { memberNo: string; name: string }[]; guarantees?: { groupName: string; debtorName: string; remaining: string; covered: string; uncovered: string }[]; groupCovered?: string } | null;
@@ -102,7 +105,7 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
     <Modal open title={`${a.requestNo} · ${a.typeLabel ?? APPROVAL_TYPE_LABEL[a.type]}`} onClose={onClose}
       footer={canDecide ? <>
         <Button variant="danger" busy={busy} disabled={note.trim().length < 3} onClick={() => act('REJECTED')}>Kataa</Button>
-        <Button busy={busy} disabled={note.trim().length < 3} onClick={() => act('APPROVED')}>Idhinisha</Button>
+        <Button busy={busy} disabled={note.trim().length < 3 || !pw || (!!user?.totpEnabled && code.length !== 6)} onClick={() => act('APPROVED')}>Idhinisha</Button>
       </> : canCancel ? <Button variant="danger" busy={busy} disabled={note.trim().length < 3} onClick={() => act('CANCEL')}>Ondoa ombi</Button> : <Button variant="secondary" onClick={onClose}>Funga</Button>}>
       <dl className="dl">
         <dt>Ombi</dt><dd>{a.title}</dd>
@@ -168,6 +171,15 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
       {mine && a.status === 'PENDING' && may('approvals.decide') && <Alert kind="warn">Huwezi kuidhinisha ombi ulilolianzisha mwenyewe.</Alert>}
       <Alert>{error}</Alert>
       {(canDecide || canCancel) && <TextField label={canDecide ? 'Maelezo ya uamuzi *' : 'Sababu ya kuondoa *'} placeholder={canDecide ? 'mf. Nimekagua risiti, gharama ni sahihi' : ''} value={note} onChange={setNote} />}
+      {canDecide && (
+        <div className="reauth-box">
+          <div className="form-grid">
+            <TextField label="Nenosiri lako (la kuingia) *" type="password" autoComplete="current-password" value={pw} onChange={setPw}
+              help="Linahitajika kuidhinisha — kuthibitisha kuwa ni wewe, si mtu aliyekuta mfumo wazi" />
+            {user?.totpEnabled && <TextField label="Msimbo wa 2FA *" inputMode="numeric" maxLength={6} value={code} onChange={(v) => setCode(v.replace(/\D/g, ''))} />}
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }

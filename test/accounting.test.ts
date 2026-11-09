@@ -37,7 +37,7 @@ async function approve(entityId: string, decision: 'APPROVED' | 'REJECTED' = 'AP
   const list = (await call('GET', '/api/v1/approvals?status=PENDING&pageSize=100', manager)).body.data as any[];
   const a = list.find((x) => x.entityId === entityId);
   assert.ok(a, `Ombi la idhini lipo kwa ${entityId}`);
-  const r = await call('POST', `/api/v1/approvals/${a.id}/decide`, manager, { decision, note: 'Imekaguliwa na Meneja' });
+  const r = await call('POST', `/api/v1/approvals/${a.id}/decide`, manager, { confirmPassword: 'Staff12345', decision, note: 'Imekaguliwa na Meneja' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   return a;
 }
@@ -163,7 +163,7 @@ test('Journal ya mkono: haigusi akaunti za fedha, inalingana, na inaingia baada 
   assert.equal(ok.status, 202, JSON.stringify(ok.body));
   assert.equal(bal(await gl(), '1250'), '0.00', 'Bado haijaingia kabla ya idhini');
   const list = (await call('GET', '/api/v1/approvals?status=PENDING&type=JOURNAL', manager)).body.data;
-  await call('POST', `/api/v1/approvals/${list[0].id}/decide`, manager, { decision: 'APPROVED', note: 'Nimeona mkataba wa bima' });
+  await call('POST', `/api/v1/approvals/${list[0].id}/decide`, manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'Nimeona mkataba wa bima' });
   assert.equal(bal(await gl(), '1250'), '240000.00');
   const js = (await call('GET', '/api/v1/accounting/journals?source=MANUAL', accountant)).body;
   assert.equal(js.data.length, 1);
@@ -420,7 +420,7 @@ test('Salio la kuanzia: madeni ya wakulima na akaunti nyingine kwa idhini; dafta
   assert.equal(r.body.totals.equity, '-70000.00');
   assert.equal(Number(bal(await gl(), '1200')), 0, 'Haiingii kabla ya idhini');
   const ap = (await call('GET', '/api/v1/approvals?status=PENDING&type=OPENING_BALANCE', manager)).body.data[0];
-  assert.equal((await call('POST', `/api/v1/approvals/${ap.id}/decide`, manager, { decision: 'APPROVED', note: 'Nimelinganisha na vitabu vya zamani' })).status, 200);
+  assert.equal((await call('POST', `/api/v1/approvals/${ap.id}/decide`, manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'Nimelinganisha na vitabu vya zamani' })).status, 200);
   const after = await gl();
   assert.equal(bal(after, '1200'), '50000.00');
   assert.equal(bal(after, '2200'), '20000.00');
@@ -465,7 +465,7 @@ test('Kufunga mwaka na kufunga kipindi: ziada inahamia akiba, tarehe za nyuma zi
   assert.equal((await call('POST', '/api/v1/accounting/year-end-close', accountant, { closeDate: d2, note: 'Mwaka wa majaribio' })).status, 202);
   assert.equal((await call('POST', '/api/v1/accounting/period-close', accountant, { lockedThrough: d1 })).status, 409, 'Ombi moja la kufunga kwa wakati mmoja');
   const ap = (await call('GET', '/api/v1/approvals?status=PENDING&type=YEAR_END_CLOSE', manager)).body.data[0];
-  assert.equal((await call('POST', `/api/v1/approvals/${ap.id}/decide`, manager, { decision: 'APPROVED', note: 'Hesabu zimekaguliwa' })).status, 200);
+  assert.equal((await call('POST', `/api/v1/approvals/${ap.id}/decide`, manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'Hesabu zimekaguliwa' })).status, 200);
   let rows = await gl();
   assert.equal(Number(bal(rows, '3200')), before3200 + 100000, 'Ziada imehamia akiba');
   assert.equal(bal(rows, '4900'), '0.00', 'Mapato ya mwaka uliofungwa yamesafishwa');
@@ -485,7 +485,7 @@ test('Kufunga mwaka na kufunga kipindi: ziada inahamia akiba, tarehe za nyuma zi
   // Kufunga kipindi (mwezi uliokaguliwa)
   assert.equal((await call('POST', '/api/v1/accounting/period-close', accountant, { lockedThrough: d1, note: 'Mwezi umekaguliwa' })).status, 202);
   const pc = (await call('GET', '/api/v1/approvals?status=PENDING&type=PERIOD_CLOSE', manager)).body.data[0];
-  await call('POST', `/api/v1/approvals/${pc.id}/decide`, manager, { decision: 'APPROVED', note: 'Sawa' });
+  await call('POST', `/api/v1/approvals/${pc.id}/decide`, manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'Sawa' });
   const per = (await call('GET', '/api/v1/accounting/periods', manager)).body;
   assert.equal(per.lockedThrough, d1);
   assert.deepEqual(per.locks.map((l: any) => l.kind), ['PERIOD', 'YEAR_END']);
@@ -567,7 +567,7 @@ test('Ingiza pembejeo: bidhaa mpya inasajiliwa pamoja na mzigo, baada ya idhini 
   assert.equal(r.status, 202, JSON.stringify(r.body));
   assert.equal((await call('POST', '/api/v1/inputs/stock/receipts', storekeeper, { newItem: { name: name.toLowerCase(), category: 'FERTILIZER', unit: 'BAG' }, quantity: 1, unitPrice: '1', reference: 'DN-XX' })).status, 409, 'Jina moja linasubiri tayari');
   assert.ok(!(await call('GET', '/api/v1/inputs/items', storekeeper)).body.data.some((i: any) => i.name === name), 'Haijasajiliwa kabla ya idhini');
-  assert.equal((await call('POST', `/api/v1/approvals/${r.body.approval.id}/decide`, manager, { decision: 'APPROVED', note: 'Mbolea mpya ya msimu' })).status, 200);
+  assert.equal((await call('POST', `/api/v1/approvals/${r.body.approval.id}/decide`, manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'Mbolea mpya ya msimu' })).status, 200);
   const item = (await call('GET', '/api/v1/inputs/items', storekeeper)).body.data.find((i: any) => i.name === name);
   assert.ok(item);
   const st = (await call('GET', '/api/v1/inputs/stock', storekeeper)).body.data.find((x: any) => x.inputItemId === item.id);
@@ -585,7 +585,7 @@ test('Pesa ya kuni: kikomo kwa ekari, riba ya msimu, orodha kwa idhini, deni lin
   for (const [m, acres] of [[F, '2'], [G2, '1.5']] as const) {
     const e = await call('POST', '/api/v1/estimates', storekeeper, { memberId: m.id, acresPlanted: acres, estimatedKg: String(Number(acres) * 600) });
     assert.equal(e.status, 201, JSON.stringify(e.body));
-    assert.equal((await call('POST', `/api/v1/estimates/${e.body.estimate.id}/approve`, manager, {})).status, 200);
+    assert.equal((await call('POST', `/api/v1/estimates/${e.body.estimate.id}/approve`, manager, { confirmPassword: 'Staff12345' })).status, 200);
   }
   assert.equal((await call('POST', '/api/v1/kuni/batches', accountant, { loans: [{ memberId: F.id, amount: '1000' }] })).status, 400, 'Mipangilio haijawekwa');
   assert.equal((await call('PUT', '/api/v1/kuni/settings', manager, { interestRate: '10', amountPerAcre: '150000', isOpen: true })).status, 403, 'Mhasibu ndiye anaweka');

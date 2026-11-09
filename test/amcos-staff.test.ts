@@ -164,20 +164,26 @@ test('Mhasibu hawezi kuidhinisha ombi lake; hakuna anayeidhinisha ombi alilolian
   assert.equal(exp.body.transaction.status, 'PENDING_APPROVAL');
   const apId = exp.body.approval.id;
   // Mhasibu hana mamlaka ya kuamua
-  assert.equal((await call('POST', `/api/v1/approvals/${apId}/decide`, A.accountant, { decision: 'APPROVED', note: 'sawa' })).status, 403);
+  assert.equal((await call('POST', `/api/v1/approvals/${apId}/decide`, A.accountant, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'sawa' })).status, 403);
   // Hawezi kukamilisha kabla ya idhini
   assert.equal((await call('POST', `/api/v1/finance/transactions/${exp.body.transaction.id}/post`, A.accountant, {})).status, 400);
   // Hata Meneja hawezi kuidhinisha ombi alilolianzisha mwenyewe
   const [own] = (await db.execute<{ id: string }>(sql`insert into approval_requests (amcos_id, request_no, type, title, requested_by_id, requested_role)
     values (${A.id}, ${'IDH-T' + RUN}, 'EXPENSE', 'Ombi la Meneja', ${A.managerId}, 'AMCOS_ADMIN') returning id`)).rows;
-  const self = await call('POST', `/api/v1/approvals/${own.id}/decide`, A.manager, { decision: 'APPROVED', note: 'sawa' });
+  const self = await call('POST', `/api/v1/approvals/${own.id}/decide`, A.manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'sawa' });
   assert.equal(self.status, 403);
   assert.match(self.body.error.message, /mwenyewe/);
   // Maelezo ya uamuzi ni lazima
-  assert.equal((await call('POST', `/api/v1/approvals/${apId}/decide`, A.manager, { decision: 'APPROVED', note: '' })).status, 400);
+  assert.equal((await call('POST', `/api/v1/approvals/${apId}/decide`, A.manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: '' })).status, 400);
+
+  // Kuidhinisha kunahitaji nenosiri la Meneja (simu iliyoachwa wazi haitoshi)
+  const nopw = await call('POST', `/api/v1/approvals/${apId}/decide`, A.manager, { decision: 'APPROVED', note: 'Gharama ni sahihi' });
+  assert.equal(nopw.status, 403); assert.equal(nopw.body.error.code, 'REAUTH_REQUIRED');
+  const badpw = await call('POST', `/api/v1/approvals/${apId}/decide`, A.manager, { confirmPassword: 'Si-Hili-2026', decision: 'APPROVED', note: 'Gharama ni sahihi' });
+  assert.equal(badpw.status, 403); assert.equal(badpw.body.error.code, 'REAUTH_FAILED'); assert.match(badpw.body.error.message, /majaribio 4/);
 
   // Meneja anaidhinisha -> Mhasibu anakamilisha -> salio linapungua
-  const ok = await call('POST', `/api/v1/approvals/${apId}/decide`, A.manager, { decision: 'APPROVED', note: 'Gharama ni sahihi' });
+  const ok = await call('POST', `/api/v1/approvals/${apId}/decide`, A.manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'Gharama ni sahihi' });
   assert.equal(ok.status, 200);
   assert.equal(ok.body.approval.decidedRole, 'AMCOS_ADMIN');
   const posted = await call('POST', `/api/v1/finance/transactions/${exp.body.transaction.id}/post`, A.accountant, { reference: 'RISITI-1' });
@@ -196,8 +202,8 @@ test('Stokipa hawezi kuidhinisha marekebisho; stoo haibadiliki kabla ya idhini',
   assert.equal(rc.status, 202, JSON.stringify(rc.body));
   assert.equal((await call('POST', '/api/v1/inputs/stock/receipts', A.storekeeper, { inputItemId: itemId, quantity: 45, unitPrice: '85000', reference: 'DN-' + RUN })).status, 409, 'Hati moja mara moja');
   assert.equal(await stockOf(A.storekeeper, itemId), '0', 'Stoo haiongezeki kabla ya idhini');
-  assert.equal((await call('POST', `/api/v1/approvals/${rc.body.approval.id}/decide`, A.storekeeper, { decision: 'APPROVED', note: 'mimi' })).status, 403);
-  assert.equal((await call('POST', `/api/v1/approvals/${rc.body.approval.id}/decide`, A.manager, { decision: 'APPROVED', note: 'Nimehesabu mifuko', changes: { quantity: '40', unitPrice: '80000' } })).status, 200);
+  assert.equal((await call('POST', `/api/v1/approvals/${rc.body.approval.id}/decide`, A.storekeeper, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'mimi' })).status, 403);
+  assert.equal((await call('POST', `/api/v1/approvals/${rc.body.approval.id}/decide`, A.manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'Nimehesabu mifuko', changes: { quantity: '40', unitPrice: '80000' } })).status, 200);
   assert.equal(await stockOf(A.storekeeper, itemId), '40.00');
   const pr = (await call('GET', '/api/v1/inputs/prices', A.storekeeper)).body.data.find((x: any) => x.inputItemId === itemId);
   assert.equal(pr.unitPrice, '80000.00', 'Bei iliyoidhinishwa na Meneja');
@@ -206,21 +212,21 @@ test('Stokipa hawezi kuidhinisha marekebisho; stoo haibadiliki kabla ya idhini',
   assert.equal(req.status, 202);
   const apId = req.body.approval.id;
   assert.equal(await stockOf(A.storekeeper, itemId), '40.00', 'Stoo haibadiliki kabla ya idhini');
-  assert.equal((await call('POST', `/api/v1/approvals/${apId}/decide`, A.storekeeper, { decision: 'APPROVED', note: 'sawa' })).status, 403);
-  assert.equal((await call('POST', `/api/v1/approvals/${apId}/decide`, A.accountant, { decision: 'APPROVED', note: 'sawa' })).status, 403);
+  assert.equal((await call('POST', `/api/v1/approvals/${apId}/decide`, A.storekeeper, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'sawa' })).status, 403);
+  assert.equal((await call('POST', `/api/v1/approvals/${apId}/decide`, A.accountant, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'sawa' })).status, 403);
 
   // Meneja anakataa ombi moja na kuidhinisha jingine
   const r2 = await call('POST', '/api/v1/inputs/stock/adjustments', A.storekeeper, { inputItemId: itemId, quantity: '-10', notes: 'Hesabu imepungua bila maelezo' });
-  const rej = await call('POST', `/api/v1/approvals/${r2.body.approval.id}/decide`, A.manager, { decision: 'REJECTED', note: 'Hesabu upya kwanza' });
+  const rej = await call('POST', `/api/v1/approvals/${r2.body.approval.id}/decide`, A.manager, { confirmPassword: 'Staff12345', decision: 'REJECTED', note: 'Hesabu upya kwanza' });
   assert.equal(rej.status, 200);
   assert.equal(await stockOf(A.storekeeper, itemId), '40.00', 'Lililokataliwa halibadilishi stoo');
-  const ok = await call('POST', `/api/v1/approvals/${apId}/decide`, A.manager, { decision: 'APPROVED', note: 'Nimeona mifuko iliyoharibika' });
+  const ok = await call('POST', `/api/v1/approvals/${apId}/decide`, A.manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'Nimeona mifuko iliyoharibika' });
   assert.equal(ok.status, 200);
   const st = (await call('GET', '/api/v1/inputs/stock', A.storekeeper)).body.data.find((s: any) => s.inputItemId === itemId);
   assert.equal(st.balance, '37.00');
   assert.equal(st.damaged, '3.00');
   // Uamuzi uliofanyika hauamuliwi tena
-  assert.equal((await call('POST', `/api/v1/approvals/${apId}/decide`, A.manager, { decision: 'REJECTED', note: 'badilisha' })).status, 409);
+  assert.equal((await call('POST', `/api/v1/approvals/${apId}/decide`, A.manager, { confirmPassword: 'Staff12345', decision: 'REJECTED', note: 'badilisha' })).status, 409);
 
   // Ugawaji wa pembejeo unasubiri idhini
   assert.equal((await call('PUT', '/api/v1/inputs/prices', A.manager, { inputItemId: itemId, unitPrice: '80000' })).status, 200);
@@ -229,13 +235,13 @@ test('Stokipa hawezi kuidhinisha marekebisho; stoo haibadiliki kabla ya idhini',
   const early = await call('POST', '/api/v1/input-issues', A.storekeeper, { memberId: mem.body.member.id, lines: [{ inputItemId: itemId, quantity: 2 }] });
   assert.equal(early.status, 400, 'Mkulima ambaye hajathibitishwa hapewi pembejeo');
   const mAp = await pendingFor(A.manager, mem.body.member.id);
-  assert.equal((await call('POST', `/api/v1/approvals/${mAp.id}/decide`, A.manager, { decision: 'APPROVED', note: 'Ni mwanachama halali' })).status, 200);
+  assert.equal((await call('POST', `/api/v1/approvals/${mAp.id}/decide`, A.manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'Ni mwanachama halali' })).status, 200);
   const iss = await call('POST', '/api/v1/input-issues', A.storekeeper, { memberId: mem.body.member.id, lines: [{ inputItemId: itemId, quantity: 2 }] });
   assert.equal(iss.status, 201);
   assert.equal(iss.body.issue.status, 'PENDING_APPROVAL');
   assert.equal(await stockOf(A.storekeeper, itemId), '37.00');
   const iAp = await pendingFor(A.manager, iss.body.issue.id);
-  assert.equal((await call('POST', `/api/v1/approvals/${iAp.id}/decide`, A.manager, { decision: 'APPROVED', note: 'Kulingana na makisio' })).status, 200);
+  assert.equal((await call('POST', `/api/v1/approvals/${iAp.id}/decide`, A.manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'Kulingana na makisio' })).status, 200);
   assert.equal(await stockOf(A.storekeeper, itemId), '35.00');
   assert.equal((await call('GET', `/api/v1/members/${mem.body.member.id}`, A.manager)).body.balance.amountOwed, '160000.00');
 });
@@ -255,7 +261,7 @@ test('Manunuzi: Stokipa anaomba -> Meneja anaidhinisha -> Mhasibu analipa -> Sto
   assert.equal((await call('POST', '/api/v1/inputs/stock/receipts', A.storekeeper, { purchaseLineId: lineId, quantity: 5, reference: 'DN-P' })).status, 400, 'Ombi halijaidhinishwa');
   assert.equal((await call('POST', '/api/v1/finance/supplier-payments', A.accountant, { supplierId: sup.body.supplier.id, purchaseRequestId: prId, amount: '100', description: 'malipo' })).status, 400);
 
-  assert.equal((await call('POST', `/api/v1/approvals/${pr.body.approval.id}/decide`, A.manager, { decision: 'APPROVED', note: 'Bei imelinganishwa' })).status, 200);
+  assert.equal((await call('POST', `/api/v1/approvals/${pr.body.approval.id}/decide`, A.manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'Bei imelinganishwa' })).status, 200);
 
   // Mhasibu analipa sehemu (idhini ya manunuzi inatosha — haiombi idhini mara ya pili)
   const income = await call('POST', '/api/v1/finance/income', A.accountant, { category: 'LEVY', amount: '2000000', description: 'Ushuru wa msimu', accountId: cashId });
@@ -274,11 +280,11 @@ test('Manunuzi: Stokipa anaomba -> Meneja anaidhinisha -> Mhasibu analipa -> Sto
   const rec = await call('POST', '/api/v1/inputs/stock/receipts', A.storekeeper, { purchaseLineId: lineId, quantity: 12, reference: 'DN-P1', batchNo: 'B2' });
   assert.equal(rec.status, 202, JSON.stringify(rec.body));
   assert.equal((await call('POST', '/api/v1/inputs/stock/receipts', A.storekeeper, { purchaseLineId: lineId, quantity: 9, reference: 'DN-P2' })).status, 400, 'Kinachosubiri idhini kinahesabiwa');
-  assert.equal((await call('POST', `/api/v1/approvals/${rec.body.approval.id}/decide`, A.manager, { decision: 'APPROVED', note: 'Mzigo umehesabiwa' })).status, 200);
+  assert.equal((await call('POST', `/api/v1/approvals/${rec.body.approval.id}/decide`, A.manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'Mzigo umehesabiwa' })).status, 200);
   assert.equal(await stockOf(A.storekeeper, itemId), '47.00');
   assert.equal((await call('GET', `/api/v1/store/purchases/${prId}`, A.manager)).body.purchase.status, 'PARTIALLY_RECEIVED');
   const rec2 = await call('POST', '/api/v1/inputs/stock/receipts', A.storekeeper, { purchaseLineId: lineId, quantity: 8, reference: 'DN-P2' });
-  assert.equal((await call('POST', `/api/v1/approvals/${rec2.body.approval.id}/decide`, A.manager, { decision: 'APPROVED', note: 'Sawa' })).status, 200);
+  assert.equal((await call('POST', `/api/v1/approvals/${rec2.body.approval.id}/decide`, A.manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'Sawa' })).status, 200);
   assert.equal((await call('GET', `/api/v1/store/purchases/${prId}`, A.manager)).body.purchase.status, 'RECEIVED');
   const payables = (await call('GET', '/api/v1/finance/reports/payables', A.accountant)).body;
   assert.equal(payables.data.find((p: any) => p.id === prId).owing, '700000.00');
@@ -299,7 +305,7 @@ test('Miamala iliyokamilika haifutwi kimyakimya: database inazuia, na marekebish
   const rv = await call('POST', `/api/v1/finance/transactions/${exp.id}/reverse`, A.accountant, { reason: 'Gharama iliandikwa mara mbili' });
   assert.equal(rv.status, 202);
   assert.equal((await call('POST', `/api/v1/finance/transactions/${exp.id}/reverse`, A.accountant, { reason: 'tena tena' })).status, 409);
-  assert.equal((await call('POST', `/api/v1/approvals/${rv.body.approval.id}/decide`, A.manager, { decision: 'APPROVED', note: 'Nimethibitisha nakala mbili' })).status, 200);
+  assert.equal((await call('POST', `/api/v1/approvals/${rv.body.approval.id}/decide`, A.manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'Nimethibitisha nakala mbili' })).status, 200);
   const afterBal = (await call('GET', '/api/v1/finance/accounts', A.accountant)).body.data.find((x: any) => x.id === cashId).balance;
   assert.equal(Number(afterBal) - Number(before), 120000);
   const orig = (await call('GET', `/api/v1/finance/transactions/${exp.id}`, A.accountant)).body.transaction;
@@ -323,7 +329,7 @@ test('AMCOS A haiwezi kuona wala kugusa taarifa za AMCOS B', async () => {
   assert.ok(aTx.every((t) => t.amcosId === A.id));
   assert.equal((await call('GET', `/api/v1/finance/transactions/${bExp.body.transaction.id}`, A.accountant)).status, 404);
   assert.equal((await call('GET', `/api/v1/approvals/${bExp.body.approval.id}`, A.manager)).status, 404);
-  assert.equal((await call('POST', `/api/v1/approvals/${bExp.body.approval.id}/decide`, A.manager, { decision: 'APPROVED', note: 'sawa' })).status, 404);
+  assert.equal((await call('POST', `/api/v1/approvals/${bExp.body.approval.id}/decide`, A.manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'sawa' })).status, 404);
   assert.ok(((await call('GET', '/api/v1/approvals?pageSize=100', A.manager)).body.data as any[]).every((a) => a.amcosId === A.id));
   assert.ok(((await call('GET', '/api/v1/store/suppliers', B.storekeeper)).body.data as any[]).every((s) => s.amcosId === B.id));
   assert.equal((await call('POST', `/api/v1/finance/income?amcosId=${B.id}`, A.accountant, { category: 'LEVY', amount: '1', description: 'Mapato ya B', accountId: cashId })).status, 403);
@@ -421,7 +427,7 @@ test('Fomu ya mkulima: namba ya zamani, kadi ya mpiga kura, kiingilio, picha na 
   assert.equal(after.entryFeePaid, true);
   assert.equal(after.entryFeeReference, inc.body.transaction.txnNo);
   const rv = await call('POST', `/api/v1/finance/transactions/${inc.body.transaction.id}/reverse`, A.accountant, { reason: 'Imeandikwa kwa mkulima asiye sahihi' });
-  assert.equal((await call('POST', `/api/v1/approvals/${rv.body.approval.id}/decide`, A.manager, { decision: 'APPROVED', note: 'Sawa, sahihisha' })).status, 200);
+  assert.equal((await call('POST', `/api/v1/approvals/${rv.body.approval.id}/decide`, A.manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'Sawa, sahihisha' })).status, 200);
   after = (await call('GET', `/api/v1/members/${mem.id}`, A.manager)).body.member;
   assert.equal(after.entryFeePaid, false);
 

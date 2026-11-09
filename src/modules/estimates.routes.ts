@@ -5,7 +5,7 @@ import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { db, schema } from '../db';
 import { ah, decimalSchema, paged, paginationQuery, uuidParam } from '../lib/http';
 import { badRequest, conflict, notFound } from '../lib/errors';
-import { requireAmcosPerm } from '../middleware/auth';
+import { requireAmcosPerm, requireReauth } from '../middleware/auth';
 import { amcosScope } from '../middleware/tenant';
 import { audit } from '../lib/audit';
 import { findMemberScoped } from './members.routes';
@@ -138,6 +138,7 @@ for (const action of ['approve', 'reject'] as const) {
       const { id } = uuidParam.parse(req.params);
       const before = await findEstimateScoped(req, id);
       if (before.status !== 'DRAFT') throw badRequest('Makisio haya tayari yameshughulikiwa');
+      if (action === 'approve') await requireReauth(req); // kuidhinisha makisio kunahitaji nenosiri la Meneja
       const status = action === 'approve' ? 'APPROVED' : 'REJECTED';
       const estimate = await db.transaction(async (tx) => {
         const [row] = await tx

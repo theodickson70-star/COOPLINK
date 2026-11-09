@@ -27,7 +27,7 @@ async function decideFor(entityId: string, decision: 'APPROVED' | 'REJECTED' = '
   const list = (await call('GET', '/api/v1/approvals?status=PENDING&pageSize=100', katibu)).body.data as any[];
   const a = list.find((x) => x.entityId === entityId);
   assert.ok(a, 'Ombi la idhini lipo');
-  return call('POST', `/api/v1/approvals/${a.id}/decide`, katibu, { decision, note: 'Imekaguliwa' });
+  return call('POST', `/api/v1/approvals/${a.id}/decide`, katibu, { confirmPassword: 'Demo12345', decision, note: 'Imekaguliwa' });
 }
 
 let clerk: string, accountant: string, katibu: string, unionAdmin: string, superT: string;
@@ -142,7 +142,7 @@ test('makisio: kuunda, nakala mbili, idhini kwa wenye ruhusa tu', async () => {
   assert.equal((await call('POST', '/api/v1/estimates', clerk, { memberId, acresPlanted: 1, estimatedKg: 100 })).status, 409);
   assert.equal((await call('POST', `/api/v1/estimates/${r.body.estimate.id}/approve`, clerk)).status, 403);
   assert.equal((await call('POST', `/api/v1/estimates/${r.body.estimate.id}/approve`, accountant)).status, 403, 'Mhasibu haidhinishi makisio');
-  const ok = await call('POST', `/api/v1/estimates/${r.body.estimate.id}/approve`, katibu);
+  const ok = await call('POST', `/api/v1/estimates/${r.body.estimate.id}/approve`, katibu, { confirmPassword: 'Demo12345' });
   assert.equal(ok.body.estimate.status, 'APPROVED');
   assert.equal((await call('PATCH', `/api/v1/estimates/${r.body.estimate.id}`, clerk, { estimatedKg: '5000' })).status, 400);
 });
@@ -224,7 +224,7 @@ test('pembejeo: bila bei / stoo haitoshi / watu wengi kwa wakati mmoja hawazidis
   assert.ok(requests.every((r) => r.status === 201));
   const pend = (await call('GET', '/api/v1/approvals?status=PENDING&type=INPUT_ISSUE&pageSize=100', katibu)).body.data as any[];
   const mine = pend.filter((a) => requests.some((r) => r.body.issue.id === a.entityId));
-  const results = await Promise.all(mine.map((a) => call('POST', `/api/v1/approvals/${a.id}/decide`, katibu, { decision: 'APPROVED', note: 'sawa' })));
+  const results = await Promise.all(mine.map((a) => call('POST', `/api/v1/approvals/${a.id}/decide`, katibu, { confirmPassword: 'Demo12345', decision: 'APPROVED', note: 'sawa' })));
   assert.equal(results.filter((r) => r.status === 200).length, 3);
   assert.ok(results.filter((r) => r.status !== 200).every((r) => r.body.error.code === 'INSUFFICIENT_STOCK'));
   const bal = (await call('GET', '/api/v1/inputs/stock', clerk)).body.data.find((s: any) => s.inputItemId === id);

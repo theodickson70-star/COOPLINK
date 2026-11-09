@@ -4,6 +4,7 @@ import { api, type Paged } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
 import { date, num } from '../lib/format';
 import { useAuth } from '../lib/auth';
+import { ConfirmDialog } from '../components/owner-ui';
 import { Alert, Badge, Button, Empty, Loading, MemberPicker, Modal, PageHead, Pager, Select, Stat, TextField, type MemberLite } from '../components/ui';
 
 interface Estimate {
@@ -22,13 +23,19 @@ export function Estimates() {
   const act = useAction();
 
   const by = (s: string) => sum.data?.byStatus.find((b) => b.status === s);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
   const decide = async (id: string, action: 'approve' | 'reject') => {
+    if (action === 'approve') { setConfirmId(id); return; } // kuidhinisha kunahitaji nenosiri
     const r = await act.run(() => api(`/estimates/${id}/${action}`, { method: 'POST' }));
     if (r) { list.reload(); sum.reload(); }
   };
 
   return (
     <>
+      <ConfirmDialog open={!!confirmId} title="Idhinisha makisio" confirmLabel="Idhinisha"
+        message="Weka nenosiri lako la kuingia kuthibitisha kuwa ni wewe unayeidhinisha makisio haya."
+        onClose={() => setConfirmId(null)}
+        onConfirm={async (c) => { await api(`/estimates/${confirmId}/approve`, { method: 'POST', body: c }); setConfirmId(null); list.reload(); sum.reload(); }} />
       <PageHead title="Makisio ya uzalishaji" sub={sum.data ? `Msimu ${sum.data.season.name}` : undefined}>
         {may('estimates.write') && <Button onClick={() => setOpen(true)}>+ Ongeza makisio</Button>}
       </PageHead>

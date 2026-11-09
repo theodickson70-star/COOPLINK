@@ -470,7 +470,7 @@ test('Jina tofauti na mwenye namba: kwa sababu maalum, Meneja anaidhinisha', asy
   const appr = (await call('GET', '/api/v1/approvals?status=PENDING', manager)).body.data.find((x: any) => x.entityId === mem.id);
   assert.ok(appr); assert.match(appr.title, /jina tofauti/);
   assert.equal(appr.payload.nameOverride.phoneOwnerName, 'John Juma Doe');
-  const d = await call('POST', `/api/v1/approvals/${appr.id}/decide`, manager, { decision: 'APPROVED', note: 'Nimemhoji, ni mkewe' });
+  const d = await call('POST', `/api/v1/approvals/${appr.id}/decide`, manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'Nimemhoji, ni mkewe' });
   assert.equal(d.status, 200, JSON.stringify(d.body));
   mem = (await call('GET', `/api/v1/members/${mem.id}`, manager)).body.member;
   assert.equal(mem.status, 'ACTIVE'); assert.ok(mem.nameOverrideById, 'Meneja ameidhinisha jina');
@@ -492,4 +492,16 @@ test('Jina tofauti na mwenye namba: kwa sababu maalum, Meneja anaidhinisha', asy
   assert.equal(c3.status, 201, JSON.stringify(c3.body));
   assert.equal(c3.body.member.firstName, 'Saidi'); assert.equal(c3.body.member.phoneOwnerName, null); assert.ok(c3.body.member.nameOverrideById);
   assert.equal(c3.body.member.status, 'ACTIVE');
+});
+
+test('Nenosiri likikosewa mara 5 wakati wa kuidhinisha, kuidhinisha kunasimamishwa kwa dakika 15', async () => {
+  const mPhone = uniqPhone('25576');
+  const reg = await call('POST', '/api/v1/owner/amcos', owner, { name: `Kufuli ${RUN} AMCOS`, activate: true, manager: { fullName: 'Meneja Kufuli', phone: mPhone, password: 'Meneja#2026x' } });
+  assert.equal(reg.status, 201);
+  const t = (await login(mPhone, 'Meneja#2026x')).body.token;
+  const mgr = (await call('POST', '/api/v1/auth/change-password', t, { currentPassword: 'Meneja#2026x', newPassword: 'Staff12345' })).body.token;
+  const fake = crypto.randomUUID();
+  for (let i = 0; i < 5; i++) assert.equal((await call('POST', `/api/v1/approvals/${fake}/decide`, mgr, { confirmPassword: 'Kosa' + i, decision: 'APPROVED', note: 'jaribio' })).status, 403);
+  const locked = await call('POST', `/api/v1/approvals/${fake}/decide`, mgr, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'jaribio' });
+  assert.equal(locked.status, 429, 'Hata nenosiri sahihi linasubiri dakika 15'); assert.equal(locked.body.error.code, 'REAUTH_LOCKED');
 });

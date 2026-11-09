@@ -5,7 +5,7 @@ import { aliasedTable, and, count, desc, eq, type SQL } from 'drizzle-orm';
 import { db, schema } from '../db';
 import { ah, decimalSchema, paged, paginationQuery, uuidParam } from '../lib/http';
 import { notFound } from '../lib/errors';
-import { requireAmcosPerm } from '../middleware/auth';
+import { requireAmcosPerm, requireReauth } from '../middleware/auth';
 import { amcosScope } from '../middleware/tenant';
 import { hasAmcosPerm } from '../lib/amcos-permissions';
 import { APPROVAL_LABEL, cancelApproval, decideApproval } from '../lib/approvals';
@@ -66,6 +66,8 @@ approvalsRouter.post('/:id/decide', requireAmcosPerm('approvals.decide'), ah(asy
     decision: z.enum(['APPROVED', 'REJECTED']), note,
     changes: z.object({ quantity: decimalSchema({ min: 0.01 }).optional(), unitPrice: decimalSchema({ min: 0.01 }).optional() }).optional(),
   }).parse(req.body);
+  // Kuidhinisha kunahitaji nenosiri la anayeidhinisha (na 2FA kama ameiwasha) — simu/kompyuta iliyoachwa wazi haitoshi kupitisha ombi
+  if (body.decision === 'APPROVED') await requireReauth(req);
   const approval = await db.transaction((tx) => decideApproval(tx, req, id, body.decision, body.note, body.changes));
   res.json({ approval });
 }));
