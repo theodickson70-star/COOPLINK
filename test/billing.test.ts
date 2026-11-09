@@ -151,7 +151,10 @@ test('Kingilio: kinadaiwa chama kikifunguliwa, chama kinafungwa baada ya siku 3,
   assert.equal(keys.size, 1, 'Idempotency-Key haikubadilika');
   const sent = JSON.parse(mock.creates[0].body);
   assert.equal(sent.amount_minor, '4500000', 'TSh 45,000 = 4500000 minor units');
-  assert.equal(sent.kind, 'bill'); assert.equal(sent.payment_mode, 'EXACT');
+  assert.equal(sent.kind, 'bill');
+  assert.match(sent.customer.phone, /^0[67]\d{8}$/, 'Simu kwa muundo wa ndani kama mfano wa TeePay');
+  assert.equal(sent.customer.email, undefined); assert.equal(sent.payment_mode, undefined);
+  assert.match(sent.description, /^[\x20-\x7E]+$/, 'Maelezo ya herufi za kawaida tu');
   assert.ok(sent.customer.name.includes(`Ada ${RUN}`));
   const cn = (await billing()).fees.find((f: any) => f.id === entrance.id).controlNumbers[0];
   assert.equal(cn.status, 'ISSUED');

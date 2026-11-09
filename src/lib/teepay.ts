@@ -43,7 +43,11 @@ async function request<T>(method: 'GET' | 'POST', path: string, body?: unknown, 
   try { json = text ? JSON.parse(text) : null; } catch { /* si JSON */ }
   if (!r.ok) {
     const err = json?.error ?? json ?? {};
-    throw new TeePayError(r.status, String(err.code ?? 'error'), String(err.message ?? `TeePay HTTP ${r.status}`), err.request_id ?? json?.request_id);
+    // Maelezo ya ziada ya TeePay (mf. sehemu gani ya ombi si sahihi) yanahifadhiwa ili kosa lieleweke
+    const { code: _c, message: _m, request_id: _r, ...extra } = typeof err === 'object' && err ? err : ({} as Record<string, unknown>);
+    const detail = Object.keys(extra).length ? ` ${JSON.stringify(extra).slice(0, 400)}` : '';
+    if (!r.ok && r.status !== 404) console.warn(`[teepay] ${method} ${path} -> ${r.status} ${err.code ?? ''}${detail}`);
+    throw new TeePayError(r.status, String(err.code ?? 'error'), String(err.message ?? `TeePay HTTP ${r.status}`) + detail, err.request_id ?? json?.request_id);
   }
   return { status: r.status, data: json as T };
 }

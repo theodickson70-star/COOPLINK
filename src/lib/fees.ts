@@ -37,6 +37,12 @@ async function sysAudit(tx: DbOrTx, action: string, amcosId: string, entityId: s
   await tx.insert(schema.auditLogs).values({ action, entity: 'PlatformFee', entityId, amcosId, userId: userId ?? null, userRole: userId ? null : 'SYSTEM', after: after as object });
 }
 
+/** 255712345678 -> 0712345678 (muundo wa mfano wa TeePay) */
+export const localPhone = (p?: string | null) => (p && /^255[67]\d{8}$/.test(p) ? '0' + p.slice(3) : undefined);
+/** Herufi za kawaida tu (bila — wala alama nyingine) ili ombi lisikataliwe kwa sababu ya herufi. */
+export const asciiText = (s: string, max: number) =>
+  s.normalize('NFKD').replace(/[\u2013\u2014]/g, '-').replace(/[^\x20-\x7E]/g, '').replace(/\s+/g, ' ').trim().slice(0, max);
+
 /** Chama kipya: kidaiwe ada ya kingilio (kama ada zimewashwa). Haiundi mara mbili. */
 export async function ensureEntranceFee(tx: DbOrTx, amcosId: string, userId?: string | null, opts: { force?: boolean } = {}) {
   const c = await getSetting('fees', { fresh: true });
@@ -134,14 +140,14 @@ export async function issueControlNumber(feeId: string, amount: string, userId: 
     const id = randomUUID();
     const request: CnCreate = {
       kind: 'bill',
+      // Muundo uleule wa mfano wa TeePay: jina, simu ya ndani (07xxxxxxxx), maelezo ya ASCII, kiasi.
+      // Bill yenye kiasi ni EXACT yenyewe; email haitumwi.
       customer: {
-        name: a.name.slice(0, 160),
-        ...(mgr?.phone ? { phone: `+${mgr.phone}`.slice(0, 20) } : {}),
-        ...(mgr?.email ? { email: mgr.email } : {}),
+        name: asciiText(a.name, 160) || 'Chama',
+        ...(localPhone(mgr?.phone) ? { phone: localPhone(mgr?.phone)! } : {}),
       },
-      description: `CoopLink: ${f.label} — ${a.name} (${a.code})`.slice(0, 240),
+      description: asciiText(`CoopLink ${f.label} - ${a.name} (${a.code})`, 240),
       amount_minor: toMinor(amount),
-      payment_mode: 'EXACT',
     };
     const [cn] = await tx.insert(CN).values({
       id, feeId, amcosId: f.amcosId, amount: fmt2(amount), amountMinor: request.amount_minor!, idempotencyKey: `cooplink_${id.replace(/-/g, '')}`,
