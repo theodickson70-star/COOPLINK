@@ -8,7 +8,7 @@ import { badRequest, conflict, notFound } from '../../lib/errors';
 import { requirePermission } from '../../middleware/auth';
 import { audit } from '../../lib/audit';
 import { getSetting, setSetting } from '../../lib/settings';
-import { clearFeeLock, ensureEntranceFee, ensureSeasonFee, feesOverview, receiptOf, syncControlNumber } from '../../lib/fees';
+import { clearFeeLock, ensureEntranceFee, ensureSeasonFee, feesOverview, receiptOf, syncMobilePayment } from '../../lib/fees';
 import { teepayConfig } from '../../lib/teepay';
 
 export const ownerFeesRouter = Router();
@@ -96,10 +96,10 @@ ownerFeesRouter.post('/:id/waive', requirePermission('subscriptions.manage'), ah
   res.json({ fee });
 }));
 
-ownerFeesRouter.post('/control-numbers/:id/sync', requirePermission('subscriptions.read'), ah(async (req, res) => {
+ownerFeesRouter.post('/payments/:id/sync', requirePermission('subscriptions.read'), ah(async (req, res) => {
   const { id } = uuidParam.parse(req.params);
-  const r = await syncControlNumber(id);
-  res.json({ recorded: r.recorded.length, status: r.cn.status });
+  const r = await syncMobilePayment(id);
+  res.json({ recorded: r.recorded ? 1 : 0, status: r.mp.status });
 }));
 
 ownerFeesRouter.get('/receipts/:id', requirePermission('subscriptions.read'), ah(async (req, res) => {

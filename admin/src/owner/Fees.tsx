@@ -96,7 +96,7 @@ export function AmcosFeesSection({ amcosId, active }: { amcosId: string; active:
       {data.lock && <div style={{ padding: '0 16px' }}><Alert>Chama kimefungwa: {data.lock.label} haijalipwa tangu {date(data.lock.dueDate)}.</Alert></div>}
       {data.fees.length === 0 ? <Empty>Chama hiki hakidaiwi ada bado (kilikuwepo kabla ya ada). Chagua "Dai ada ya kingilio" (siku za kulipa zinaanza leo) au "Samehe kingilio".</Empty> : (
         <div className="table-wrap"><table className="table">
-          <thead><tr><th>Ada</th><th className="num">Kiasi</th><th className="num">Imelipwa</th><th>Mwisho</th><th>Hali</th><th>Control number / risiti</th><th /></tr></thead>
+          <thead><tr><th>Ada</th><th className="num">Kiasi</th><th className="num">Imelipwa</th><th>Mwisho</th><th>Hali</th><th>Malipo ya simu / risiti</th><th /></tr></thead>
           <tbody>{data.fees.map((f) => (
             <tr key={f.id}>
               <td><strong>{f.label}</strong>{f.waivedReason && <div className="muted" style={{ fontSize: 12 }}>Msamaha: {f.waivedReason}</div>}</td>
@@ -104,8 +104,8 @@ export function AmcosFeesSection({ amcosId, active }: { amcosId: string; active:
               <td className={f.overdue ? 'text-bad' : ''}>{date(f.dueDate)}</td>
               <td><Badge status={tone(f.status)} label={f.overdue ? 'Imepita tarehe' : ST[f.status]} /></td>
               <td style={{ fontSize: 13 }}>
-                {f.controlNumbers.map((c) => <div key={c.id}>{c.number ?? 'inatolewa…'} · {money(c.amount)} · <span className="muted">{c.status}</span>{c.lastError ? <span className="text-bad"> · {c.lastError}</span> : null}
-                  {(c.status === 'ISSUED' || c.status === 'ISSUING') && <> · <a href="#" onClick={async (e) => { e.preventDefault(); if (await act.run(() => api(`/owner/fees/control-numbers/${c.id}/sync`, { method: 'POST', body: {} }))) reload(); }}>hakiki</a></>}</div>)}
+                {f.mobilePayments.slice(0, 3).map((m) => <div key={m.id}>{m.phoneLocal} · {money(m.amount)} · <span className="muted">{m.status}{m.statusDetail ? ` (${m.statusDetail})` : ''}</span>{m.lastError ? <span className="text-bad"> · {m.lastError}</span> : null}
+                  {(m.status === 'PENDING' || m.status === 'SENDING') && <> · <a href="#" onClick={async (e) => { e.preventDefault(); if (await act.run(() => api(`/owner/fees/payments/${m.id}/sync`, { method: 'POST', body: {} }))) reload(); }}>hakiki</a></>}</div>)}
                 {f.payments.map((p) => <div key={p.id}><Link to={`/owner/fees/receipts/${p.id}`}>{p.receiptNo}</Link> · {money(p.amount)} · {dateTime(p.paidAt)}</div>)}
               </td>
               <td style={{ textAlign: 'right' }}>{manage && (f.status === 'UNPAID' || f.status === 'PARTIAL') && <Button size="sm" variant="secondary" onClick={() => setModal({ kind: 'waive', feeId: f.id, label: f.label })}>Samehe</Button>}</td>

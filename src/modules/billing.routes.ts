@@ -4,16 +4,17 @@
 // =====================================================================
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db, schema } from '../db';
-import { ah, decimalSchema, uuidParam } from '../lib/http';
-import { AppError, notFound } from '../lib/errors';
+import { ah, decimalSchema, normalizePhone, uuidParam } from '../lib/http';
+import { AppError, badRequest, notFound } from '../lib/errors';
 import { requireRole } from '../middleware/auth';
-import { ensureSeasonFee, feeLock, feesOverview, issueControlNumber, receiptOf, syncControlNumber } from '../lib/fees';
+import { ensureSeasonFee, feeLock, feesOverview, receiptOf, requestMobilePayment, syncMobilePayment } from '../lib/fees';
 import { getSetting } from '../lib/settings';
 import { TeePayError } from '../lib/teepay';
 
 export const billingRouter = Router();
+const MP = schema.platformMobilePayments;
 billingRouter.use(requireRole(['AMCOS_ADMIN']));
 
 const ownFee = async (req: Request, id: string) => {
@@ -33,21 +34,36 @@ billingRouter.get('/', ah(async (req, res) => {
   res.json({ ...(await feesOverview(amcosId)), config: { entranceFee: c.entranceFee, seasonFee: c.seasonFee, seasonInstallments: c.seasonInstallments, entranceDays: c.entranceDays, deadlineDay: c.deadlineDay, deadlineMonth: c.deadlineMonth } });
 }));
 
-billingRouter.post('/fees/:id/control-number', ah(async (req, res) => {
+// Ombi la malipo kwa simu: Meneja anaweka namba ya simu (yake au ya mlipaji mwingine), jina kamili na email
+billingRouter.post('/fees/:id/pay', ah(async (req, res) => {
   const { id } = uuidParam.parse(req.params);
-  const { amount } = z.object({ amount: decimalSchema({ min: 1 }) }).parse(req.body);
+  const b = z.object({
+    amount: decimalSchema({ min: 1 }),
+    phone: z.string().trim().min(9, 'Weka namba ya simu'),
+    name: z.string().trim().min(3).max(120).refine((v) => v.split(/\s+/).filter(Boolean).length >= 2, 'Weka jina kamili: la kwanza na la mwisho'),
+    email: z.string().trim().email('Weka email halali (TeePay wanaihitaji)'),
+  }).parse(req.body);
+  const phone = normalizePhone(b.phone);
+  if (!phone || !/^255[67]\d{8}$/.test(phone)) throw badRequest('Namba ya simu si sahihi. Mfano: 0712345678');
   await ownFee(req, id);
-  const cn = await issueControlNumber(id, amount, req.auth!.userId).catch((e) => { throw teepayFail(e); });
-  const { request: _r, idempotencyKey: _k, ...out } = cn;
-  res.status(201).json({ controlNumber: out });
+  // Ombi la zamani lililo wazi: lihakikiwe kwanza ili lisilipwe mara mbili
+  const open = await db.select({ id: MP.id }).from(MP).where(and(eq(MP.feeId, id), inArray(MP.status, ['SENDING', 'PENDING'])));
+  for (const o of open) await syncMobilePayment(o.id).catch(() => undefined);
+  const mp = await requestMobilePayment(id, b.amount, { phone, name: b.name, email: b.email }, req.auth!.userId).catch((e) => { throw teepayFail(e); });
+  const { request: _r, idempotencyKey: _k, ...out } = mp;
+  res.status(201).json({ payment: { ...out, phoneLocal: '0' + phone.slice(3) } });
 }));
 
-billingRouter.post('/control-numbers/:id/sync', ah(async (req, res) => {
+billingRouter.post('/payments/:id/sync', ah(async (req, res) => {
   const { id } = uuidParam.parse(req.params);
-  const [cn] = await db.select().from(schema.platformControlNumbers).where(and(eq(schema.platformControlNumbers.id, id), eq(schema.platformControlNumbers.amcosId, req.auth!.amcosId!)));
-  if (!cn) throw notFound('Control number');
-  const r = await syncControlNumber(id).catch((e) => { throw teepayFail(e); });
-  res.json({ recorded: r.recorded.map((p) => ({ id: p.id, receiptNo: p.invoiceNo, amount: p.amount })), status: r.cn.status, number: r.cn.number, lock: await feeLock(req.auth!.amcosId!, { fresh: true }) });
+  const [mp] = await db.select().from(MP).where(and(eq(MP.id, id), eq(MP.amcosId, req.auth!.amcosId!)));
+  if (!mp) throw notFound('Malipo');
+  const r = await syncMobilePayment(id).catch((e) => { throw teepayFail(e); });
+  res.json({
+    status: r.mp.status, statusDetail: r.mp.statusDetail, lastError: r.mp.lastError,
+    recorded: r.recorded ? { id: r.recorded.id, receiptNo: r.recorded.invoiceNo, amount: r.recorded.amount } : null,
+    lock: await feeLock(req.auth!.amcosId!, { fresh: true }),
+  });
 }));
 
 billingRouter.get('/receipts/:id', ah(async (req, res) => {

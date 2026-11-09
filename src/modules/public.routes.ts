@@ -5,7 +5,7 @@ import { db, schema } from '../db';
 import { ah } from '../lib/http';
 import { getSetting } from '../lib/settings';
 import { teepayConfig, verifyWebhookSignature } from '../lib/teepay';
-import { syncControlNumber } from '../lib/fees';
+import { syncMobilePayment } from '../lib/fees';
 
 export const publicRouter = Router();
 
@@ -33,7 +33,7 @@ announcementsRouter.get('/', ah(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------
-//  WEBHOOK YA TEEPAY (malipo ya control numbers za ada za CoopLink)
+//  WEBHOOK YA TEEPAY (malipo ya ada za CoopLink kwa mitandao ya simu)
 //  Saini inahakikiwa kwa raw body. Kisha malipo yanasomwa TENA kutoka TeePay (syncControlNumber),
 //  kwa hiyo hakuna kinachorekodiwa kwa kuamini mwili wa ombi pekee. Tukio moja linashughulikiwa mara moja.
 // ---------------------------------------------------------------------
@@ -48,10 +48,11 @@ publicRouter.post('/teepay/webhook', ah(async (req, res) => {
   const [seen] = await db.select({ id: schema.teepayEvents.id }).from(schema.teepayEvents).where(eq(schema.teepayEvents.id, eventId));
   if (seen) return res.json({ ok: true, duplicate: true });
   const type = String(req.body?.type ?? req.body?.event ?? '');
-  const source = req.body?.data?.source as { type?: string; id?: string } | undefined;
-  if (type.startsWith('payment.') && source?.type === 'control_number' && source.id) {
-    const [cn] = await db.select({ id: schema.platformControlNumbers.id }).from(schema.platformControlNumbers).where(eq(schema.platformControlNumbers.teepayId, source.id));
-    if (cn) await syncControlNumber(cn.id); // ikishindwa -> 500 -> TeePay itarudia baadaye
+  // Malipo ya simu: data.reference = public_reference ya collection
+  const ref = req.body?.data?.reference as string | undefined;
+  if (type.startsWith('payment.') && ref) {
+    const [mp] = await db.select({ id: schema.platformMobilePayments.id }).from(schema.platformMobilePayments).where(eq(schema.platformMobilePayments.reference, String(ref)));
+    if (mp) await syncMobilePayment(mp.id); // ikishindwa -> 500 -> TeePay itarudia baadaye
   }
   await db.insert(schema.teepayEvents).values({ id: eventId, type: type || 'unknown', payload: req.body ?? {} }).onConflictDoNothing();
   res.json({ ok: true });

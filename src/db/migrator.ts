@@ -76,6 +76,9 @@ const MARKERS: Record<string, string[]> = {
     "select to_regclass('public.teepay_events') is not null",
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'platform_payments' and column_name = 'fee_id')",
   ],
+  '0011_mobile_money_fees': [
+    "select to_regclass('public.platform_mobile_payments') is not null",
+  ],
 };
 
 interface JournalEntry { tag: string; when: number }

@@ -3,8 +3,8 @@
 //   1. Ada ya kingilio: inadaiwa chama kikifunguliwa; mwisho siku N (3) baadaye.
 //   2. Ada ya msimu: kila mwaka, mwisho wa kulipa 15/10; awamu 2 sawa kwa sawa.
 //      Inaanza kudaiwa baada ya kingilio kulipwa (au kusamehewa).
-//   3. Malipo ni kwa CONTROL NUMBER ya TeePay TU. Malipo yanathibitishwa na TeePay ("verified")
-//      kabla ya kurekodiwa — ombi la malipo pekee SI malipo.
+//   3. Malipo ni kwa MITANDAO YA SIMU kupitia TeePay (ombi la PIN kwenye simu ya mlipaji).
+//      Yanarekodiwa tu TeePay ikisema "succeeded" — ombi la malipo pekee SI malipo.
 //   4. Ada ikipita tarehe bila kulipwa yote -> chama kizima kinafungwa (Meneja anaingia kulipa tu).
 //      Malipo yakithibitishwa -> kinafunguka papo hapo.
 // =====================================================================
@@ -14,14 +14,15 @@ import { db, schema, type DbOrTx } from '../db';
 import { D, fmt2, tshText } from './money';
 import { getSetting } from './settings';
 import { addDays, nextInvoiceNo, today } from './subscriptions';
-import { createControlNumber, fromMinor, getControlNumber, teepayConfig, TeePayError, toMinor, type CnCreate } from './teepay';
+import { createCollection, fromMinor, getCollection, teepayConfig, TeePayError, toMinor, type Collection, type CollectionCreate } from './teepay';
 import { badRequest, conflict, notFound } from './errors';
 
 const F = schema.platformFees;
-const CN = schema.platformControlNumbers;
+const CN = schema.platformControlNumbers; // historia tu (control numbers zimeachwa)
+const MP = schema.platformMobilePayments;
 const P = schema.platformPayments;
 type Fee = typeof F.$inferSelect;
-type ControlNo = typeof CN.$inferSelect;
+type MobilePay = typeof MP.$inferSelect;
 
 /** Mwisho wa kulipa ada ya msimu unaofuata (au wa leo) — mf. 2027-10-15. */
 export async function seasonDeadline(t = today()) {
@@ -94,10 +95,10 @@ export async function feeLock(amcosId: string, opts: { fresh?: boolean } = {}): 
 }
 
 // ---------------------------------------------------------------------
-//  Control numbers
+//  Kiasi kinachoruhusiwa
 // ---------------------------------------------------------------------
 export const outstandingOf = (f: Fee) => D(f.amount).minus(f.paid);
-/** Kiasi kinachoruhusiwa kwa control number: kingilio = chote; msimu = awamu moja, au salio lote. */
+/** Kiasi kinachoruhusiwa kwa ombi moja la malipo: kingilio = chote; msimu = awamu moja, au salio lote. */
 export function allowedAmounts(f: Fee) {
   const left = outstandingOf(f);
   if (left.lte(0)) return [];
@@ -107,127 +108,135 @@ export function allowedAmounts(f: Fee) {
   return [...out].sort((a, b) => Number(a) - Number(b));
 }
 
-async function callCreate(cn: ControlNo) {
+// ---------------------------------------------------------------------
+//  Malipo kwa mitandao ya simu (TeePay mobile money push)
+// ---------------------------------------------------------------------
+const OPEN: MobilePay['status'][] = ['SENDING', 'PENDING'];
+const STALE_MS = 10 * 60_000; // ombi lisilojibiwa kwa dakika 10 haliwezi kuzuia ombi jipya
+
+function mapStatus(c: Collection): MobilePay['status'] {
+  if (c.status === 'succeeded') return 'SUCCEEDED';
+  if (c.status === 'failed') return 'FAILED';
+  return 'PENDING'; // created / pending / processing (reversed/refunded hushughulikiwa kando)
+}
+
+async function sendCreate(mp: MobilePay) {
   try {
-    const r = await createControlNumber(cn.request as CnCreate, cn.idempotencyKey);
-    const issued = r.status === 201 && !!r.data?.number;
-    const [u] = await db.update(CN).set({
-      teepayId: r.data?.id ?? cn.teepayId, number: r.data?.number ?? null, status: issued ? 'ISSUED' : 'ISSUING', lastError: null, lastSyncedAt: new Date(),
-    }).where(eq(CN.id, cn.id)).returning();
+    const r = await createCollection(mp.request as CollectionCreate, mp.idempotencyKey);
+    const c = r.data;
+    const [u] = await db.update(MP).set({
+      teepayId: c?.id ?? mp.teepayId, reference: c?.public_reference ?? mp.reference,
+      status: c ? (mapStatus(c) === 'SUCCEEDED' ? 'PENDING' : mapStatus(c)) : 'PENDING', // "succeeded" inarekodiwa na sync pekee
+      statusDetail: c?.status_detail ?? null, lastError: null, lastSyncedAt: new Date(),
+    }).where(eq(MP.id, mp.id)).returning();
     return u;
   } catch (e) {
     const err = e as TeePayError;
     const permanent = err instanceof TeePayError && err.permanent && err.code !== 'idempotency_conflict';
-    const msg = `${err.code ?? 'error'}: ${err.message}${err.requestId ? ` (request_id ${err.requestId})` : ''}`.slice(0, 500);
-    const [u] = await db.update(CN).set({ status: permanent ? 'FAILED' : 'ISSUING', lastError: msg, lastSyncedAt: new Date() }).where(eq(CN.id, cn.id)).returning();
+    const msg = `${err.code ?? 'error'}: ${err.message}${err.requestId ? ` (request_id ${err.requestId})` : ''}`.slice(0, 600);
+    const [u] = await db.update(MP).set({ status: permanent ? 'FAILED' : 'SENDING', lastError: msg, lastSyncedAt: new Date() }).where(eq(MP.id, mp.id)).returning();
     return u;
   }
 }
 
-/** Meneja anatengeneza control number ya ada. Control number moja hai kwa kila ada (inarudishwa ileile). */
-export async function issueControlNumber(feeId: string, amount: string, userId: string) {
-  if (!teepayConfig().enabled) throw badRequest('Malipo kwa control number bado hayajawashwa na CoopLink. Wasiliana na CoopLink.');
+export interface Payer { phone: string; name: string; email: string }
+
+/** Meneja anaomba kulipa ada: ombi la PIN linatumwa kwenye simu ya mlipaji. */
+export async function requestMobilePayment(feeId: string, amount: string, payer: Payer, userId: string) {
+  if (!teepayConfig().enabled) throw badRequest('Malipo kwa simu bado hayajawashwa na CoopLink. Wasiliana na CoopLink.');
   const prep = await db.transaction(async (tx) => {
     await tx.execute(sql`select 1 from platform_fees where id = ${feeId} for update`);
     const [f] = await tx.select().from(F).where(eq(F.id, feeId));
     if (!f) throw notFound('Ada');
     if (f.status === 'PAID' || f.status === 'WAIVED') throw conflict('Ada hii tayari imelipwa');
-    const [active] = await tx.select().from(CN).where(and(eq(CN.feeId, feeId), inArray(CN.status, ['ISSUING', 'ISSUED'])));
-    if (active) return { cn: active, fresh: false };
+    const [open] = await tx.select().from(MP).where(and(eq(MP.feeId, feeId), inArray(MP.status, OPEN))).orderBy(sql`${MP.createdAt} desc`).limit(1);
+    if (open && Date.now() - open.createdAt.getTime() < STALE_MS) {
+      throw conflict(`Ombi la malipo la ${tshText(open.amount)} kwenda ${localPhone(open.phone) ?? open.phone} bado linasubiri. Thibitisha kwa PIN kwenye simu, au subiri dakika chache kisha jaribu tena.`);
+    }
     if (!allowedAmounts(f).includes(fmt2(amount))) throw badRequest(`Kiasi kinachoruhusiwa: ${allowedAmounts(f).map((a) => tshText(a)).join(' au ')}`);
     const a = (await tx.query.amcos.findFirst({ where: eq(schema.amcos.id, f.amcosId) }))!;
-    const mgr = await tx.query.users.findFirst({ where: eq(schema.users.id, userId) });
     const id = randomUUID();
-    const request: CnCreate = {
-      kind: 'bill',
-      // Muundo uleule wa mfano wa TeePay: jina, simu ya ndani (07xxxxxxxx), maelezo ya ASCII, kiasi.
-      // Bill yenye kiasi ni EXACT yenyewe; email haitumwi.
-      customer: {
-        name: asciiText(a.name, 160) || 'Chama',
-        ...(localPhone(mgr?.phone) ? { phone: localPhone(mgr?.phone)! } : {}),
-      },
+    const request: CollectionCreate = {
+      money: { amount_minor: toMinor(amount), currency: 'TZS' },
+      customer: { country: 'TZ', phone: `+${payer.phone}`, name: asciiText(payer.name, 120), email: payer.email.trim().toLowerCase() },
       description: asciiText(`CoopLink ${f.label} - ${a.name} (${a.code})`, 240),
-      amount_minor: toMinor(amount),
     };
-    const [cn] = await tx.insert(CN).values({
-      id, feeId, amcosId: f.amcosId, amount: fmt2(amount), amountMinor: request.amount_minor!, idempotencyKey: `cooplink_${id.replace(/-/g, '')}`,
-      request, createdById: userId,
+    const [mp] = await tx.insert(MP).values({
+      id, feeId, amcosId: f.amcosId, amount: fmt2(amount), amountMinor: request.money.amount_minor, phone: payer.phone, payerName: request.customer.name,
+      idempotencyKey: `cooplink_mm_${id.replace(/-/g, '')}`, request, createdById: userId,
     }).returning();
-    await sysAudit(tx, 'FEE_CONTROL_NUMBER_REQUEST', f.amcosId, f.id, { controlNumberId: cn.id, amount: cn.amount }, userId);
-    return { cn, fresh: true };
+    await sysAudit(tx, 'FEE_MOBILE_PAYMENT_REQUEST', f.amcosId, f.id, { mobilePaymentId: mp.id, amount: mp.amount, phone: localPhone(payer.phone) }, userId);
+    return mp;
   });
-  if (prep.cn.status === 'ISSUING') return callCreate(prep.cn); // mpya, au ya zamani ambayo TeePay hawakumaliza (Idempotency-Key ileile)
-  return prep.cn;
+  return sendCreate(prep);
 }
 
 /**
- * Soma control number kwenye TeePay na urekodi malipo YALIYOTHIBITISHWA ("verified") ambayo bado hayajarekodiwa.
- * Inaitwa na webhook, kitufe cha "Hakiki malipo" na kazi ya nyuma — matokeo ni yaleyale (haiongezi mara mbili).
+ * Soma hali ya malipo kwenye TeePay; yakiwa "succeeded" rekodi malipo (mara moja tu), funga ada, fungua chama.
+ * Inaitwa na webhook, kitufe/ukurasa wa Meneja (kila sekunde chache) na kazi ya nyuma — matokeo ni yaleyale.
  */
-export async function syncControlNumber(cnId: string) {
-  let [cn] = await db.select().from(CN).where(eq(CN.id, cnId));
-  if (!cn) throw notFound('Control number');
-  if (cn.status === 'ISSUING') cn = await callCreate(cn);
-  if (!cn.teepayId || cn.status === 'FAILED') return { cn, recorded: [] as (typeof P.$inferSelect)[] };
-  let remote;
+export async function syncMobilePayment(mpId: string) {
+  let [mp] = await db.select().from(MP).where(eq(MP.id, mpId));
+  if (!mp) throw notFound('Malipo');
+  if (mp.status === 'SENDING') mp = await sendCreate(mp);
+  if (mp.status !== 'PENDING' || !mp.reference) return { mp, recorded: null as (typeof P.$inferSelect) | null };
+  let c: Collection;
   try {
-    remote = (await getControlNumber(cn.teepayId)).data;
+    c = (await getCollection(mp.reference)).data;
   } catch (e) {
-    await db.update(CN).set({ lastError: `${(e as TeePayError).code}: ${(e as Error).message}`.slice(0, 500), lastSyncedAt: new Date() }).where(eq(CN.id, cn.id));
+    await db.update(MP).set({ lastError: `${(e as TeePayError).code}: ${(e as Error).message}`.slice(0, 600), lastSyncedAt: new Date() }).where(eq(MP.id, mp.id));
     throw e;
   }
-  const verified = (remote.payments ?? []).filter((p) => p.status === 'verified' && p.amount_minor && (p.id || p.reference));
+  const st = mapStatus(c);
+  if (st === 'PENDING') {
+    const [u] = await db.update(MP).set({ lastSyncedAt: new Date(), lastError: null }).where(eq(MP.id, mp.id)).returning();
+    return { mp: u, recorded: null };
+  }
+  if (st === 'FAILED') {
+    const [u] = await db.update(MP).set({ status: 'FAILED', statusDetail: c.status_detail ?? null, lastSyncedAt: new Date() }).where(and(eq(MP.id, mp.id), eq(MP.status, 'PENDING'))).returning();
+    return { mp: u ?? mp, recorded: null };
+  }
+  // succeeded
   const result = await db.transaction(async (tx) => {
-    await tx.execute(sql`select 1 from platform_fees where id = ${cn.feeId} for update`);
-    const [f] = await tx.select().from(F).where(eq(F.id, cn.feeId));
-    const recorded: (typeof P.$inferSelect)[] = [];
-    let paid = D(f.paid);
-    for (const p of verified) {
-      const ref = `TEEPAY:${p.id ?? p.reference}`;
-      const [dup] = await tx.select({ id: P.id }).from(P).where(eq(P.providerRef, ref));
-      if (dup) continue;
-      const amount = fromMinor(p.amount_minor!);
-      const [row] = await tx.insert(P).values({
+    await tx.execute(sql`select 1 from platform_fees where id = ${mp.feeId} for update`);
+    const [cur] = await tx.select().from(MP).where(eq(MP.id, mp.id));
+    if (cur.status === 'SUCCEEDED') return { mp: cur, recorded: null };
+    const [f] = await tx.select().from(F).where(eq(F.id, mp.feeId));
+    const ref = `TEEPAY:${c.public_reference ?? c.id}`;
+    const amount = c.money?.amount_minor ? fromMinor(c.money.amount_minor) : mp.amount;
+    let [row] = await tx.select().from(P).where(eq(P.providerRef, ref));
+    if (!row) {
+      [row] = await tx.insert(P).values({
         invoiceNo: await nextInvoiceNo(tx), amcosId: f.amcosId, category: f.kind === 'ENTRANCE' ? 'SETUP' : 'SUBSCRIPTION',
-        amount, method: 'MOBILE_MONEY', providerRef: ref, status: 'VERIFIED',
-        paidAt: new Date(p.paid_at ?? p.received_at ?? Date.now()), verifiedAt: new Date(),
-        feeId: f.id, controlNumberId: cn.id,
-        notes: `${f.label} · control number ${cn.number ?? ''} · TeePay ${p.reference ?? p.id}${p.fee_minor ? ` · ada ya TeePay TSh ${fromMinor(p.fee_minor)}` : ''}`,
+        amount, method: 'MOBILE_MONEY', providerRef: ref, status: 'VERIFIED', paidAt: new Date(), verifiedAt: new Date(), feeId: f.id,
+        notes: `${f.label} · simu ${localPhone(mp.phone) ?? mp.phone} (${mp.payerName})${c.channel ? ` · ${c.channel}` : ''} · TeePay ${c.public_reference ?? c.id}${c.fee?.amount_minor ? ` · ada ya TeePay TSh ${fromMinor(c.fee.amount_minor)}` : ''}`,
       }).returning();
-      recorded.push(row);
-      paid = paid.plus(amount);
-    }
-    let fee = f;
-    if (recorded.length) {
+      const paid = D(f.paid).plus(amount);
       const full = paid.gte(f.amount);
-      [fee] = await tx.update(F).set({ paid: fmt2(paid), status: f.status === 'WAIVED' ? 'WAIVED' : full ? 'PAID' : 'PARTIAL', paidAt: full ? new Date() : f.paidAt, updatedAt: new Date() })
+      const [fee] = await tx.update(F).set({ paid: fmt2(paid), status: f.status === 'WAIVED' ? 'WAIVED' : full ? 'PAID' : 'PARTIAL', paidAt: full ? new Date() : f.paidAt, updatedAt: new Date() })
         .where(eq(F.id, f.id)).returning();
-      await sysAudit(tx, 'FEE_PAYMENT_VERIFIED', f.amcosId, f.id, { payments: recorded.map((r) => ({ invoiceNo: r.invoiceNo, amount: r.amount, ref: r.providerRef })), paid: fee.paid, status: fee.status });
+      await sysAudit(tx, 'FEE_PAYMENT_VERIFIED', f.amcosId, f.id, { invoiceNo: row.invoiceNo, amount, ref, paid: fee.paid, status: fee.status });
+      if (fee.kind === 'ENTRANCE' && fee.status === 'PAID') await ensureSeasonFee(tx, fee.amcosId);
     }
-    const collected = remote.collected_minor ?? cn.collectedMinor;
-    const cnPaid = D(collected).gte(cn.amountMinor);
-    const [u] = await tx.update(CN).set({
-      number: remote.number ?? cn.number, collectedMinor: collected, status: cnPaid ? 'PAID' : 'ISSUED', paidAt: cnPaid ? (cn.paidAt ?? new Date()) : null,
-      lastError: null, lastSyncedAt: new Date(),
-    }).where(eq(CN.id, cn.id)).returning();
-    if (fee.kind === 'ENTRANCE' && fee.status === 'PAID') await ensureSeasonFee(tx, fee.amcosId);
-    return { cn: u, recorded };
+    const [u] = await tx.update(MP).set({ status: 'SUCCEEDED', statusDetail: null, channel: c.channel ?? c.method ?? null, paidAt: new Date(), platformPaymentId: row.id, lastError: null, lastSyncedAt: new Date() })
+      .where(eq(MP.id, mp.id)).returning();
+    return { mp: u, recorded: row };
   });
-  clearFeeLock(cn.amcosId);
+  clearFeeLock(mp.amcosId);
   return result;
 }
 
-/** Kazi ya nyuma: ada za msimu mpya + kuhakiki control numbers ambazo webhook haikufika. */
+/** Kazi ya nyuma: ada za msimu mpya + kuhakiki malipo ya simu ambayo webhook haikufika. */
 export async function runFeesSweep() {
   const ids = await db.selectDistinct({ amcosId: F.amcosId }).from(F).where(and(eq(F.kind, 'ENTRANCE'), inArray(F.status, ['PAID', 'WAIVED'])));
   let seasons = 0;
   for (const { amcosId } of ids) if (await db.transaction((tx) => ensureSeasonFee(tx, amcosId))) seasons++;
   let synced = 0, recorded = 0, errors = 0;
   if (teepayConfig().enabled) {
-    const open = await db.select({ id: CN.id }).from(CN)
-      .where(and(inArray(CN.status, ['ISSUING', 'ISSUED']), sql`${CN.createdAt} > now() - interval '120 days'`)).orderBy(asc(CN.lastSyncedAt)).limit(100);
-    for (const c of open) {
-      try { const r = await syncControlNumber(c.id); synced++; recorded += r.recorded.length; } catch { errors++; }
+    const open = await db.select({ id: MP.id }).from(MP)
+      .where(and(inArray(MP.status, OPEN), sql`${MP.createdAt} > now() - interval '3 days'`)).orderBy(asc(MP.lastSyncedAt)).limit(100);
+    for (const m of open) {
+      try { const r = await syncMobilePayment(m.id); synced++; if (r.recorded) recorded++; } catch { errors++; }
     }
   }
   clearFeeLock();
@@ -244,14 +253,16 @@ export async function receiptOf(paymentId: string, amcosId?: string) {
   const paidToDate = before.reduce((t, x) => t.plus(x.amount), D(0));
   const balance = D(f.amount).minus(paidToDate);
   const a = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, p.amcosId!) }))!;
-  const cn = p.controlNumberId ? (await db.select().from(CN).where(eq(CN.id, p.controlNumberId)))[0] : null;
+  const [mp] = await db.select().from(MP).where(eq(MP.platformPaymentId, p.id));
+  const cn = !mp && p.controlNumberId ? (await db.select().from(CN).where(eq(CN.id, p.controlNumberId)))[0] : null;
   const message = f.kind === 'ENTRANCE'
     ? `Ada ya kingilio ya ${tshText(p.amount)} imepokelewa. Karibu CoopLink — utapata huduma kwa mwaka mzima.`
     : balance.lte(0)
       ? `${f.label} imelipwa kikamilifu (${tshText(f.amount)}). Asante — huduma ya CoopLink inaendelea.`
       : `Awamu ya ${f.label.toLowerCase()} ya ${tshText(p.amount)} imepokelewa. Salio ni ${tshText(balance)}, mwisho wa kulipa ni ${f.dueDate}.`;
+  const method = mp ? `Simu ${localPhone(mp.phone) ?? mp.phone} (${mp.payerName})${mp.channel ? ` · ${mp.channel}` : ''}` : cn ? `Control number ${cn.number ?? ''}` : 'TeePay';
   return {
-    receipt: { id: p.id, receiptNo: p.invoiceNo, amount: p.amount, paidAt: p.paidAt, providerRef: p.providerRef?.replace(/^TEEPAY:/, '') ?? null, controlNumber: cn?.number ?? null },
+    receipt: { id: p.id, receiptNo: p.invoiceNo, amount: p.amount, paidAt: p.paidAt, providerRef: p.providerRef?.replace(/^TEEPAY:/, '') ?? null, method },
     fee: { id: f.id, kind: f.kind, label: f.label, amount: f.amount, paidToDate: fmt2(paidToDate), balance: fmt2(balance.gt(0) ? balance : 0), dueDate: f.dueDate },
     amcos: { id: a.id, name: a.name, code: a.code },
     message,
@@ -262,7 +273,7 @@ export async function receiptOf(paymentId: string, amcosId?: string) {
 /** Taarifa za ada za chama kimoja (Meneja / Owner). */
 export async function feesOverview(amcosId: string) {
   const fees = await db.select().from(F).where(eq(F.amcosId, amcosId)).orderBy(asc(F.dueDate), asc(F.createdAt));
-  const cns = fees.length ? await db.select().from(CN).where(eq(CN.amcosId, amcosId)).orderBy(sql`${CN.createdAt} desc`) : [];
+  const mps = fees.length ? await db.select().from(MP).where(eq(MP.amcosId, amcosId)).orderBy(sql`${MP.createdAt} desc`) : [];
   const pays = fees.length ? await db.select().from(P).where(and(eq(P.amcosId, amcosId), sql`${P.feeId} is not null`)).orderBy(sql`${P.paidAt} desc`) : [];
   const t = today();
   return {
@@ -271,7 +282,7 @@ export async function feesOverview(amcosId: string) {
     fees: fees.map((f) => ({
       ...f, outstanding: fmt2(outstandingOf(f).gt(0) ? outstandingOf(f) : 0), overdue: ['UNPAID', 'PARTIAL'].includes(f.status) && f.dueDate < t,
       allowed: f.status === 'UNPAID' || f.status === 'PARTIAL' ? allowedAmounts(f) : [],
-      controlNumbers: cns.filter((c) => c.feeId === f.id).map(({ request: _r, idempotencyKey: _k, ...c }) => ({ ...c, collected: fromMinor(c.collectedMinor) })),
+      mobilePayments: mps.filter((m) => m.feeId === f.id).slice(0, 10).map(({ request: _r, idempotencyKey: _k, ...m }) => ({ ...m, phoneLocal: localPhone(m.phone) ?? m.phone })),
       payments: pays.filter((p) => p.feeId === f.id).map((p) => ({ id: p.id, receiptNo: p.invoiceNo, amount: p.amount, paidAt: p.paidAt, status: p.status })),
     })),
   };

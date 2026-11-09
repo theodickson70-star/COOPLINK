@@ -1,4 +1,4 @@
-// Ada za CoopLink: kingilio (siku 3) + ada ya msimu (awamu 2, mwisho 15/10) kwa control number ya TeePay.
+// Ada za CoopLink: kingilio (siku 3) + ada ya msimu (awamu 2, mwisho 15/10) kwa mitandao ya simu (TeePay).
 // TeePay inaigizwa na seva ndogo ya majaribio (hakuna pesa halisi wala mtandao wa nje).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,8 +20,8 @@ const addDays = (d: string, n: number) => { const x = new Date(d + 'T00:00:00Z')
 const SECRET = 'whsec_test_' + RUN;
 
 // ------------------------- TeePay ya kuigiza -------------------------
-interface MockCn { id: string; number: string | null; amount_minor: string; body: string; key: string; payments: any[]; pending202: boolean }
-const mock = { cns: new Map<string, MockCn>(), byKey: new Map<string, MockCn>(), creates: [] as { key: string; body: string }[], authOk: true };
+interface MockCol { id: string; ref: string; amount_minor: string; body: string; status: string; detail?: string }
+const mock = { cols: new Map<string, MockCol>(), byKey: new Map<string, MockCol>(), creates: [] as { key: string; body: string }[], fail503Once: true };
 let mockServer: http.Server;
 function startMock() {
   mockServer = http.createServer((req, res) => {
@@ -30,44 +30,40 @@ function startMock() {
     req.on('end', () => {
       const send = (status: number, json: unknown) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(json)); };
       if (req.headers.authorization !== 'Bearer tp_test_mock.secret') return send(401, { error: { code: 'invalid_credential', message: 'bad key' } });
-      if (req.method === 'POST' && req.url === '/v1/control-numbers') {
+      if (req.method === 'POST' && req.url === '/v1/collections') {
         const key = String(req.headers['idempotency-key'] ?? '');
         mock.creates.push({ key, body });
+        if (mock.fail503Once) { mock.fail503Once = false; return send(503, { error: { code: 'provider_unavailable', message: 'try later' } }); }
         const prev = mock.byKey.get(key);
         if (prev && prev.body !== body) return send(409, { error: { code: 'idempotency_conflict', message: 'different body' } });
         const j = JSON.parse(body);
-        const cn = prev ?? { id: crypto.randomUUID(), number: null, amount_minor: j.amount_minor, body, key, payments: [], pending202: mock.byKey.size === 0 };
-        mock.byKey.set(key, cn); mock.cns.set(cn.id, cn);
-        if (cn.pending202) { cn.pending202 = false; return send(202, { id: cn.id, object: 'control_number', status: 'pending', number: null }); }
-        cn.number = cn.number ?? '99' + String(Math.floor(Math.random() * 1e10)).padStart(10, '0');
-        return send(201, { id: cn.id, object: 'control_number', status: 'issued', number: cn.number, currency: 'TZS' });
+        if (!j.customer?.email || String(j.customer?.name).split(' ').length < 2) return send(422, { error: { code: 'invalid_request', message: 'invalid', field: 'customer' } });
+        const col = prev ?? { id: crypto.randomUUID(), ref: 'TP' + crypto.randomBytes(4).toString('hex').toUpperCase(), amount_minor: j.money.amount_minor, body, status: 'pending' };
+        mock.byKey.set(key, col); mock.cols.set(col.ref, col);
+        return send(202, { id: col.id, public_reference: col.ref, operation: 'charge', status: col.status, money: { amount_minor: col.amount_minor, currency: 'TZS' } });
       }
-      const m = req.url?.match(/^\/v1\/control-numbers\/([^/]+)$/);
+      const m = req.url?.match(/^\/v1\/collections\/([^/]+)$/);
       if (req.method === 'GET' && m) {
-        const cn = mock.cns.get(decodeURIComponent(m[1]));
-        if (!cn) return send(404, { error: { code: 'not_found', message: 'nf' } });
-        const collected = cn.payments.filter((p) => p.status === 'verified').reduce((t, p) => t + Number(p.amount_minor), 0);
-        return send(200, { id: cn.id, number: cn.number, kind: 'bill', currency: 'TZS', amount_minor: cn.amount_minor, collected_minor: String(collected), remaining_minor: String(Number(cn.amount_minor) - collected), status: 'active', payment_count: cn.payments.length, payments: cn.payments });
+        const col = mock.cols.get(decodeURIComponent(m[1]));
+        if (!col) return send(404, { error: { code: 'not_found', message: 'nf' } });
+        return send(200, { id: col.id, public_reference: col.ref, operation: 'charge', status: col.status, status_detail: col.detail, money: { amount_minor: col.amount_minor, currency: 'TZS' }, fee: { amount_minor: '90000', currency: 'TZS' }, channel: 'MPESA' });
       }
       send(404, { error: { code: 'not_found', message: req.url } });
     });
   }).listen(0);
   return `http://127.0.0.1:${(mockServer.address() as AddressInfo).port}`;
 }
-const pay = (cnTeepayId: string, minor: string, status = 'verified') => {
-  const cn = mock.cns.get(cnTeepayId)!;
-  const p = { id: 'pay_' + crypto.randomUUID().slice(0, 8), status, received_at: new Date().toISOString(), ...(status === 'verified' ? { reference: 'TP-' + RUN + cn.payments.length, amount_minor: minor, fee_minor: '90000', paid_at: new Date().toISOString() } : {}) };
-  cn.payments.push(p);
-  return p;
-};
-async function webhook(cnTeepayId: string, opts: { eventId?: string; badSig?: boolean } = {}) {
+const finish = (ref: string, status: 'succeeded' | 'failed', detail?: string) => { const c = mock.cols.get(ref)!; c.status = status; c.detail = detail; };
+async function webhook(ref: string, opts: { eventId?: string; badSig?: boolean; type?: string } = {}) {
   const eventId = opts.eventId ?? crypto.randomUUID();
-  const raw = JSON.stringify({ id: eventId, type: 'payment.completed', event: 'payment.completed', environment: 'sandbox', data: { status: 'succeeded', source: { type: 'control_number', id: cnTeepayId } } });
+  const type = opts.type ?? 'payment.completed';
+  const raw = JSON.stringify({ id: eventId, type, event: type, environment: 'sandbox', data: { reference: ref, status: type === 'payment.completed' ? 'succeeded' : 'failed' } });
   const ts = String(Math.floor(Date.now() / 1000));
   const sig = 'v1=' + crypto.createHmac('sha256', opts.badSig ? 'whsec_wrong' : SECRET).update(`${ts}.${raw}`).digest('hex');
   const r = await fetch(base + '/api/v1/public/teepay/webhook', { method: 'POST', headers: { 'content-type': 'application/json', 'x-teepay-event-id': eventId, 'x-teepay-timestamp': ts, 'x-teepay-signature': sig }, body: raw });
   return { status: r.status, body: await r.json() as any };
 }
+const PAYER = { phone: '0712345678', name: 'Theo Baruth', email: 'meneja@example.com' };
 
 // ------------------------------ msaada ------------------------------
 async function call(method: string, path: string, token?: string, body?: unknown) {
@@ -136,41 +132,50 @@ test('Kingilio: kinadaiwa chama kikifunguliwa, chama kinafungwa baada ya siku 3,
   b = await billing();
   assert.equal(b.lock?.kind, 'ENTRANCE', 'Meneja anaingia kwenye ukurasa wa malipo');
 
-  // Control number: kiasi kisicho sahihi kinakataliwa
-  assert.equal((await call('POST', `/api/v1/billing/fees/${entrance.id}/control-number`, manager, { amount: '1000' })).status, 400);
-  // TeePay inajibu 202 (namba bado) -> ISSUING; kuhakiki kunarudia kwa Idempotency-Key ILEILE na mwili uleule
-  const c1 = await call('POST', `/api/v1/billing/fees/${entrance.id}/control-number`, manager, { amount: '45000' });
-  assert.equal(c1.status, 201, JSON.stringify(c1.body));
-  assert.equal(c1.body.controlNumber.status, 'ISSUING');
-  assert.equal(c1.body.controlNumber.number, null);
-  assert.equal(c1.body.controlNumber.idempotencyKey, undefined, 'Funguo za ndani hazitoki');
-  const again = await call('POST', `/api/v1/billing/fees/${entrance.id}/control-number`, manager, { amount: '45000' });
-  assert.equal(again.body.controlNumber.id, c1.body.controlNumber.id, 'Control number moja hai kwa ada moja');
-  assert.ok(again.body.controlNumber.number, 'Namba imetolewa');
-  const keys = new Set(mock.creates.map((c) => c.key));
-  assert.equal(keys.size, 1, 'Idempotency-Key haikubadilika');
-  const sent = JSON.parse(mock.creates[0].body);
-  assert.equal(sent.amount_minor, '4500000', 'TSh 45,000 = 4500000 minor units');
-  assert.equal(sent.kind, 'bill');
-  assert.match(sent.customer.phone, /^0[67]\d{8}$/, 'Simu kwa muundo wa ndani kama mfano wa TeePay');
-  assert.equal(sent.customer.email, undefined); assert.equal(sent.payment_mode, undefined);
-  assert.match(sent.description, /^[\x20-\x7E]+$/, 'Maelezo ya herufi za kawaida tu');
-  assert.ok(sent.customer.name.includes(`Ada ${RUN}`));
-  const cn = (await billing()).fees.find((f: any) => f.id === entrance.id).controlNumbers[0];
-  assert.equal(cn.status, 'ISSUED');
+  // Uthibitisho wa taarifa za mlipaji (TeePay Tanzania: jina kamili + email)
+  assert.equal((await call('POST', `/api/v1/billing/fees/${entrance.id}/pay`, manager, { ...PAYER, amount: '1000' })).status, 400, 'Kiasi kisicho sahihi');
+  assert.equal((await call('POST', `/api/v1/billing/fees/${entrance.id}/pay`, manager, { ...PAYER, amount: '45000', name: 'Theo' })).status, 400, 'Jina kamili linahitajika');
+  assert.equal((await call('POST', `/api/v1/billing/fees/${entrance.id}/pay`, manager, { ...PAYER, amount: '45000', email: 'si-email' })).status, 400);
+  assert.equal((await call('POST', `/api/v1/billing/fees/${entrance.id}/pay`, manager, { ...PAYER, amount: '45000', phone: '12345' })).status, 400);
 
-  // Malipo yanayosubiri uthibitisho SI malipo
-  pay(cn.teepayId, '4500000', 'pending_verification');
-  assert.equal((await webhook(cn.teepayId)).status, 200);
-  assert.equal((await billing()).lock?.kind, 'ENTRANCE', 'Bado imefungwa: TeePay haijathibitisha');
+  // TeePay haipatikani (503) -> SENDING; kuhakiki kunarudia kwa Idempotency-Key ILEILE na mwili uleule
+  const p1 = await call('POST', `/api/v1/billing/fees/${entrance.id}/pay`, manager, { ...PAYER, amount: '45000' });
+  assert.equal(p1.status, 201, JSON.stringify(p1.body));
+  assert.equal(p1.body.payment.status, 'SENDING');
+  assert.equal(p1.body.payment.idempotencyKey, undefined, 'Funguo za ndani hazitoki');
+  const s1 = await call('POST', `/api/v1/billing/payments/${p1.body.payment.id}/sync`, manager, {});
+  assert.equal(s1.body.status, 'PENDING');
+  assert.equal(new Set(mock.creates.map((c) => c.key)).size, 1, 'Idempotency-Key haikubadilika');
+  const sent = JSON.parse(mock.creates[0].body);
+  assert.deepEqual(sent.money, { amount_minor: '4500000', currency: 'TZS' }, 'TSh 45,000 = 4500000 minor units');
+  assert.equal(sent.customer.phone, '+255712345678'); assert.equal(sent.customer.country, 'TZ');
+  assert.equal(sent.customer.name, 'Theo Baruth'); assert.equal(sent.customer.email, 'meneja@example.com');
+  // Ombi likiwa wazi, jingine haliruhusiwi (lisilipwe mara mbili)
+  assert.equal((await call('POST', `/api/v1/billing/fees/${entrance.id}/pay`, manager, { ...PAYER, amount: '45000' })).status, 409);
+
+  // Mteja ameghairi kwenye simu -> FAILED, bado imefungwa, anaweza kujaribu tena
+  let ov = await billing();
+  const ref1 = ov.fees.find((f: any) => f.id === entrance.id).mobilePayments[0].reference;
+  finish(ref1, 'failed', 'cancelled');
+  assert.equal((await webhook(ref1, { type: 'payment.failed' })).status, 200);
+  ov = await billing();
+  assert.equal(ov.fees.find((f: any) => f.id === entrance.id).mobilePayments[0].status, 'FAILED');
+  assert.equal(ov.fees.find((f: any) => f.id === entrance.id).mobilePayments[0].statusDetail, 'cancelled');
+  assert.equal(ov.lock?.kind, 'ENTRANCE');
+
+  const p2 = await call('POST', `/api/v1/billing/fees/${entrance.id}/pay`, manager, { ...PAYER, amount: '45000' });
+  assert.equal(p2.body.payment.status, 'PENDING');
+  const ref2 = p2.body.payment.reference;
+  // Bado inasubiri PIN -> hakuna kilichorekodiwa
+  assert.equal((await call('POST', `/api/v1/billing/payments/${p2.body.payment.id}/sync`, manager, {})).body.recorded, null);
 
   // Saini mbaya inakataliwa
-  pay(cn.teepayId, '4500000');
-  assert.equal((await webhook(cn.teepayId, { badSig: true })).status, 401);
+  finish(ref2, 'succeeded');
+  assert.equal((await webhook(ref2, { badSig: true })).status, 401);
   assert.equal((await billing()).fees.find((f: any) => f.id === entrance.id).status, 'UNPAID');
 
   const ev = crypto.randomUUID();
-  assert.equal((await webhook(cn.teepayId, { eventId: ev })).status, 200);
+  assert.equal((await webhook(ref2, { eventId: ev })).status, 200);
   b = await billing();
   const paidFee = b.fees.find((f: any) => f.id === entrance.id);
   assert.equal(paidFee.status, 'PAID'); assert.equal(paidFee.paid, '45000.00');
@@ -179,8 +184,9 @@ test('Kingilio: kinadaiwa chama kikifunguliwa, chama kinafungwa baada ya siku 3,
   assert.equal((await login(clerkPhone, 'Staff12345')).status, 200, 'Wafanyakazi wanaingia tena');
 
   // Tukio lilelile / kuhakiki tena hakurekodi mara mbili
-  assert.equal((await webhook(cn.teepayId, { eventId: ev })).body.duplicate, true);
-  await call('POST', `/api/v1/billing/control-numbers/${cn.id}/sync`, manager, {});
+  assert.equal((await webhook(ref2, { eventId: ev })).body.duplicate, true);
+  await webhook(ref2);
+  await call('POST', `/api/v1/billing/payments/${p2.body.payment.id}/sync`, manager, {});
   b = await billing();
   assert.equal(b.fees.find((f: any) => f.id === entrance.id).payments.length, 1, 'Malipo yamerekodiwa mara moja');
 
@@ -189,6 +195,7 @@ test('Kingilio: kinadaiwa chama kikifunguliwa, chama kinafungwa baada ya siku 3,
   const rc = await call('GET', `/api/v1/billing/receipts/${rid}`, manager);
   assert.equal(rc.status, 200);
   assert.match(rc.body.message, /imepokelewa/); assert.match(rc.body.message, /mwaka mzima/);
+  assert.match(rc.body.receipt.method, /0712345678/);
   assert.match(rc.body.receipt.receiptNo, /^CL-INV-/);
   // Mapato ya kampuni (Owner) — kumbukumbu ileile ya malipo ya jukwaa
   const od = await call('GET', `/api/v1/owner/amcos/${amcosId}`, owner);
@@ -203,13 +210,13 @@ test('Ada ya msimu: 700,000 kwa awamu mbili sawa, mwisho 15/10; chama kinafungwa
   assert.match(season.dueDate, /-10-15$/);
   assert.ok(season.dueDate >= today);
   assert.deepEqual(season.allowed, ['350000.00', '700000.00'], 'Awamu ya nusu au yote');
-  assert.equal((await call('POST', `/api/v1/billing/fees/${season.id}/control-number`, manager, { amount: '200000' })).status, 400);
+  assert.equal((await call('POST', `/api/v1/billing/fees/${season.id}/pay`, manager, { ...PAYER, amount: '200000' })).status, 400);
 
-  const c = await call('POST', `/api/v1/billing/fees/${season.id}/control-number`, manager, { amount: '350000' });
-  assert.equal(c.status, 201); assert.equal(c.body.controlNumber.status, 'ISSUED');
-  pay(c.body.controlNumber.teepayId, '35000000');
-  const s = await call('POST', `/api/v1/billing/control-numbers/${c.body.controlNumber.id}/sync`, manager, {});
-  assert.equal(s.status, 200); assert.equal(s.body.recorded.length, 1); assert.equal(s.body.status, 'PAID');
+  const c = await call('POST', `/api/v1/billing/fees/${season.id}/pay`, manager, { ...PAYER, amount: '350000' });
+  assert.equal(c.status, 201); assert.equal(c.body.payment.status, 'PENDING');
+  finish(c.body.payment.reference, 'succeeded');
+  const s = await call('POST', `/api/v1/billing/payments/${c.body.payment.id}/sync`, manager, {});
+  assert.equal(s.status, 200); assert.ok(s.body.recorded); assert.equal(s.body.status, 'SUCCEEDED');
   b = await billing();
   let f = b.fees.find((x: any) => x.id === season.id);
   assert.equal(f.status, 'PARTIAL'); assert.equal(f.outstanding, '350000.00');
@@ -222,17 +229,17 @@ test('Ada ya msimu: 700,000 kwa awamu mbili sawa, mwisho 15/10; chama kinafungwa
   assert.equal((await call('GET', '/api/v1/members', manager)).status, 402);
   assert.equal((await billing()).lock?.kind, 'SEASON');
 
-  const c2 = await call('POST', `/api/v1/billing/fees/${season.id}/control-number`, manager, { amount: '350000' });
+  const c2 = await call('POST', `/api/v1/billing/fees/${season.id}/pay`, manager, { ...PAYER, amount: '350000' });
   assert.equal(c2.status, 201);
-  pay(c2.body.controlNumber.teepayId, '35000000');
-  assert.equal((await webhook(c2.body.controlNumber.teepayId)).status, 200);
+  finish(c2.body.payment.reference, 'succeeded');
+  assert.equal((await webhook(c2.body.payment.reference)).status, 200);
   b = await billing();
   f = b.fees.find((x: any) => x.id === season.id);
   assert.equal(f.status, 'PAID'); assert.equal(b.lock, null);
   assert.equal((await call('GET', '/api/v1/members', manager)).status, 200);
   const r2 = await call('GET', `/api/v1/billing/receipts/${f.payments[0].id}`, manager);
   assert.match(r2.body.message, /imelipwa kikamilifu/);
-  assert.equal((await call('POST', `/api/v1/billing/fees/${season.id}/control-number`, manager, { amount: '350000' })).status, 409, 'Imelipwa tayari');
+  assert.equal((await call('POST', `/api/v1/billing/fees/${season.id}/pay`, manager, { ...PAYER, amount: '350000' })).status, 409, 'Imelipwa tayari');
 });
 
 test('Owner: bei, vyama vya zamani (dai au samehe), na bila TeePay hakuna chama kinachofungwa', async () => {

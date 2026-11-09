@@ -1,23 +1,24 @@
 // =====================================================================
-//  ADA YA COOPLINK (Meneja): kingilio + ada ya msimu kwa control number ya TeePay.
+//  ADA YA COOPLINK (Meneja): kingilio + ada ya msimu kwa mitandao ya simu (TeePay).
 //  Malipo yakithibitishwa na TeePay chama kinafunguka papo hapo na risiti inatolewa.
 // =====================================================================
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
-import { date, dateTime, tsh } from '../lib/format';
+import { date, dateTime, phone, tsh } from '../lib/format';
+import { useAuth } from '../lib/auth';
 import { amountInWords } from '../lib/words';
-import { Alert, Badge, Button, Empty, Loading, PageHead } from '../components/ui';
+import { Alert, Badge, Button, Empty, Loading, PageHead, TextField } from '../components/ui';
 import { Section } from '../components/owner-ui';
 import { LogoMark } from '../components/Logo';
 import { PrintButton } from './acc-common';
 
-interface Cn { id: string; amount: string; number: string | null; status: 'ISSUING' | 'ISSUED' | 'PAID' | 'FAILED'; collected: string; lastError: string | null; createdAt: string }
+interface MobilePay { id: string; amount: string; phoneLocal: string; payerName: string; reference: string | null; status: 'SENDING' | 'PENDING' | 'SUCCEEDED' | 'FAILED'; statusDetail: string | null; lastError: string | null; createdAt: string; platformPaymentId: string | null }
 interface Fee {
   id: string; kind: 'ENTRANCE' | 'SEASON'; label: string; amount: string; paid: string; outstanding: string; installments: number;
   dueDate: string; status: 'UNPAID' | 'PARTIAL' | 'PAID' | 'WAIVED'; overdue: boolean; allowed: string[]; waivedReason: string | null;
-  controlNumbers: Cn[]; payments: { id: string; receiptNo: string; amount: string; paidAt: string }[];
+  mobilePayments: MobilePay[]; payments: { id: string; receiptNo: string; amount: string; paidAt: string }[];
 }
 export interface BillingData {
   teepayEnabled: boolean;
@@ -31,13 +32,6 @@ const MONTHS = ['', 'Januari', 'Februari', 'Machi', 'Aprili', 'Mei', 'Juni', 'Ju
 export function Billing() {
   const { data, reload, error } = useFetch<BillingData>('/billing');
   const [ok, setOk] = useState<string | null>(null);
-  const active = data?.fees.some((f) => f.controlNumbers.some((c) => c.status === 'ISSUING' || c.status === 'ISSUED'));
-  // Control number ikiwa hai, angalia kila sekunde 15 — webhook ya TeePay ikifika, chama kinafunguka bila kubonyeza chochote
-  useEffect(() => {
-    if (!active) return;
-    const t = setInterval(reload, 15_000);
-    return () => clearInterval(t);
-  }, [active, reload]);
   if (error) return <Alert>{error}</Alert>;
   if (!data) return <Loading />;
   const c = data.config;
@@ -45,15 +39,15 @@ export function Billing() {
   const done = data.fees.filter((f) => f.status === 'PAID' || f.status === 'WAIVED');
   return (
     <>
-      <PageHead title="Ada ya CoopLink" sub="Malipo ya huduma ya mfumo wa CoopLink kwa control number. Malipo yakithibitishwa, unapata risiti papo hapo." />
+      <PageHead title="Ada ya CoopLink" sub="Malipo ya huduma ya mfumo wa CoopLink kwa simu (M-Pesa, Airtel Money, Mixx by Yas, HaloPesa). Malipo yakithibitishwa, unapata risiti papo hapo." />
       <Alert kind="ok">{ok}</Alert>
       {data.lock && (
         <div className="lock-card">
           <strong>Chama kimefungwa kwa muda</strong>
-          <p>{data.lock.label} ({tsh(data.lock.outstanding)}) haijalipwa tangu {date(data.lock.dueDate)}. Wafanyakazi wengine hawawezi kuingia kwenye mfumo mpaka ilipwe. Lipa kwa control number hapa chini — mfumo utafunguka papo hapo malipo yakithibitishwa.</p>
+          <p>{data.lock.label} ({tsh(data.lock.outstanding)}) haijalipwa tangu {date(data.lock.dueDate)}. Wafanyakazi wengine hawawezi kuingia kwenye mfumo mpaka ilipwe. Lipa kwa simu hapa chini — mfumo utafunguka papo hapo malipo yakithibitishwa.</p>
         </div>
       )}
-      {!data.teepayEnabled && <Alert kind="warn">Malipo kwa control number bado hayajawashwa na CoopLink. Wasiliana na CoopLink.</Alert>}
+      {!data.teepayEnabled && <Alert kind="warn">Malipo kwa simu bado hayajawashwa na CoopLink. Wasiliana na CoopLink.</Alert>}
       {open.length === 0 && done.length > 0 && !data.lock && <Alert kind="ok">Hakuna ada inayodaiwa kwa sasa. Asante!</Alert>}
       {data.fees.length === 0 && <Empty>Chama hiki hakina ada inayodaiwa kwa sasa.</Empty>}
       <div className="stack" style={{ gap: 16 }}>
@@ -66,25 +60,46 @@ export function Billing() {
           <li><strong>Ada ya kingilio — {tsh(c.entranceFee)}</strong>: inalipwa mara moja, ndani ya siku {c.entranceDays} baada ya akaunti ya chama kufunguliwa.</li>
           <li><strong>Ada ya msimu — {tsh(c.seasonFee)}</strong> kwa kila msimu wa tumbaku, kwa awamu {c.seasonInstallments} ({tsh(c.seasonFee / c.seasonInstallments)} kila moja). Mwisho wa kulipa kwa vyama vyote ni tarehe {c.deadlineDay} {MONTHS[c.deadlineMonth]} kila mwaka.</li>
           <li>Ada isipolipwa kufikia tarehe yake, chama kinafungwa mpaka ilipwe. Meneja anaendelea kuingia ili alipe.</li>
-          <li>Lipa kwa control number tu: M-Pesa, Airtel Money, Mixx by Yas, HaloPesa au benki. Kiasi kiwe kamili kama kilivyoandikwa.</li>
+          <li>Malipo ni kwa simu: weka namba, kisha thibitisha kwa PIN ombi litakalokuja kwenye simu hiyo (M-Pesa, Airtel Money, Mixx by Yas, HaloPesa).</li>
         </ul>
       </Section>
     </>
   );
 }
 
+const DETAIL: Record<string, string> = { cancelled: 'Ombi limeghairiwa kwenye simu', expired: 'Muda wa kuweka PIN umeisha' };
+
 function FeeCard({ f, canPay, onChange }: { f: Fee; canPay: boolean; onChange: (msg?: string) => void }) {
+  const { user } = useAuth();
   const act = useAction();
-  const live = f.controlNumbers.find((c) => c.status === 'ISSUING' || c.status === 'ISSUED');
-  const failed = !live ? f.controlNumbers.find((c) => c.status === 'FAILED') : undefined;
   const inst = Number(f.amount) / f.installments;
-  const create = async (amount: string) => {
-    const r = await act.run(() => api<{ controlNumber: Cn }>(`/billing/fees/${f.id}/control-number`, { method: 'POST', body: { amount } }));
-    if (r) onChange(r.controlNumber.number ? `Control number ${r.controlNumber.number} imetengenezwa. Lipa ${tsh(r.controlNumber.amount)}.` : 'Ombi limetumwa TeePay — namba itaonekana baada ya sekunde chache.');
-  };
-  const sync = async (id: string) => {
-    const r = await act.run(() => api<{ recorded: { receiptNo: string; amount: string }[]; status: string; number: string | null }>(`/billing/control-numbers/${id}/sync`, { method: 'POST', body: {} }));
-    if (r) onChange(r.recorded.length ? `Malipo ${r.recorded.map((x) => `${x.receiptNo} (${tsh(x.amount)})`).join(', ')} yamethibitishwa.` : r.number ? 'Bado hakuna malipo yaliyothibitishwa kwenye namba hii. Ukishalipa, subiri kidogo kisha hakiki tena.' : 'TeePay bado inatoa namba. Jaribu tena baada ya muda mfupi.');
+  const open = f.mobilePayments.find((m) => m.status === 'SENDING' || m.status === 'PENDING');
+  const last = f.mobilePayments[0];
+  const [amount, setAmount] = useState(f.allowed[0] ?? '');
+  const [payer, setPayer] = useState({ phone: user?.phone ? phone(user.phone) : '', name: user?.fullName ?? '', email: user?.email ?? '' });
+  const [waited, setWaited] = useState(0);
+  useEffect(() => { if (!f.allowed.includes(amount)) setAmount(f.allowed[f.allowed.length - 1] ?? ''); }, [f.allowed.join()]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Ombi likiwa wazi: uliza TeePay kila sekunde 5 (webhook nayo inafungua chama yenyewe)
+  useEffect(() => {
+    if (!open) { setWaited(0); return; }
+    let stop = false;
+    const tick = async () => {
+      try {
+        const r = await api<{ status: string; recorded: { receiptNo: string; amount: string } | null }>(`/billing/payments/${open.id}/sync`, { method: 'POST', body: {} });
+        if (stop) return;
+        if (r.recorded) onChange(`Malipo ${r.recorded.receiptNo} (${tsh(r.recorded.amount)}) yamethibitishwa. Asante!`);
+        else if (r.status !== 'PENDING' && r.status !== 'SENDING') onChange();
+      } catch { /* jaribu tena */ }
+      setWaited((w) => w + 5);
+    };
+    const t = setInterval(tick, 5000);
+    return () => { stop = true; clearInterval(t); };
+  }, [open?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pay = async () => {
+    const r = await act.run(() => api<{ payment: MobilePay }>(`/billing/fees/${f.id}/pay`, { method: 'POST', body: { amount, ...payer } }));
+    if (r) onChange(r.payment.status === 'FAILED' ? undefined : `Ombi la malipo la ${tsh(r.payment.amount)} limetumwa kwa ${r.payment.phoneLocal}. Thibitisha kwa PIN kwenye simu.`);
   };
   return (
     <section className={`card fee-card ${f.overdue ? 'fee-overdue' : ''}`}>
@@ -104,31 +119,36 @@ function FeeCard({ f, canPay, onChange }: { f: Fee; canPay: boolean; onChange: (
       {f.status === 'WAIVED' && f.waivedReason && <p className="muted" style={{ margin: 0 }}>Imesamehewa na CoopLink: {f.waivedReason}</p>}
       <Alert>{act.error}</Alert>
 
-      {live && (
-        <div className="cn-box">
-          <div className="cn-label">Control number</div>
-          <div className="cn-number">{live.number ? live.number.replace(/(\d{4})(?=\d)/g, '$1 ') : 'Inatolewa…'}</div>
-          <div className="cn-amount">Lipa <strong>{tsh(live.amount)}</strong> kamili</div>
-          <p className="muted" style={{ margin: '6px 0 12px' }}>
-            {live.number ? 'Lipa kupitia M-Pesa, Airtel Money, Mixx by Yas, HaloPesa au benki ukitumia namba hii. Malipo yakithibitishwa, risiti inatokea hapa na chama kinafunguka papo hapo.' : 'TeePay bado inatoa namba. Bonyeza "Hakiki" baada ya sekunde chache.'}
+      {open && (
+        <div className="cn-box pay-wait">
+          <div className="cn-label">Inasubiri uthibitisho kwenye simu</div>
+          <div className="cn-number">{open.phoneLocal}</div>
+          <div className="cn-amount">Ombi la kulipa <strong>{tsh(open.amount)}</strong> limetumwa</div>
+          <p className="muted" style={{ margin: '6px 0 0' }}>
+            {open.status === 'SENDING' ? 'Tunatuma ombi kwa mtandao wa simu…' : 'Fungua simu yako, weka PIN kuthibitisha malipo. Ukurasa huu utajisasisha wenyewe malipo yakithibitishwa.'}
+            {waited >= 120 && ' Kama ombi halijafika kwenye simu, subiri dakika chache kisha jaribu tena.'}
           </p>
-          <div className="actions">
-            {live.number && <Button variant="secondary" onClick={() => void navigator.clipboard?.writeText(live.number!)}>Nakili namba</Button>}
-            <Button busy={act.busy} onClick={() => sync(live.id)}>{live.number ? 'Nimelipa — hakiki malipo' : 'Hakiki'}</Button>
-          </div>
-          {Number(live.collected) > 0 && <p className="muted" style={{ margin: '8px 0 0' }}>Imepokelewa kwenye namba hii: {tsh(live.collected)}</p>}
+          {open.lastError && <p className="text-bad" style={{ margin: '6px 0 0', fontSize: 13 }}>{open.lastError}</p>}
         </div>
       )}
-      {!live && canPay && f.allowed.length > 0 && (
-        <div className="stack" style={{ gap: 8 }}>
-          {failed?.lastError && <Alert kind="warn">Control number iliyopita haikutolewa: {failed.lastError}</Alert>}
-          <div className="actions">
-            {f.allowed.map((a) => (
-              <Button key={a} variant={Number(a) < Number(f.outstanding) ? 'secondary' : 'primary'} busy={act.busy} onClick={() => create(a)}>
-                {f.kind === 'ENTRANCE' ? `Tengeneza control number · ${tsh(a)}` : Number(a) < Number(f.outstanding) ? `Lipa awamu moja · ${tsh(a)}` : f.status === 'PARTIAL' ? `Lipa awamu ya mwisho · ${tsh(a)}` : `Lipa yote · ${tsh(a)}`}
-              </Button>
-            ))}
+      {!open && canPay && f.allowed.length > 0 && (
+        <div className="pay-form">
+          {last?.status === 'FAILED' && <Alert kind="warn">Malipo ya mwisho ({tsh(last.amount)} · {last.phoneLocal}) hayakufanikiwa: {last.statusDetail ? DETAIL[last.statusDetail] ?? last.statusDetail : last.lastError ?? 'yamekataliwa'}. Jaribu tena.</Alert>}
+          {f.allowed.length > 1 && (
+            <div className="choice-2">
+              {f.allowed.map((a) => (
+                <button key={a} type="button" className={amount === a ? 'on' : ''} onClick={() => setAmount(a)}>
+                  <strong>{Number(a) < Number(f.outstanding) ? 'Awamu moja' : f.status === 'PARTIAL' ? 'Awamu ya mwisho' : 'Yote'}</strong><span>{tsh(a)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="form-grid">
+            <TextField label="Namba ya simu itakayolipa *" value={payer.phone} onChange={(v) => setPayer({ ...payer, phone: v })} placeholder="07xxxxxxxx" help="Ombi la PIN litakuja kwenye simu hii" />
+            <TextField label="Jina kamili la mwenye namba *" value={payer.name} onChange={(v) => setPayer({ ...payer, name: v })} help="La kwanza na la mwisho" />
+            <TextField label="Email *" type="email" value={payer.email} onChange={(v) => setPayer({ ...payer, email: v })} help="TeePay wanaihitaji kwa malipo ya Tanzania" />
           </div>
+          <div className="actions"><Button busy={act.busy} disabled={!amount || !payer.phone || !payer.name || !payer.email} onClick={pay}>Lipa {amount ? tsh(amount) : ''} kwa simu</Button></div>
         </div>
       )}
 
@@ -146,7 +166,7 @@ function FeeCard({ f, canPay, onChange }: { f: Fee; canPay: boolean; onChange: (
 }
 
 interface Receipt {
-  receipt: { receiptNo: string; amount: string; paidAt: string; providerRef: string | null; controlNumber: string | null };
+  receipt: { receiptNo: string; amount: string; paidAt: string; providerRef: string | null; method: string };
   fee: { kind: string; label: string; amount: string; paidToDate: string; balance: string; dueDate: string };
   amcos: { name: string; code: string };
   message: string;
@@ -185,7 +205,7 @@ export function BillingReceipt({ base = '/billing' }: { base?: string }) {
           <dt>Imepokelewa kutoka</dt><dd><strong>{data.amcos.name}</strong> ({data.amcos.code})</dd>
           <dt>Kwa ajili ya</dt><dd>{f.label}</dd>
           <dt>Kiasi</dt><dd><strong>{tsh(r.amount)}</strong><div className="muted" style={{ fontSize: 13 }}>{amountInWords(r.amount)}</div></dd>
-          <dt>Njia ya malipo</dt><dd>Control number {r.controlNumber ?? '—'} (TeePay){r.providerRef ? ` · kumb. ${r.providerRef}` : ''}</dd>
+          <dt>Njia ya malipo</dt><dd>{r.method} (TeePay){r.providerRef ? ` · kumb. ${r.providerRef}` : ''}</dd>
           {f.kind === 'SEASON' && <><dt>Ada ya msimu</dt><dd>{tsh(f.amount)} · imelipwa {tsh(f.paidToDate)} · salio {tsh(f.balance)}{Number(f.balance) > 0 ? ` (mwisho ${date(f.dueDate)})` : ''}</dd></>}
         </dl>
         <p className="muted" style={{ fontSize: 12, marginTop: 24 }}>Risiti hii imetolewa na mfumo wa {b.productName} baada ya malipo kuthibitishwa na TeePay. Haihitaji sahihi.</p>

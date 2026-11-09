@@ -12,7 +12,7 @@ const schema = z.object({
   JWT_SECRET: z.string().min(32, 'JWT_SECRET iwe na herufi 32 au zaidi'),
   JWT_EXPIRES_IN: z.string().default('12h'),
   CORS_ORIGINS: z.string().default('*'), // mf. https://cooplink.co.tz,http://localhost:5173
-  // TeePay (control numbers za ada za CoopLink). Bila hizi, malipo kwa control number hayajawashwa na hakuna chama kinachofungwa.
+  // TeePay (malipo ya ada za CoopLink kwa simu). Bila hizi, malipo ya ada hayajawashwa na hakuna chama kinachofungwa.
   TEEPAY_API_KEY: blankAsUndefined(z.string().regex(/^tp_(live|test)_/, 'TEEPAY_API_KEY ianze na tp_live_ au tp_test_').optional()),
   TEEPAY_WEBHOOK_SECRET: blankAsUndefined(z.string().startsWith('whsec_', 'TEEPAY_WEBHOOK_SECRET ianze na whsec_').optional()),
   TEEPAY_BASE_URL: z.string().url().default('https://api.teepay.me'),

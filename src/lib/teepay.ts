@@ -1,5 +1,5 @@
 // =====================================================================
-//  TeePay (https://docs.teepay.me) — control numbers za ada za CoopLink.
+//  TeePay (https://docs.teepay.me) — malipo ya ada za CoopLink kwa mitandao ya simu (mobile money push).
 //  Siri (API key na webhook secret) zinasomwa kwenye environment TU; hazichapishwi kwenye logs.
 //  Kiasi: TeePay inatumia "minor units" (TZS: 100 = TSh 1.00).
 // =====================================================================
@@ -21,7 +21,7 @@ export class TeePayError extends Error {
 
 async function request<T>(method: 'GET' | 'POST', path: string, body?: unknown, idempotencyKey?: string): Promise<{ status: number; data: T }> {
   const cfg = teepayConfig();
-  if (!cfg.apiKey) throw new TeePayError(503, 'not_configured', 'Malipo kwa control number hayajawashwa (TEEPAY_API_KEY haipo)');
+  if (!cfg.apiKey) throw new TeePayError(503, 'not_configured', 'Malipo kwa simu hayajawashwa (TEEPAY_API_KEY haipo)');
   let r: Response;
   try {
     r = await fetch(cfg.baseUrl + path, {
@@ -52,25 +52,6 @@ async function request<T>(method: 'GET' | 'POST', path: string, body?: unknown, 
   return { status: r.status, data: json as T };
 }
 
-export interface CnCreate {
-  kind: 'bill' | 'customer';
-  customer: { name: string; phone?: string; email?: string };
-  description?: string;
-  amount_minor?: string;
-  payment_mode?: 'EXACT' | 'ALLOW_PARTIAL_AND_OVER_PAYMENT';
-}
-export interface CnPayment { id?: string; status: string; reference?: string; amount_minor?: string; fee_minor?: string; paid_at?: string; received_at?: string }
-export interface CnResource {
-  id: string; number: string | null; status?: string; currency?: string;
-  amount_minor?: string; collected_minor?: string; remaining_minor?: string; payment_count?: number;
-  payments?: CnPayment[];
-}
-
-/** 201 = namba imetolewa; 202 = bado (rudia kwa Idempotency-Key ileile, SI mpya). */
-export const createControlNumber = (body: CnCreate, idempotencyKey: string) =>
-  request<CnResource>('POST', '/v1/control-numbers', body, idempotencyKey);
-export const getControlNumber = (id: string) => request<CnResource>('GET', `/v1/control-numbers/${encodeURIComponent(id)}`);
-
 export const toMinor = (amount: string | number) => D(amount).times(100).toFixed(0);
 export const fromMinor = (minor: string | number) => fmt2(D(minor).dividedBy(100));
 
@@ -84,3 +65,22 @@ export function verifyWebhookSignature(rawBody: Buffer, timestamp: string | unde
   const a = Buffer.from(expected), b = Buffer.from(signature.trim().toLowerCase());
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
+
+// ---------------------------------------------------------------------
+//  Mobile money push (collections): mteja anapokea ombi la PIN kwenye simu yake.
+//  Tanzania: jina kamili (la kwanza na la mwisho) + email halali vinahitajika.
+// ---------------------------------------------------------------------
+export interface CollectionCreate {
+  money: { amount_minor: string; currency: 'TZS' };
+  customer: { country: 'TZ'; phone: string; name: string; email: string };
+  description?: string;
+}
+export interface Collection {
+  id: string; public_reference?: string; status: 'created' | 'pending' | 'processing' | 'succeeded' | 'failed' | 'reversed' | 'refunded';
+  status_detail?: string; money?: { amount_minor: string; currency: string }; fee?: { amount_minor: string };
+  channel?: string; method?: string; customer_phone?: string;
+}
+/** 202 = ombi limekubaliwa (SI malipo). Rudia kwa Idempotency-Key ileile tu — ombi la PIN halitumwi mara mbili. */
+export const createCollection = (body: CollectionCreate, idempotencyKey: string) =>
+  request<Collection>('POST', '/v1/collections', body, idempotencyKey);
+export const getCollection = (reference: string) => request<Collection>('GET', `/v1/collections/${encodeURIComponent(reference)}`);

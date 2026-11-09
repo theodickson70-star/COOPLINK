@@ -631,3 +631,6 @@ button.card.kpi:hover { border-color: var(--green); }
 .fee-banner.bad { background: var(--danger-bg); border-color: var(--danger); }
 .lock-screen { max-width: 520px; margin: 10vh auto; text-align: center; padding: 28px; }
 .lock-screen h2 { margin-bottom: 10px; }
+.pay-form { display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
+.pay-form .choice-2 button { display: flex; flex-direction: column; gap: 2px; }
+.pay-wait .cn-number { letter-spacing: .06em; }

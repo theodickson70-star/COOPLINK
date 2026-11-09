@@ -836,6 +836,31 @@ export const platformControlNumbers = pgTable('platform_control_numbers', {
   createdAt: createdAt(),
 }, (t) => [index().on(t.feeId), index().on(t.status)]);
 
+// Malipo ya ada kwa mitandao ya simu (TeePay mobile money push): Meneja anaweka namba, anapokea ombi la PIN kwenye simu
+export const mobilePaymentStatusEnum = pgEnum('mobile_payment_status', ['SENDING', 'PENDING', 'SUCCEEDED', 'FAILED']);
+export const platformMobilePayments = pgTable('platform_mobile_payments', {
+  id: id(),
+  feeId: uuid().notNull().references(() => platformFees.id),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  amount: money().notNull(),
+  amountMinor: text().notNull(),
+  phone: text().notNull(),
+  payerName: text().notNull(),
+  idempotencyKey: text().notNull().unique(),
+  request: jsonb().notNull(),         // ombi lililotumwa TeePay — linarudiwa NENO KWA NENO na Idempotency-Key ileile
+  teepayId: text(),
+  reference: text().unique(),         // public_reference ya TeePay (webhook: data.reference)
+  status: mobilePaymentStatusEnum().notNull().default('SENDING'),
+  statusDetail: text(),               // cancelled / expired
+  channel: text(),
+  lastError: text(),
+  lastSyncedAt: timestamp({ withTimezone: true }),
+  paidAt: timestamp({ withTimezone: true }),
+  platformPaymentId: uuid(),
+  createdById: uuid(),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.feeId), index().on(t.status)]);
+
 // Kila tukio la webhook ya TeePay linaandikwa mara moja tu (X-TeePay-Event-ID)
 export const teepayEvents = pgTable('teepay_events', {
   id: text().primaryKey(),
