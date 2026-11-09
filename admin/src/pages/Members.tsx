@@ -29,6 +29,7 @@ export function Members() {
   return (
     <>
       <PageHead title="Wanachama" sub="Orodha ya wanachama wote wa chama">
+        {may('members.approve') && <Link className="btn btn-secondary" to="/members/import">Pakia daftari (CSV)</Link>}
         {may('members.write') && <Link className="btn btn-primary" to="/members/new">+ Sajili mwanachama</Link>}
       </PageHead>
       <section className="card">

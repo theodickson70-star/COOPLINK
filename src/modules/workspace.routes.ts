@@ -135,3 +135,38 @@ workspaceRouter.get('/summary', ah(async (req, res) => {
   }
   res.json(out);
 }));
+
+// ---------------------------------------------------------------------
+//  HATUA ZA KUANZA KUTUMIA COOPLINK (Meneja): kilichokamilika na kilichobaki — kinahesabiwa kutoka data halisi
+// ---------------------------------------------------------------------
+workspaceRouter.get('/setup', ah(async (req, res) => {
+  const amcosId = req.auth!.amcosId;
+  if (!amcosId || req.auth!.role !== 'AMCOS_ADMIN') return res.json({ steps: [] });
+  const S = schema;
+  const season = await currentSeason();
+  const n = async (q: Promise<{ n: number }[]>) => Number((await q)[0]?.n ?? 0);
+  const cnt = sql<number>`count(*)::int`;
+  const [staff, members, accounts, items, priced, rules, opening, est, fee] = await Promise.all([
+    db.select({ role: S.users.role }).from(S.users).where(and(eq(S.users.amcosId, amcosId), eq(S.users.isActive, true))),
+    n(db.select({ n: cnt }).from(S.members).where(eq(S.members.amcosId, amcosId))),
+    n(db.select({ n: cnt }).from(S.financeAccounts).where(and(eq(S.financeAccounts.amcosId, amcosId), eq(S.financeAccounts.isActive, true)))),
+    n(db.select({ n: cnt }).from(S.inputItems).where(and(eq(S.inputItems.amcosId, amcosId), eq(S.inputItems.isActive, true)))),
+    season ? n(db.select({ n: sql<number>`count(distinct ${S.inputPrices.inputItemId})::int` }).from(S.inputPrices).where(and(eq(S.inputPrices.amcosId, amcosId), eq(S.inputPrices.seasonId, season.id)))) : Promise.resolve(0),
+    season ? n(db.select({ n: cnt }).from(S.deductionRules).where(and(eq(S.deductionRules.amcosId, amcosId), eq(S.deductionRules.seasonId, season.id)))) : Promise.resolve(0),
+    n(db.select({ n: cnt }).from(S.journalEntries).where(and(eq(S.journalEntries.amcosId, amcosId), eq(S.journalEntries.source, 'OPENING_BALANCE')))),
+    season ? n(db.select({ n: cnt }).from(S.estimates).where(and(eq(S.estimates.amcosId, amcosId), eq(S.estimates.seasonId, season.id)))) : Promise.resolve(0),
+    db.select({ status: S.platformFees.status }).from(S.platformFees).where(and(eq(S.platformFees.amcosId, amcosId), eq(S.platformFees.kind, 'ENTRANCE'))),
+  ]);
+  const roles = new Set(staff.map((s) => s.role));
+  const steps = [
+    { key: 'staff', title: 'Watumishi: Mhasibu na Stokipa', done: roles.has('ACCOUNTANT') && roles.has('CLERK'), detail: `${roles.has('ACCOUNTANT') ? 'Mhasibu ✓' : 'Mhasibu hayupo'} · ${roles.has('CLERK') ? 'Stokipa ✓' : 'Stokipa hayupo'} — akaunti zinaundwa na CoopLink`, to: '/users' },
+    { key: 'members', title: 'Sajili wakulima (au pakia daftari lote kwa CSV)', done: members > 0, detail: members ? `Wakulima ${members}` : 'Bado hakuna mkulima', to: '/members' },
+    { key: 'accounts', title: 'Akaunti za fedha za chama (benki/taslimu/simu)', done: accounts > 0, detail: accounts ? `Akaunti ${accounts}` : 'Mhasibu aongeze akaunti za chama', to: '/finance' },
+    { key: 'opening', title: 'Salio la kuanzia (fedha, mali na madeni ya zamani ya wakulima)', done: opening > 0, detail: opening ? 'Limewekwa' : 'Mhasibu aweke salio la kuanzia', to: '/accounting/periods' },
+    { key: 'inputs', title: 'Pembejeo na bei zake', done: items > 0 && priced > 0, detail: items ? `Bidhaa ${items} · zenye bei ${priced}` : 'Stokipa aingize pembejeo, Meneja aidhinishe bei', to: '/inputs' },
+    { key: 'estimates', title: `Makisio ya msimu${season ? ` ${season.name}` : ''}`, done: est > 0, detail: !season ? 'Hakuna msimu unaoendelea' : est ? `Makisio ${est}` : 'Stokipa aingize makisio ya wakulima', to: '/estimates' },
+    { key: 'rules', title: 'Makato ya mauzo ya tumbaku (ushuru, ada n.k.)', done: rules > 0, detail: !season ? 'Hakuna msimu unaoendelea' : rules ? `Makato ${rules}` : 'Mhasibu aweke makato ya msimu', to: '/sales' },
+    ...(fee.length ? [{ key: 'fee', title: 'Ada ya kingilio ya CoopLink', done: fee[0].status === 'PAID' || fee[0].status === 'WAIVED', detail: fee[0].status === 'PAID' ? 'Imelipwa' : fee[0].status === 'WAIVED' ? 'Imesamehewa' : 'Haijalipwa', to: '/billing' }] : []),
+  ];
+  res.json({ steps, done: steps.filter((s) => s.done).length, total: steps.length });
+}));

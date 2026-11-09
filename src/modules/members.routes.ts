@@ -4,7 +4,8 @@ import { and, asc, count, desc, eq, ilike, ne, or, sql } from 'drizzle-orm';
 import { db, schema } from '../db';
 import { ah, decimalSchema, paged, paginationQuery, phoneSchema, uuidParam } from '../lib/http';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
-import { requireAmcosPerm } from '../middleware/auth';
+import { requireAmcosPerm, requireReauth } from '../middleware/auth';
+import { checkRows, MAX_IMPORT_ROWS } from '../lib/member-import';
 import { activeGroups } from '../lib/groups';
 import { hasAmcosPerm } from '../lib/amcos-permissions';
 import { createApproval } from '../lib/approvals';
@@ -169,6 +170,54 @@ membersRouter.get(
       db.select({ total: count() }).from(m).where(where),
     ]);
     res.json(paged(rows, total, q.page, q.pageSize));
+  }),
+);
+
+// ---------------------------------------------------------------------
+//  KUPAKIA WAKULIMA WENGI (CSV kutoka daftari/Excel la chama) — Meneja pekee
+//   dryRun=true: hakiki tu (hakuna kinachohifadhiwa). Kuhifadhi: nenosiri la Meneja + mistari yote sahihi
+//   (au skipInvalid=true kuhifadhi sahihi tu). Wakulima wanakuwa hai moja kwa moja (Meneja ndiye ameidhinisha).
+// ---------------------------------------------------------------------
+membersRouter.post(
+  '/import',
+  requireAmcosPerm('members.approve'),
+  ah(async (req, res) => {
+    const body = z.object({
+      rows: z.array(z.record(z.string(), z.unknown())).min(1, 'Faili halina wakulima').max(MAX_IMPORT_ROWS, `Pakia wakulima ${MAX_IMPORT_ROWS} au chini kwa mara moja`),
+      dryRun: z.boolean().default(true),
+      skipInvalid: z.boolean().default(false),
+    }).parse(req.body);
+    const amcosId = await resolveWriteAmcosId(req);
+    const checked = await checkRows(amcosId, body.rows);
+    const good = checked.filter((c) => c.ok);
+    const summary = { total: checked.length, ok: good.length, errors: checked.length - good.length, warnings: checked.filter((c) => c.warnings.length).length };
+    if (body.dryRun) return res.json({ summary, rows: checked.map(({ data: _d, ...c }) => c) });
+    await requireReauth(req);
+    if (summary.errors && !body.skipInvalid) throw badRequest(`Mistari ${summary.errors} ina makosa — rekebisha faili, au chagua kuhifadhi mistari sahihi tu`);
+    if (!good.length) throw badRequest('Hakuna mstari sahihi wa kuhifadhi');
+    const amcos = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId) }))!;
+    const created = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${'member-import:' + amcosId}))`);
+      // hakiki tena ndani ya muamala (mtu mwingine asiwe amesajili namba ileile wakati huohuo)
+      const again = await checkRows(amcosId, good.map((g) => body.rows[g.row - 2]));
+      const bad = again.filter((c) => !c.ok);
+      if (bad.length) throw conflict(`Mistari ${bad.length} imebadilika tangu uhakiki (mf. ${bad[0].errors[0]}). Hakiki tena.`);
+      const out: { id: string; memberNo: string }[] = [];
+      for (const c of again) {
+        const d = c.data!;
+        let memberNo = d.memberNo ?? '';
+        while (!memberNo) {
+          const candidate = `${amcos.code}-${pad(await nextNumber(tx, amcosId, 'member'))}`;
+          const taken = await tx.select({ id: m.id }).from(m).where(and(eq(m.amcosId, amcosId), eq(m.memberNo, candidate)));
+          if (!taken.length) memberNo = candidate;
+        }
+        const [row] = await tx.insert(m).values({ ...d, memberNo, amcosId, createdById: req.auth!.userId, status: 'ACTIVE' }).returning({ id: m.id, memberNo: m.memberNo });
+        out.push(row);
+      }
+      await audit(tx, req, { action: 'MEMBER_IMPORT', entity: 'Member', entityId: null, amcosId, after: { count: out.length, skipped: summary.errors, memberNos: out.map((o) => o.memberNo) } });
+      return out;
+    });
+    res.status(201).json({ summary: { ...summary, created: created.length }, created });
   }),
 );
 

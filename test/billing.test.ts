@@ -505,3 +505,45 @@ test('Nenosiri likikosewa mara 5 wakati wa kuidhinisha, kuidhinisha kunasimamish
   const locked = await call('POST', `/api/v1/approvals/${fake}/decide`, mgr, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'jaribio' });
   assert.equal(locked.status, 429, 'Hata nenosiri sahihi linasubiri dakika 15'); assert.equal(locked.body.error.code, 'REAUTH_LOCKED');
 });
+
+test('Kupakia wakulima wengi (CSV) na hatua za kuanza', async () => {
+  const clerk = (await login(clerkPhone, 'Staff12345')).body.token;
+  const tag = RUN.slice(-3);
+  const rows = [
+    { memberNo: `IMP${tag}-001`, firstName: 'ASHA', middleName: '', lastName: 'juma', gender: 'KE', phone: '0754000111', village: 'usoke', joinedAt: '15/03/2019', sharesCount: '5', mobileMoneyNumber: '0754000111' },
+    { memberNo: `IMP${tag}-002`, firstName: 'Hamisi', lastName: 'Ally', gender: 'M', phone: '', nidaNumber: '' },
+    { memberNo: '', firstName: 'Neema', lastName: 'Saidi', gender: 'F', bankAccountNumber: '0150123456', bankName: 'CRDB' },
+    { memberNo: `IMP${tag}-001`, firstName: 'Rudia', lastName: 'Namba', gender: 'M' },        // inajirudia ndani ya faili
+    { memberNo: `IMP${tag}-005`, firstName: 'X', lastName: 'Kosa', gender: 'Z', phone: '12345', joinedAt: '31/02/2020' }, // makosa mengi
+  ];
+  assert.equal((await call('POST', '/api/v1/members/import', clerk, { rows, dryRun: true })).status, 403, 'Meneja pekee');
+  const pre = await call('POST', '/api/v1/members/import', manager, { rows, dryRun: true });
+  assert.equal(pre.status, 200, JSON.stringify(pre.body));
+  assert.deepEqual(pre.body.summary, { total: 5, ok: 3, errors: 2, warnings: 3 });
+  assert.match(pre.body.rows[3].errors.join(' '), /inajirudia \(mstari 2\)/);
+  assert.equal(pre.body.rows[4].errors.length, 4, 'jina fupi, jinsia, simu, tarehe 31/02');
+
+  // Kuhifadhi: nenosiri linahitajika; makosa yanazuia isipokuwa "hifadhi sahihi tu"
+  assert.equal((await call('POST', '/api/v1/members/import', manager, { rows, dryRun: false })).status, 403);
+  assert.equal((await call('POST', '/api/v1/members/import', manager, { rows, dryRun: false, confirmPassword: 'Staff12345' })).status, 400);
+  const done = await call('POST', '/api/v1/members/import', manager, { rows, dryRun: false, skipInvalid: true, confirmPassword: 'Staff12345' });
+  assert.equal(done.status, 201, JSON.stringify(done.body));
+  assert.equal(done.body.summary.created, 3);
+  const asha = (await call('GET', `/api/v1/members/${done.body.created[0].id}`, manager)).body.member;
+  assert.equal(asha.firstName, 'Asha'); assert.equal(asha.lastName, 'Juma'); assert.equal(asha.gender, 'FEMALE'); assert.equal(asha.status, 'ACTIVE');
+  assert.equal(asha.phone, '255754000111'); assert.equal(asha.joinedAt, '2019-03-15'); assert.equal(asha.sharesCount, 5); assert.equal(asha.village, 'Usoke');
+  assert.equal(asha.preferredPayment, 'MOBILE_MONEY'); assert.equal(asha.mobileMoneyProvider, 'MPESA');
+  const neema = (await call('GET', `/api/v1/members/${done.body.created[2].id}`, manager)).body.member;
+  assert.match(neema.memberNo, /-\d+$/, 'Namba imetolewa na mfumo'); assert.equal(neema.preferredPayment, 'BANK');
+  // Kupakia tena: namba zilizopo sasa ni makosa
+  const again = await call('POST', '/api/v1/members/import', manager, { rows: rows.slice(0, 1), dryRun: true });
+  assert.match(again.body.rows[0].errors[0], /tayari ni ya Asha Juma/);
+
+  // Hatua za kuanza (Meneja)
+  const st = await call('GET', '/api/v1/workspace/setup', manager);
+  assert.equal(st.status, 200);
+  const step = (k: string) => st.body.steps.find((s: any) => s.key === k);
+  assert.equal(step('members').done, true); assert.equal(step('staff').done, true); assert.equal(step('fee').done, true);
+  assert.ok(st.body.total >= 7);
+  assert.deepEqual((await call('GET', '/api/v1/workspace/setup', clerk)).body.steps, [], 'Si kwa Stokipa');
+});

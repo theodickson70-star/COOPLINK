@@ -10,6 +10,7 @@ import { useAuth } from '../lib/auth';
 import { APPROVAL_TYPE_LABEL, date, dateTime, tsh } from '../lib/format';
 import { Alert, Badge, Button, Empty, Loading, Modal, PageHead, SelectField, TextField } from '../components/ui';
 import { Kpi, Section, Tabs } from '../components/owner-ui';
+import { downloadCsv, parseCsv } from '../lib/csv';
 import { Amt, GlSelect, today, useChart } from './acc-common';
 
 interface PeriodsData {
@@ -69,9 +70,16 @@ function Opening({ data, onDone }: { data: PeriodsData | null; onDone: (m: strin
   const cr = f.reduce((s, x) => s + Number(x.credit || 0), 0) + l.reduce((s, x) => s + Number(x.credit || 0), 0);
   const setF = (i: number, p: Partial<FRow>) => setFarmers(farmers.map((x, k) => (k === i ? { ...x, ...p } : x)));
   const setL = (i: number, p: Partial<LRow>) => setLines(lines.map((x, k) => (k === i ? { ...x, ...p } : x)));
+  /** Kutoka Excel (kubandika = tab) au faili la CSV: namba ya mkulima, deni, chama kinadaiwa. Kichwa kinarukwa; 1,200,000 inaeleweka. */
+  const readRows = (text: string) => {
+    const grid = text.includes('\t') ? text.split(/\r?\n/).map((r) => r.split('\t')) : parseCsv(text);
+    const num = (v = '') => v.replace(/[,\s]/g, '').replace(/^TSh/i, '');
+    const ok = (v: string) => v === '' || /^\d+(\.\d+)?$/.test(v);
+    return grid.map(([memberNo = '', debt = '', credit = '']) => ({ memberNo: memberNo.trim(), debt: num(debt), credit: num(credit) }))
+      .filter((r) => r.memberNo && ok(r.debt) && ok(r.credit) && (r.debt || r.credit));
+  };
   const applyPaste = () => {
-    const rows = pasteText.split(/\r?\n/).map((r) => r.split(/\t|;|,/).map((c) => c.trim().replace(/\s/g, ''))).filter((c) => c[0])
-      .map(([memberNo, debt = '', credit = '']) => ({ memberNo, debt, credit }));
+    const rows = readRows(pasteText);
     if (rows.length) setFarmers(rows);
     setPaste(false); setPasteText('');
   };
@@ -85,7 +93,13 @@ function Opening({ data, onDone }: { data: PeriodsData | null; onDone: (m: strin
           <TextField label="Maelezo *" value={desc} onChange={setDesc} />
         </div>
       </Section>
-      <Section title="2. Madeni ya wakulima" actions={<Button size="sm" variant="secondary" onClick={() => setPaste(true)}>Bandika kutoka Excel</Button>}>
+      <Section title="2. Madeni ya wakulima" actions={<>
+        <Button size="sm" variant="secondary" onClick={() => downloadCsv('kiolezo-madeni-ya-wakulima.csv', [['Namba ya mkulima', 'Deni (TSh)', 'Chama kinadaiwa (TSh)'], ['URM/0001', '250000', ''], ['URM/0002', '', '80000']])}>Kiolezo</Button>
+        <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>Pakia CSV
+          <input type="file" accept=".csv,text/csv" hidden onChange={async (e) => { const file = e.target.files?.[0]; e.target.value = ''; if (!file) return; const rows = readRows(await file.text()); if (rows.length) setFarmers(rows); }} />
+        </label>
+        <Button size="sm" variant="secondary" onClick={() => setPaste(true)}>Bandika kutoka Excel</Button>
+      </>}>
         <p className="muted" style={{ marginTop: 0 }}>Deni = mkulima anadaiwa na chama (pembejeo/mkopo). Chama kinadaiwa = mkulima hajalipwa fedha zake.</p>
         <div className="table-wrap"><table className="table bale-entry">
           <thead><tr><th>Namba ya mkulima</th><th>Deni (TSh)</th><th>Chama kinadaiwa (TSh)</th><th /></tr></thead>

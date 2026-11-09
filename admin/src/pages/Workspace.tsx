@@ -1,4 +1,5 @@
 // Dashibodi za watumishi: Meneja, Mhasibu, Stokipa — kila mmoja anaona kazi zake
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
@@ -51,6 +52,7 @@ export function Workspace() {
         {data.role === 'AMCOS_ADMIN' && <Link className="btn btn-secondary" to="/accounting/reports">Ripoti za fedha</Link>}
         {data.role === 'AMCOS_ADMIN' && <Link className="btn btn-gold" to="/approvals">Idhini ({data.approvals?.total ?? 0})</Link>}
       </PageHead>
+      {data.role === 'AMCOS_ADMIN' && <SetupChecklist />}
       {data.role === 'AMCOS_ADMIN' && <Manager d={data} />}
       {data.role === 'ACCOUNTANT' && <div className="stack"><AccountingHome embedded /><Pending d={data} title="Maombi yangu" /></div>}
       {data.role === 'CLERK' && <Storekeeper d={data} />}
@@ -161,5 +163,32 @@ function Storekeeper({ d }: { d: Summary }) {
       </div>
       <Pending d={d} title="Maombi yangu kwa Meneja" />
     </div>
+  );
+}
+
+/** Hatua za kuanza kutumia CoopLink (Meneja) — inajificha hatua zote zikikamilika */
+function SetupChecklist() {
+  const { data } = useFetch<{ steps: { key: string; title: string; done: boolean; detail: string; to: string }[]; done: number; total: number }>('/workspace/setup');
+  const [open, setOpen] = useState(true);
+  if (!data || !data.total || data.done === data.total) return null;
+  const pct = Math.round((data.done / data.total) * 100);
+  return (
+    <section className="card setup-card">
+      <button type="button" className="setup-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <div><strong>Hatua za kuanza kutumia CoopLink</strong><span className="muted"> · {data.done} kati ya {data.total} zimekamilika</span></div>
+        <span className="muted">{open ? 'Ficha ▲' : 'Onyesha ▼'}</span>
+      </button>
+      <div className="setup-bar" aria-hidden><span style={{ width: `${pct}%` }} /></div>
+      {open && (
+        <ol className="setup-steps">
+          {data.steps.map((s) => (
+            <li key={s.key} className={s.done ? 'done' : ''}>
+              <span className="setup-dot">{s.done ? '✓' : ''}</span>
+              <div><Link to={s.to}>{s.title}</Link><div className="muted" style={{ fontSize: 12.5 }}>{s.detail}</div></div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
   );
 }

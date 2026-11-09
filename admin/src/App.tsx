@@ -37,6 +37,7 @@ import { OwnerSecurity } from './owner/Security';
 import { OwnerBackup } from './owner/Backup';
 import { OwnerBusiness } from './owner/Business';
 import { OwnerSettings } from './owner/Settings';
+import { MemberImport } from './pages/MemberImport';
 import type { AmcosPermission, Permission } from './lib/auth';
 
 function Splash() {
@@ -144,6 +145,7 @@ export default function App() {
             <Route path="purchases/:id" element={<Need p={['stock.read', 'finance.read']}><PurchaseDetail /></Need>} />
             <Route path="members" element={<Members />} />
             <Route path="members/new" element={<Need p={['members.write']}><MemberNew /></Need>} />
+            <Route path="members/import" element={<Need p={['members.approve']}><MemberImport /></Need>} />
             <Route path="members/:id" element={<MemberDetail />} />
             <Route path="estimates" element={<Estimates />} />
             <Route path="inputs" element={<Inputs />} />

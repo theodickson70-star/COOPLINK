@@ -646,3 +646,14 @@ button.card.kpi:hover { border-color: var(--green); }
 .override-box { grid-column: 1 / -1; border: 1px solid var(--gold); background: #FFF9EA; border-radius: 12px; padding: 12px 14px; }
 .override-box p { margin: 4px 0 10px; font-size: 13.5px; }
 .reauth-box { border-top: 1px dashed var(--line); padding-top: 12px; margin-top: 4px; }
+
+/* ---- Hatua za kuanza ---- */
+.setup-card { padding: 0; margin-bottom: 16px; overflow: hidden; border-color: var(--gold); }
+.setup-head { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; background: #FFF9EA; border: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+.setup-bar { height: 4px; background: var(--line); }
+.setup-bar span { display: block; height: 100%; background: var(--green); }
+.setup-steps { list-style: none; margin: 0; padding: 8px 18px 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px 18px; }
+.setup-steps li { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; }
+.setup-steps li.done a { color: var(--muted); text-decoration: line-through; }
+.setup-dot { flex: 0 0 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; }
+.setup-steps li.done .setup-dot { background: var(--green); border-color: var(--green); }
