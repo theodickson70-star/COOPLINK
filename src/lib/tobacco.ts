@@ -15,6 +15,33 @@ import { postJournal, type JLine } from './gl';
 type Rule = typeof schema.deductionRules.$inferSelect;
 
 /** Akaunti ya daftari kuu ya kanuni ya makato (kama haijawekwa: inakisiwa kwa jina/code). */
+/**
+ * Mipaka ya uhalisia wa takwimu za soko (kuzuia makosa ya kuandika, mf. bei ya shilingi kwenye safu ya USD).
+ * "max/min" = mfumo unakataa; "warn" = mfumo unaonya tu (thamani inawezekana ila si ya kawaida).
+ */
+export const SALE_LIMITS = {
+  rate: { min: 1000, max: 10000, warnMin: 2000, warnMax: 4000 },   // TZS kwa USD 1
+  price: { max: 20, warn: 6 },                                      // USD kwa kilo
+  kg: { max: 300, warn: 150 },                                      // kilo kwa belo
+} as const;
+
+/** Kosa la kiwango cha fedha (au null kikiwa sawa). */
+export function rateProblem(rate: Decimal.Value | null | undefined) {
+  if (rate === null || rate === undefined || rate === '') return 'Weka kiwango cha kubadilisha fedha (USD → TZS) cha soko hili';
+  const r = D(rate);
+  if (r.lt(SALE_LIMITS.rate.min) || r.gt(SALE_LIMITS.rate.max))
+    return `Kiwango cha fedha ${r.toFixed()} si halisi. Weka shilingi ngapi kwa dola 1 (mf. 2,550) — kiwango kinatakiwa kuwa kati ya ${SALE_LIMITS.rate.min.toLocaleString('en-US')} na ${SALE_LIMITS.rate.max.toLocaleString('en-US')}`;
+  return null;
+}
+
+/** Bodi ya Tumbaku ni msimamizi, si mnunuzi. */
+export function buyerProblem(name: string) {
+  const n = name.trim().toUpperCase().replace(/[^A-Z]/g, '');
+  if (['TTB', 'TOBACCOBOARD', 'TANZANIATOBACCOBOARD', 'BODIYATUMBAKU'].includes(n))
+    return 'TTB (Bodi ya Tumbaku) ni msimamizi, si mnunuzi. Weka jina la kampuni inayonunua tumbaku (mf. TLTC, Alliance One)';
+  return null;
+}
+
 export function ruleGlCode(r: Pick<Rule, 'glAccountCode' | 'basis' | 'code' | 'name'>) {
   if (r.glAccountCode) return r.glAccountCode;
   if (r.basis === 'OUTSTANDING_LOAN') return '1200';

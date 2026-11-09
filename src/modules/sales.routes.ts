@@ -19,7 +19,7 @@ import { nextNumber, pad } from '../lib/counter';
 import * as ledger from '../lib/ledger';
 import { createApproval } from '../lib/approvals';
 import { accountBalance, lockAccount, nextTxnNo } from '../lib/finance';
-import { computeSettlement, memberDebts, ruleGlCode } from '../lib/tobacco';
+import { computeSettlement, memberDebts, ruleGlCode, SALE_LIMITS, rateProblem, buyerProblem } from '../lib/tobacco';
 import { activeGroups, groupMembers } from '../lib/groups';
 import { destinationOf } from '../lib/payout';
 import { currentSeason } from './seasons.routes';
@@ -128,19 +128,42 @@ salesRouter.get('/markets', requireAmcosPerm('sales.read'), ah(async (req, res) 
 const marketBody = z.object({
   marketDate: dateStr,
   location: z.string().trim().nullable().optional(),
-  buyerName: z.string().trim().min(2, 'Weka jina la kampuni ya ununuzi'),
+  buyerName: z.string().trim().min(2, 'Weka jina la kampuni ya ununuzi').max(80),
   exchangeRate: decimalSchema({ min: 1 }),
   notes: z.string().trim().nullable().optional(),
 });
+
+/** Kiwango na mnunuzi viwe halisi; jina la mnunuzi lifuate orodha rasmi likilingana nalo. */
+async function checkMarket(body: { buyerName?: string; exchangeRate?: string }) {
+  if (body.exchangeRate !== undefined) { const p = rateProblem(body.exchangeRate); if (p) throw badRequest(p); }
+  if (body.buyerName === undefined) return {};
+  const bp = buyerProblem(body.buyerName); if (bp) throw badRequest(bp);
+  const [b] = await db.select().from(schema.buyers).where(and(eq(schema.buyers.isActive, true),
+    sql`(upper(${schema.buyers.name}) = upper(${body.buyerName}) or upper(${schema.buyers.code}) = upper(${body.buyerName}))`)).limit(1);
+  return b ? { buyerName: b.name, buyerId: b.id } : { buyerId: null };
+}
+
+/** Wanunuzi wa kuchagua: orodha rasmi + waliotumika kwenye masoko ya chama hiki (bila kurudia). */
+salesRouter.get('/buyer-options', requireAmcosPerm('sales.read'), ah(async (req, res) => {
+  const amcosId = await readAmcosId(req);
+  const official = await db.select({ name: schema.buyers.name }).from(schema.buyers).where(eq(schema.buyers.isActive, true)).orderBy(asc(schema.buyers.name));
+  const used = await db.execute<{ name: string }>(sql`select buyer_name as name, max(market_date) as last from markets
+    where amcos_id = ${amcosId} and buyer_name is not null group by buyer_name order by last desc limit 30`);
+  const seen = new Set<string>(); const data: { name: string; official: boolean }[] = [];
+  for (const [list, official_] of [[official, true], [used.rows, false]] as const)
+    for (const x of list) { const k = x.name.trim().toUpperCase(); if (!seen.has(k) && !buyerProblem(x.name)) { seen.add(k); data.push({ name: x.name, official: official_ }); } }
+  res.json({ data, limits: SALE_LIMITS });
+}));
 
 salesRouter.post('/markets', requireAmcosPerm('sales.manage'), ah(async (req, res) => {
   const body = marketBody.extend({ seasonId: z.string().uuid().optional() }).parse(req.body);
   const amcosId = await resolveWriteAmcosId(req);
   const s = await season(body.seasonId);
   if (s.status === 'CLOSED') throw badRequest('Msimu umefungwa');
+  const extra = await checkMarket(body);
   const market = await db.transaction(async (tx) => {
     const n = await nextNumber(tx, amcosId, 'market');
-    const [m] = await tx.insert(MK).values({ ...body, amcosId, seasonId: s.id, marketNo: `SOKO-${pad(n, 3)}`, status: 'OPEN', createdById: req.auth!.userId }).returning();
+    const [m] = await tx.insert(MK).values({ ...body, ...extra, amcosId, seasonId: s.id, marketNo: `SOKO-${pad(n, 3)}`, status: 'OPEN', createdById: req.auth!.userId }).returning();
     await audit(tx, req, { action: 'MARKET_CREATE', entity: 'Market', entityId: m.id, amcosId, after: m });
     return m;
   });
@@ -165,8 +188,9 @@ salesRouter.patch('/markets/:id', requireAmcosPerm('sales.manage'), ah(async (re
   const body = marketBody.partial().parse(req.body);
   const m = await findMarket(req, id);
   await assertEditable(db, m);
+  const extra = await checkMarket(body);
   const market = await db.transaction(async (tx) => {
-    const [r] = await tx.update(MK).set(body).where(eq(MK.id, id)).returning();
+    const [r] = await tx.update(MK).set({ ...body, ...extra }).where(eq(MK.id, id)).returning();
     await audit(tx, req, { action: 'MARKET_UPDATE', entity: 'Market', entityId: id, amcosId: m.amcosId, before: m, after: r });
     return r;
   });
@@ -189,6 +213,7 @@ salesRouter.get('/markets/:id', requireAmcosPerm('sales.read'), ah(async (req, r
   const approval = m.approvalId ? await db.query.approvalRequests.findFirst({ where: eq(schema.approvalRequests.id, m.approvalId) }) : null;
   res.json({
     market: { ...m, ...stats, kg: fmt2(stats.kg), usd: fmt2(stats.usd) },
+    limits: SALE_LIMITS,
     approval,
     bales: bales.map((b) => ({ ...b.bale, memberNo: b.memberNo, memberName: b.name })),
     settlements: settlements.map((x) => ({ ...x.s, memberNo: x.memberNo, memberName: x.name, paid: fmt2(x.paid), lines: lines.filter((l) => l.settlementId === x.s.id) })),
@@ -228,6 +253,7 @@ salesRouter.post('/markets/:id/bales', requireAmcosPerm('sales.manage'), ah(asyn
       if (!mem) throw new AppError(400, 'MEMBER_NOT_FOUND', `Mstari ${i + 1}: mkulima hajapatikana (${b.memberNo ?? b.memberId ?? '-'})`);
       if (mem.status !== 'ACTIVE') throw badRequest(`Mstari ${i + 1}: ${mem.firstName} ${mem.lastName} hayuko hai (ACTIVE)`);
       if (!b.rejected && (b.priceUsd === null || b.priceUsd === undefined)) throw badRequest(`Mstari ${i + 1}: weka bei (USD kwa kilo) au weka belo kama limekataliwa`);
+      const bp = baleProblem(b); if (bp) throw new AppError(400, 'BALE_UNREALISTIC', `Mstari ${i + 1} (${b.baleNo}): ${bp}`);
       const kg = D(b.netKg ?? b.grossKg);
       return {
         amcosId: m.amcosId, marketId: m.id, memberId: mem.id, baleNo: b.baleNo.toUpperCase(), grossKg: b.grossKg, netKg: b.netKg ?? null,
@@ -241,6 +267,15 @@ salesRouter.post('/markets/:id/bales', requireAmcosPerm('sales.manage'), ah(asyn
   });
   res.status(201).json({ bales: rows });
 }));
+
+/** Belo lisilo halisi (bei ya shilingi kwenye safu ya USD, kilo nyingi mno, kilo halisi > kilo). */
+function baleProblem(b: { grossKg: string; netKg?: string | null; priceUsd?: string | null; rejected?: boolean }) {
+  if (D(b.grossKg).gt(SALE_LIMITS.kg.max)) return `kilo ${b.grossKg} ni nyingi mno kwa belo moja (mwisho kilo ${SALE_LIMITS.kg.max})`;
+  if (b.netKg !== null && b.netKg !== undefined && D(b.netKg).gt(b.grossKg)) return 'kilo halisi haziwezi kuzidi kilo za belo';
+  if (!b.rejected && b.priceUsd !== null && b.priceUsd !== undefined && D(b.priceUsd).gt(SALE_LIMITS.price.max))
+    return `bei $${b.priceUsd} kwa kilo si halisi — inaonekana ni bei ya shilingi. Weka bei kwa DOLA kwa kilo (mf. 2.35)`;
+  return null;
+}
 
 function or2(bales: z.infer<typeof baleRow>[]) {
   const ids = bales.map((b) => b.memberId).filter(Boolean) as string[];
@@ -263,9 +298,11 @@ salesRouter.delete('/bales/:id', requireAmcosPerm('sales.manage'), ah(async (req
 
 // ------------------------------ HESABU ZA WAKULIMA (SETTLEMENT) ------------------------------
 async function computeMarket(tx: Tx | typeof db, m: typeof MK.$inferSelect, opts: { includeNonSellers?: boolean } = {}) {
-  if (!m.exchangeRate) throw badRequest('Weka kiwango cha kubadilisha fedha (USD → TZS) cha soko hili');
+  const rp = rateProblem(m.exchangeRate); if (rp) throw badRequest(`${rp}. Bonyeza "Hariri soko" kurekebisha.`);
   const bales = await tx.select().from(BL).where(and(eq(BL.marketId, m.id), eq(BL.status, 'SOLD')));
   if (!bales.length) throw badRequest('Soko hili halina mabelo yaliyouzwa');
+  const bad = bales.filter((b) => baleProblem(b));
+  if (bad.length) throw new AppError(400, 'BALE_UNREALISTIC', `Mabelo ${bad.length} yana bei au kilo zisizo halisi (${bad.slice(0, 5).map((b) => b.baleNo).join(', ')}${bad.length > 5 ? '…' : ''}). Yaondoe na uyaingize upya kwa usahihi kabla ya kuwasilisha.`);
   const rules = await tx.select().from(DR).where(and(eq(DR.amcosId, m.amcosId), eq(DR.seasonId, m.seasonId), eq(DR.isActive, true)));
   const sellers = [...new Set(bales.map((b) => b.memberId))];
   // Vikundi vya wauzaji na wenzao (kwa dhamana ya pamoja)
@@ -545,7 +582,19 @@ salesRouter.get('/summary', requireAmcosPerm('sales.read'), ah(async (req, res) 
     select coalesce(r.name, l.description) as name, sum(l.amount) as v from settlement_lines l join settlements s on s.id = l.settlement_id
     left join deduction_rules r on r.id = l.deduction_rule_id
     where s.amcos_id = ${amcosId} and s.season_id = ${s.id} and s.status in ('APPROVED', 'PAID') group by 1 order by 2 desc`);
-  res.json({ season: s, farmers: Number(r.farmers), kg: fmt2(r.kg), grossTzs: fmt2(r.gross), deductions: fmt2(r.ded), netTzs: fmt2(r.net), paid: fmt2(r.paid),
+  // Masoko ambayo mauzo yake bado hayajaidhinishwa (hayamo kwenye takwimu za juu)
+  const [p] = (await db.execute<{ markets: string; open: string; waiting: string; bales: string; kg: string; usd: string; tzs: string }>(sql`
+    select count(*) as markets, count(*) filter (where x.st is null) as open, count(*) filter (where x.st = 'DRAFT') as waiting,
+      coalesce(sum(x.bales), 0) as bales, coalesce(sum(x.kg), 0) as kg, coalesce(sum(x.usd), 0) as usd, coalesce(sum(x.usd * coalesce(x.rate, 0)), 0) as tzs
+    from (select m.id, m.exchange_rate as rate,
+        (select s.status::text from settlements s where s.market_id = m.id and s.status <> 'CANCELLED' order by s.created_at desc limit 1) as st,
+        (select count(*) from bales b where b.market_id = m.id and b.status = 'SOLD') as bales,
+        (select sum(coalesce(b.net_kg, b.gross_kg)) from bales b where b.market_id = m.id and b.status = 'SOLD') as kg,
+        (select sum(b.value_usd) from bales b where b.market_id = m.id and b.status = 'SOLD') as usd
+      from markets m where m.amcos_id = ${amcosId} and m.season_id = ${s.id} and m.status <> 'CANCELLED') x
+    where x.st is null or x.st = 'DRAFT'`)).rows;
+  const pending = { markets: Number(p.markets), open: Number(p.open), waiting: Number(p.waiting), bales: Number(p.bales), kg: fmt2(p.kg), usd: fmt2(p.usd), tzs: fmt2(p.tzs) };
+  res.json({ season: s, pending, farmers: Number(r.farmers), kg: fmt2(r.kg), grossTzs: fmt2(r.gross), deductions: fmt2(r.ded), netTzs: fmt2(r.net), paid: fmt2(r.paid),
     unpaid: fmt2(D(r.net).minus(r.paid)), deductionsByRule: byRule.rows.map((x) => ({ name: x.name, amount: fmt2(x.v) })) });
 }));
 

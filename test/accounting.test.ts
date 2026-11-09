@@ -209,8 +209,18 @@ test('Mauzo ya tumbaku: mabelo -> makato -> idhini -> ledger + daftari kuu -> or
   const rl = (await call('GET', '/api/v1/sales/deduction-rules', manager)).body.data;
   assert.deepEqual(rl.map((r: any) => r.glCode), ['2310', '2300', '4100', '1200']);
 
+  // Ulinzi wa takwimu zisizo halisi: kiwango cha fedha, mnunuzi (TTB), bei ya shilingi kwenye safu ya USD, kilo
+  assert.equal((await call('POST', '/api/v1/sales/markets', accountant, { marketDate: today, buyerName: 'Alliance One', exchangeRate: '3' })).status, 400, 'Kiwango 1 USD = 3 TZS si halisi');
+  assert.equal((await call('POST', '/api/v1/sales/markets', accountant, { marketDate: today, buyerName: 'ttb', exchangeRate: '2500' })).status, 400, 'TTB si mnunuzi');
+  const opts = (await call('GET', '/api/v1/sales/buyer-options', accountant)).body;
+  assert.equal(opts.limits.price.max, 20);
   const mk = await call('POST', '/api/v1/sales/markets', accountant, { marketDate: today, buyerName: 'Alliance One', exchangeRate: '2500', location: 'Ghala kuu' });
   assert.equal(mk.status, 201, JSON.stringify(mk.body));
+  for (const bad of [{ grossKg: '36', priceUsd: '5200' }, { grossKg: '450', priceUsd: '2' }, { grossKg: '40', netKg: '45', priceUsd: '2' }]) {
+    const r = await call('POST', `/api/v1/sales/markets/${mk.body.market.id}/bales`, accountant, { bales: [{ memberId: farmerA.id, baleNo: 'BAD-' + RUN, ...bad }] });
+    assert.equal(r.status, 400, JSON.stringify(bad)); assert.equal(r.body.error?.code ?? r.body.code, 'BALE_UNREALISTIC');
+  }
+  assert.equal((await call('PATCH', `/api/v1/sales/markets/${mk.body.market.id}`, accountant, { exchangeRate: '3' })).status, 400);
   const marketId = mk.body.market.id;
   const bales = await call('POST', `/api/v1/sales/markets/${marketId}/bales`, accountant, { bales: [
     { memberNo: farmerA.memberNo, baleNo: 'A1-' + RUN, grossKg: '100', grade: 'L1F', priceUsd: '2.0' },

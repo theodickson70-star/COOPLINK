@@ -2,7 +2,7 @@
 //  MAUZO YA TUMBAKU NA MAKATO (Mhasibu)
 //   Masoko -> mabelo -> hesabu za wakulima (settlement) -> idhini -> orodha ya malipo -> malipo yaliyothibitishwa
 // =====================================================================
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, apiDownload } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
@@ -20,15 +20,48 @@ interface Market {
   id: string; marketNo: string; marketDate: string; location: string | null; buyerName: string | null; exchangeRate: string | null; status: string; notes: string | null;
   bales: number; rejected: number; farmers: number; kg: string; usd: string; settlement: string | null; grossTzs?: string; netTzs?: string; paid?: string; approvalId: string | null;
 }
+interface Limits { rate: { min: number; max: number; warnMin: number; warnMax: number }; price: { max: number; warn: number }; kg: { max: number; warn: number } }
+const DEFAULT_LIMITS: Limits = { rate: { min: 1000, max: 10000, warnMin: 2000, warnMax: 4000 }, price: { max: 20, warn: 6 }, kg: { max: 300, warn: 150 } };
+const TTB = ['TTB', 'TOBACCOBOARD', 'TANZANIATOBACCOBOARD', 'BODIYATUMBAKU'];
+const isTtb = (n: string) => TTB.includes(n.trim().toUpperCase().replace(/[^A-Z]/g, ''));
+/** Hali ya kiwango cha fedha: kosa (kinakataliwa), onyo, au sawa */
+function rateCheck(v: string | number | null | undefined, L: Limits): { level: 'error' | 'warn' | null; text: string | null } {
+  if (v === '' || v === null || v === undefined) return { level: null, text: null };
+  const r = Number(v);
+  if (!(r >= L.rate.min && r <= L.rate.max)) return { level: 'error', text: `Kiwango ${num(r)} si halisi. Weka shilingi ngapi kwa dola 1 (mf. 2,550): kati ya ${num(L.rate.min)} na ${num(L.rate.max)}.` };
+  if (r < L.rate.warnMin || r > L.rate.warnMax) return { level: 'warn', text: `Kiwango ${num(r)} si cha kawaida — hakiki na kiwango cha BoT cha siku ya soko.` };
+  return { level: null, text: null };
+}
+/** Hali ya mstari wa belo */
+function baleCheck(r: { grossKg: string; netKg?: string | null; priceUsd?: string | null; rejected?: boolean }, L: Limits): { level: 'error' | 'warn' | null; text: string | null } {
+  const kg = Number(r.grossKg), net = r.netKg ? Number(r.netKg) : null, price = r.priceUsd ? Number(r.priceUsd) : null;
+  if (kg > L.kg.max) return { level: 'error', text: `Kilo ${num(kg)} ni nyingi mno kwa belo moja (mwisho ${L.kg.max})` };
+  if (net !== null && net > kg) return { level: 'error', text: 'Kilo halisi zinazidi kilo za belo' };
+  if (!r.rejected && price !== null && price > L.price.max) return { level: 'error', text: `Bei $${num(price)}/kg si halisi — inaonekana ni bei ya shilingi. Weka bei kwa DOLA (mf. 2.35)` };
+  if (!r.rejected && price !== null && price > L.price.warn) return { level: 'warn', text: `Bei $${num(price)}/kg iko juu kuliko kawaida — hakiki` };
+  if (kg > L.kg.warn) return { level: 'warn', text: `Kilo ${num(kg)} ni nyingi kuliko kawaida — hakiki` };
+  return { level: null, text: null };
+}
+
 interface Rule { id: string; name: string; code: string; basis: string; basisLabel: string; rate: string; currency: string; priority: number; glAccountCode: string | null; glCode: string; isActive: boolean }
 
 export function Sales() {
   const { may } = useAuth();
   const [tab, setTab] = useState<'markets' | 'buyers' | 'rules'>('markets');
-  const sum = useFetch<{ season: { name: string }; farmers: number; kg: string; grossTzs: string; deductions: string; netTzs: string; paid: string; unpaid: string; deductionsByRule: { name: string; amount: string }[] }>('/sales/summary');
+  const sum = useFetch<{ season: { name: string }; pending: { markets: number; open: number; waiting: number; bales: number; kg: string; usd: string; tzs: string }; farmers: number; kg: string; grossTzs: string; deductions: string; netTzs: string; paid: string; unpaid: string; deductionsByRule: { name: string; amount: string }[] }>('/sales/summary');
   return (
     <>
       <PageHead title="Mauzo ya tumbaku na makato" sub={<>Masoko, mabelo, makato ya kisheria, deni la pembejeo na malipo ya wakulima{sum.data ? <> · Msimu <strong>{sum.data.season.name}</strong></> : null}</>} />
+      {sum.data && sum.data.pending.markets > 0 && (
+        <div className="pending-note" role="status">
+          <span className="pn-dot" />
+          <div>
+            <strong>{sum.data.pending.open > 0 && `Masoko ${sum.data.pending.open} yako wazi`}{sum.data.pending.open > 0 && sum.data.pending.waiting > 0 && ' · '}{sum.data.pending.waiting > 0 && `${sum.data.pending.waiting} yanasubiri idhini ya Meneja`}</strong>
+            {' '}— mabelo {num(sum.data.pending.bales)} · kilo {num(sum.data.pending.kg)} · {usd(sum.data.pending.usd)}{Number(sum.data.pending.tzs) > 0 && <> (≈ {tsh(sum.data.pending.tzs)})</>}.
+            <div className="muted">Takwimu za juu zinahesabu mauzo yaliyoidhinishwa na Meneja tu. Mauzo haya yataingia baada ya hesabu za wakulima kuidhinishwa.</div>
+          </div>
+        </div>
+      )}
       {sum.data && (
         <div className="grid grid-kpi">
           <Kpi tone="dark" label="Mauzo ya wakulima (ghafi)" value={tsh(sum.data.grossTzs)} hint={`Kilo ${num(sum.data.kg)} · wakulima ${num(sum.data.farmers)}`} />
@@ -58,7 +91,7 @@ function Markets({ canManage }: { canManage: boolean }) {
           <tbody>{data.data.map((m) => (
             <tr key={m.id} onClick={() => nav(`/sales/markets/${m.id}`)} style={{ cursor: 'pointer' }}>
               <td><strong>{m.marketNo}</strong><div className="muted" style={{ fontSize: 12 }}>{date(m.marketDate)}{m.location ? ` · ${m.location}` : ''}</div></td>
-              <td>{m.buyerName ?? '—'}<div className="muted" style={{ fontSize: 12 }}>{m.exchangeRate ? `1 USD = ${num(m.exchangeRate)} TZS` : ''}</div></td>
+              <td>{m.buyerName ?? '—'}<div className={rateCheck(m.exchangeRate, DEFAULT_LIMITS).level === 'error' ? 'money-neg' : 'muted'} style={{ fontSize: 12 }}>{m.exchangeRate ? `1 USD = ${num(m.exchangeRate)} TZS` : ''}{rateCheck(m.exchangeRate, DEFAULT_LIMITS).level === 'error' ? ' · kiwango si halisi' : ''}</div></td>
               <td className="num">{num(m.bales)} / {num(m.kg)} kg<div className="muted" style={{ fontSize: 12 }}>wakulima {m.farmers}</div></td>
               <td className="num">{usd(m.usd)}{Number(m.grossTzs) > 0 && <div className="muted" style={{ fontSize: 12 }}>{tsh(m.grossTzs!)}</div>}</td>
               <td className="num">{Number(m.netTzs) > 0 ? tsh(m.netTzs!) : '—'}{Number(m.paid) > 0 && <div className="muted" style={{ fontSize: 12 }}>Imelipwa {tsh(m.paid!)}</div>}</td>
@@ -74,8 +107,16 @@ function Markets({ canManage }: { canManage: boolean }) {
 
 function MarketForm({ market, onClose, onDone }: { market?: Market; onClose: () => void; onDone: (id: string) => void }) {
   const [f, setF] = useState({ marketDate: market?.marketDate ?? today(), buyerName: market?.buyerName ?? '', exchangeRate: market?.exchangeRate ?? '', location: market?.location ?? '', notes: market?.notes ?? '' });
+  const opts = useFetch<{ data: { name: string; official: boolean }[]; limits: Limits }>('/sales/buyer-options');
+  const L = opts.data?.limits ?? DEFAULT_LIMITS;
+  const known = opts.data?.data ?? [];
+  const [other, setOther] = useState(false);
+  const inList = known.some((b) => b.name.toUpperCase() === f.buyerName.trim().toUpperCase());
+  const typing = other || (!!f.buyerName && !inList && !!opts.data) || (opts.data !== undefined && known.length === 0);
+  const rc = rateCheck(f.exchangeRate, L);
+  const ttb = isTtb(f.buyerName);
   const { busy, error, run } = useAction();
-  const valid = f.buyerName.trim().length >= 2 && Number(f.exchangeRate) > 0;
+  const valid = f.buyerName.trim().length >= 2 && !ttb && Number(f.exchangeRate) > 0 && rc.level !== 'error';
   return (
     <Modal open title={market ? `Hariri ${market.marketNo}` : 'Soko jipya'} onClose={onClose}
       footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={!valid} onClick={async () => {
@@ -86,8 +127,22 @@ function MarketForm({ market, onClose, onDone }: { market?: Market; onClose: () 
       <Alert>{error}</Alert>
       <div className="form-grid">
         <TextField label="Tarehe ya soko *" type="date" value={f.marketDate} onChange={(v) => setF({ ...f, marketDate: v })} />
-        <TextField label="Kampuni ya ununuzi *" value={f.buyerName} onChange={(v) => setF({ ...f, buyerName: v })} placeholder="mf. Alliance One, TLTC" />
-        <TextField label="Kiwango: 1 USD = TZS *" type="number" min="1" value={f.exchangeRate} onChange={(v) => setF({ ...f, exchangeRate: v })} help="Kiwango kilichokubaliwa siku ya soko (mf. BoT)" />
+        <div>
+          {!typing ? (
+            <SelectField label="Kampuni ya ununuzi *" value={inList ? known.find((b) => b.name.toUpperCase() === f.buyerName.trim().toUpperCase())!.name : ''} placeholder="Chagua mnunuzi"
+              onChange={(v) => { if (v === '__other') { setOther(true); setF({ ...f, buyerName: '' }); } else setF({ ...f, buyerName: v }); }}
+              options={[...known.map((b) => ({ value: b.name, label: b.name })), { value: '__other', label: '+ Mnunuzi mwingine (andika jina)' }]} />
+          ) : (
+            <TextField label="Kampuni ya ununuzi *" value={f.buyerName} onChange={(v) => setF({ ...f, buyerName: v })} placeholder="mf. Alliance One, TLTC" autoFocus={other}
+              help={known.length ? undefined : 'Jina kamili la kampuni inayonunua tumbaku'} />
+          )}
+          {typing && known.length > 0 && <button type="button" className="link-btn" onClick={() => { setOther(false); setF({ ...f, buyerName: '' }); }}>← Chagua kutoka orodha</button>}
+          {ttb && <p className="name-note bad">TTB (Bodi ya Tumbaku) ni msimamizi, si mnunuzi. Weka kampuni inayonunua tumbaku.</p>}
+        </div>
+        <div>
+          <TextField label="Kiwango: 1 USD = TZS *" type="number" min="1" value={f.exchangeRate} onChange={(v) => setF({ ...f, exchangeRate: v })} placeholder="mf. 2550" help={rc.text ? undefined : 'Shilingi ngapi kwa dola 1 siku ya soko (mf. kiwango cha BoT)'} />
+          {rc.text && <p className={`name-note ${rc.level === 'error' ? 'bad' : 'warn'}`}>{rc.text}</p>}
+        </div>
         <TextField label="Mahali" value={f.location} onChange={(v) => setF({ ...f, location: v })} />
       </div>
       <TextField label="Maelezo" value={f.notes} onChange={(v) => setF({ ...f, notes: v })} />
@@ -171,7 +226,7 @@ interface PreviewRow { memberId: string; memberNo: string; name: string; bales: 
 export function MarketDetail() {
   const { id } = useParams();
   const { may } = useAuth();
-  const { data, reload } = useFetch<{ market: Market; bales: Bale[]; settlements: Settlement[]; batches: Batch[]; approval: { requestNo: string; status: string; decisionNote: string | null } | null }>(`/sales/markets/${id}`);
+  const { data, reload } = useFetch<{ market: Market; limits?: Limits; bales: Bale[]; settlements: Settlement[]; batches: Batch[]; approval: { requestNo: string; status: string; decisionNote: string | null } | null }>(`/sales/markets/${id}`);
   const [tab, setTab] = useState<'bales' | 'settle' | 'pay'>('bales');
   const [edit, setEdit] = useState(false);
   const [ok, setOk] = useState<string | null>(null);
@@ -183,6 +238,20 @@ export function MarketDetail() {
   const manage = may('sales.manage');
   const editable = m.status === 'OPEN' && data.settlements.length === 0;
   const unpaidApproved = data.settlements.filter((s) => s.status === 'APPROVED' && Number(s.netTzs) > 0);
+  const L = data.limits ?? DEFAULT_LIMITS;
+  const rc = rateCheck(m.exchangeRate, L);
+  const badBales = data.bales.filter((b) => b.status === 'SOLD' && baleCheck(b, L).level === 'error');
+  const pendingApproval = data.approval?.status === 'PENDING';
+  // Hatua inayofuata kwa soko hili
+  const step: { n: number; title: string; text: string; action?: { label: string; go: () => void } } | null =
+    m.status === 'OPEN' && !data.settlements.length
+      ? rc.level === 'error' ? { n: 1, title: 'Rekebisha kiwango cha fedha', text: rc.text!, action: manage ? { label: 'Hariri soko', go: () => setEdit(true) } : undefined }
+      : badBales.length ? { n: 1, title: 'Rekebisha mabelo yasiyo halisi', text: `Mabelo ${badBales.length} yana bei au kilo zisizo halisi. Yaondoe na uyaingize upya kabla ya kuwasilisha hesabu.`, action: { label: 'Nenda kwenye mabelo', go: () => setTab('bales') } }
+      : !m.bales ? { n: 1, title: 'Ingiza mabelo', text: 'Weka mabelo ya kila mkulima (namba ya mkulima, belo, kilo, daraja, bei kwa dola).', action: { label: 'Ingiza mabelo', go: () => setTab('bales') } }
+      : { n: 2, title: 'Wasilisha hesabu za wakulima kwa Meneja', text: `Mabelo ${m.bales} yameingizwa. Hakiki hesabu (mauzo, makato, deni) kisha uziwasilishe kwa Meneja aidhinishe.`, action: { label: 'Hakiki na wasilisha', go: () => setTab('settle') } }
+    : pendingApproval ? { n: 3, title: 'Inasubiri idhini ya Meneja', text: `Hesabu (${data.approval!.requestNo}) zimetumwa. Meneja akiidhinisha, mauzo yanaingia kwenye daftari kuu na madeni ya wakulima.` }
+    : unpaidApproved.length && !data.batches.some((b) => b.status !== 'CANCELLED') ? { n: 4, title: 'Andaa orodha ya malipo', text: `Wakulima ${unpaidApproved.length} wako tayari kulipwa.`, action: { label: 'Nenda kwenye hesabu', go: () => setTab('settle') } }
+    : null;
   return (
     <>
       <PageHead title={<>{m.marketNo} <Badge status={m.settlement ?? m.status} label={m.settlement ? SETTLE[m.settlement] : m.status === 'OPEN' ? 'Wazi' : undefined} /></>}
@@ -192,15 +261,21 @@ export function MarketDetail() {
       </PageHead>
       <Alert kind="ok">{ok}</Alert>
       <Alert>{error}</Alert>
-      {data.approval && data.approval.status === 'PENDING' && <Alert kind="warn">Hesabu za wakulima ({data.approval.requestNo}) zinasubiri idhini ya Meneja.</Alert>}
+      {step && (
+        <div className={`next-step${step.title.startsWith('Rekebisha') ? ' bad' : ''}`}>
+          <div className="ns-steps" aria-hidden>{[1, 2, 3, 4].map((k) => <span key={k} className={k < step.n ? 'done' : k === step.n ? 'cur' : ''}>{k}</span>)}</div>
+          <div className="ns-body"><div className="ns-label">Hatua inayofuata</div><strong>{step.title}</strong><div className="muted">{step.text}</div></div>
+          {step.action && <Button onClick={step.action.go}>{step.action.label}</Button>}
+        </div>
+      )}
       <div className="grid grid-kpi">
         <Kpi label="Mabelo yaliyouzwa" value={num(m.bales)} hint={m.rejected ? `${m.rejected} yamekataliwa` : undefined} />
         <Kpi label="Kilo" value={num(m.kg)} hint={`Wakulima ${m.farmers}`} />
-        <Kpi tone="dark" label="Thamani (USD)" value={usd(m.usd)} hint={m.exchangeRate ? tsh(Number(m.usd) * Number(m.exchangeRate)) : undefined} />
+        <Kpi tone="dark" label="Thamani (USD)" value={usd(m.usd)} hint={m.exchangeRate ? `≈ ${tsh(Number(m.usd) * Number(m.exchangeRate))}` : undefined} />
         <Kpi label="Wastani wa bei" value={Number(m.kg) ? `${usd(Number(m.usd) / Number(m.kg))}/kg` : '—'} />
       </div>
       <Tabs value={tab} onChange={setTab} items={[['bales', `Mabelo (${data.bales.length})`], ['settle', 'Hesabu za wakulima'], ['pay', `Malipo (${data.batches.length})`]]} />
-      {tab === 'bales' && <Bales marketId={m.id} bales={data.bales} editable={manage && editable} onChanged={(msg) => { setOk(msg); reload(); }} />}
+      {tab === 'bales' && <Bales marketId={m.id} rate={m.exchangeRate} limits={L} bales={data.bales} editable={manage && editable} onChanged={(msg) => { setOk(msg); reload(); }} />}
       {tab === 'settle' && (data.settlements.length ? (
         <Section pad={false} title="Hesabu za wakulima (settlement)" actions={<PrintButton />}>
           <div className="print-doc">
@@ -259,14 +334,19 @@ export function MarketDetail() {
 interface Row { memberNo: string; baleNo: string; grossKg: string; netKg: string; grade: string; priceUsd: string; rejected: boolean }
 const emptyRow = (): Row => ({ memberNo: '', baleNo: '', grossKg: '', netKg: '', grade: '', priceUsd: '', rejected: false });
 
-function Bales({ marketId, bales, editable, onChanged }: { marketId: string; bales: Bale[]; editable: boolean; onChanged: (m: string) => void }) {
+function Bales({ marketId, rate, limits: L, bales, editable, onChanged }: { marketId: string; rate: string | null; limits: Limits; bales: Bale[]; editable: boolean; onChanged: (m: string) => void }) {
+  const fx = rateCheck(rate, L).level === 'error' ? 0 : Number(rate ?? 0);
+  const tzsOf = (kg: string, price: string) => (fx && Number(kg) > 0 && price !== '' ? Number(kg) * Number(price) * fx : null);
   const [rows, setRows] = useState<Row[]>([emptyRow(), emptyRow(), emptyRow()]);
   const [paste, setPaste] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const { busy, error, run } = useAction();
   const set = (i: number, p: Partial<Row>) => setRows(rows.map((r, k) => (k === i ? { ...r, ...p } : r)));
   const filled = rows.filter((r) => r.memberNo.trim() || r.baleNo.trim());
-  const valid = filled.length > 0 && filled.every((r) => r.memberNo.trim() && r.baleNo.trim() && Number(r.grossKg) > 0 && (r.rejected || Number(r.priceUsd) >= 0 && r.priceUsd !== ''));
+  const checks = rows.map((r) => baleCheck(r, L));
+  const errors = rows.filter((r, i) => (r.memberNo.trim() || r.baleNo.trim()) && checks[i].level === 'error').length;
+  const warns = rows.filter((r, i) => (r.memberNo.trim() || r.baleNo.trim()) && checks[i].level === 'warn').length;
+  const valid = errors === 0 && filled.length > 0 && filled.every((r) => r.memberNo.trim() && r.baleNo.trim() && Number(r.grossKg) > 0 && (r.rejected || Number(r.priceUsd) >= 0 && r.priceUsd !== ''));
   const save = async () => {
     const r = await run(() => api<{ bales: unknown[] }>(`/sales/markets/${marketId}/bales`, { method: 'POST', body: { bales: filled.map((x) => ({
       memberNo: x.memberNo.trim(), baleNo: x.baleNo.trim(), grossKg: x.grossKg, netKg: x.netKg || null, grade: x.grade || null,
@@ -287,20 +367,24 @@ function Bales({ marketId, bales, editable, onChanged }: { marketId: string; bal
         <Section title="Ingiza mabelo" actions={<Button size="sm" variant="secondary" onClick={() => setPaste(true)}>Bandika kutoka Excel</Button>}>
           <Alert>{error}</Alert>
           <div className="table-wrap"><table className="table bale-entry">
-            <thead><tr><th>Namba ya mkulima</th><th>Namba ya belo / tiketi</th><th>Kilo</th><th>Kilo halisi</th><th>Daraja</th><th>Bei USD/kg</th><th>Limekataliwa</th><th /></tr></thead>
-            <tbody>{rows.map((r, i) => (
-              <tr key={i}>
+            <thead><tr><th>Namba ya mkulima</th><th>Namba ya belo / tiketi</th><th>Kilo</th><th>Kilo halisi</th><th>Daraja</th><th>Bei USD/kg</th><th className="num">Thamani (TZS)</th><th>Limekataliwa</th><th /></tr></thead>
+            <tbody>{rows.map((r, i) => (<Fragment key={i}>
+              <tr className={checks[i].level ? `row-${checks[i].level}` : undefined}>
                 <td><input className="input" value={r.memberNo} onChange={(e) => set(i, { memberNo: e.target.value })} aria-label={`Namba ya mkulima ${i + 1}`} /></td>
                 <td><input className="input" value={r.baleNo} onChange={(e) => set(i, { baleNo: e.target.value })} aria-label={`Namba ya belo ${i + 1}`} /></td>
                 <td><input className="input" type="number" min="0" value={r.grossKg} onChange={(e) => set(i, { grossKg: e.target.value })} aria-label={`Kilo ${i + 1}`} /></td>
                 <td><input className="input" type="number" min="0" value={r.netKg} onChange={(e) => set(i, { netKg: e.target.value })} aria-label={`Kilo halisi ${i + 1}`} placeholder="hiari" /></td>
                 <td><input className="input" value={r.grade} onChange={(e) => set(i, { grade: e.target.value.toUpperCase() })} aria-label={`Daraja ${i + 1}`} /></td>
                 <td><input className="input" type="number" min="0" step="0.0001" disabled={r.rejected} value={r.priceUsd} onChange={(e) => set(i, { priceUsd: e.target.value })} aria-label={`Bei ${i + 1}`} /></td>
+                <td className="num bale-tzs">{!r.rejected && tzsOf(r.netKg || r.grossKg, r.priceUsd) !== null ? tsh(tzsOf(r.netKg || r.grossKg, r.priceUsd)!) : '—'}</td>
                 <td style={{ textAlign: 'center' }}><input type="checkbox" checked={r.rejected} onChange={(e) => set(i, { rejected: e.target.checked })} aria-label={`Limekataliwa ${i + 1}`} /></td>
                 <td>{rows.length > 1 && <Button size="sm" variant="ghost" aria-label="Ondoa" onClick={() => setRows(rows.filter((_, k) => k !== i))}>✕</Button>}</td>
               </tr>
-            ))}</tbody>
+              {checks[i].text && (r.memberNo.trim() || r.baleNo.trim() || r.grossKg || r.priceUsd) && <tr className={`row-msg row-${checks[i].level}`}><td colSpan={9}>⚠ {checks[i].text}</td></tr>}
+            </Fragment>))}</tbody>
           </table></div>
+          {!fx && <Alert kind="warn">Kiwango cha fedha cha soko hili si sahihi — thamani kwa shilingi haiwezi kuonyeshwa. Bonyeza "Hariri soko" kukirekebisha.</Alert>}
+          {(errors > 0 || warns > 0) && <p className={`name-note ${errors ? 'bad' : 'warn'}`}>{errors ? `Mistari ${errors} ina makosa — rekebisha kabla ya kuhifadhi.` : `Mistari ${warns} ina takwimu zisizo za kawaida — hakiki kabla ya kuhifadhi.`}</p>}
           <div className="actions" style={{ justifyContent: 'space-between', marginTop: 10 }}>
             <Button size="sm" variant="secondary" onClick={() => setRows([...rows, emptyRow()])}>+ Mstari</Button>
             <Button busy={busy} disabled={!valid} onClick={save}>Hifadhi mabelo {filled.length || ''}</Button>
@@ -310,18 +394,20 @@ function Bales({ marketId, bales, editable, onChanged }: { marketId: string; bal
       <Section pad={false} title={`Mabelo yaliyoingizwa (${bales.length})`}>
         {bales.length === 0 ? <Empty>Bado hakuna mabelo.</Empty> : (
           <div className="table-wrap"><table className="table">
-            <thead><tr><th>Belo</th><th>Mkulima</th><th className="num">Kilo</th><th>Daraja</th><th className="num">Bei</th><th className="num">Thamani</th><th /></tr></thead>
-            <tbody>{bales.map((b) => (
-              <tr key={b.id} style={{ opacity: b.status === 'REJECTED' ? 0.6 : 1 }}>
-                <td><strong>{b.baleNo}</strong>{b.status === 'REJECTED' && <div><span className="badge badge-bad">Limekataliwa</span> <span className="muted" style={{ fontSize: 12 }}>{b.rejectReason}</span></div>}</td>
+            <thead><tr><th>Belo</th><th>Mkulima</th><th className="num">Kilo</th><th>Daraja</th><th className="num">Bei</th><th className="num">Thamani (USD)</th><th className="num">Thamani (TZS)</th><th /></tr></thead>
+            <tbody>{bales.map((b) => { const bc = b.status === 'SOLD' ? baleCheck(b, L) : { level: null, text: null }; return (
+              <tr key={b.id} className={bc.level ? `row-${bc.level}` : undefined} style={{ opacity: b.status === 'REJECTED' ? 0.6 : 1 }}>
+                <td><strong>{b.baleNo}</strong>{bc.text && <div className={`name-note ${bc.level === 'error' ? 'bad' : 'warn'}`} style={{ margin: '2px 0 0' }}>{bc.level === 'error' ? 'Si halisi: ' : ''}{bc.text}</div>}{b.status === 'REJECTED' && <div><span className="badge badge-bad">Limekataliwa</span> <span className="muted" style={{ fontSize: 12 }}>{b.rejectReason}</span></div>}</td>
                 <td>{b.memberName}<div className="muted" style={{ fontSize: 12 }}>{b.memberNo}</div></td>
                 <td className="num">{num(b.netKg ?? b.grossKg)}</td><td>{b.grade ?? '—'}</td>
                 <td className="num">{b.priceUsd ? usd(b.priceUsd) : '—'}</td><td className="num">{b.valueUsd ? usd(b.valueUsd) : '—'}</td>
+                <td className="num">{b.valueUsd && fx ? tsh(Number(b.valueUsd) * fx) : '—'}</td>
                 <td className="num">{editable && <Button size="sm" variant="ghost" onClick={async () => { if (await run(() => api(`/sales/bales/${b.id}`, { method: 'DELETE' }))) onChanged(`Belo ${b.baleNo} limeondolewa`); }}>Ondoa</Button>}</td>
               </tr>
-            ))}
+            ); })}
               <tr className="row-total"><td colSpan={2}>Jumla (yaliyouzwa)</td><td className="num">{num(sold.reduce((t, b) => t + Number(b.netKg ?? b.grossKg), 0))}</td><td /><td />
-                <td className="num">{usd(sold.reduce((t, b) => t + Number(b.valueUsd ?? 0), 0))}</td><td /></tr>
+                <td className="num">{usd(sold.reduce((t, b) => t + Number(b.valueUsd ?? 0), 0))}</td>
+                <td className="num">{fx ? tsh(sold.reduce((t, b) => t + Number(b.valueUsd ?? 0), 0) * fx) : '—'}</td><td /></tr>
             </tbody>
           </table></div>
         )}
