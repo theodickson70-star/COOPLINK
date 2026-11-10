@@ -2,6 +2,7 @@
 //  MAUZO YA TUMBAKU NA MAKATO (Mhasibu)
 //   Masoko -> mabelo -> hesabu za wakulima (settlement) -> idhini -> orodha ya malipo -> malipo yaliyothibitishwa
 // =====================================================================
+import { useT } from '../lib/prefs';
 import { Fragment, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, apiDownload } from '../lib/api';
@@ -17,7 +18,7 @@ const METHOD: Record<string, string> = { MOBILE_MONEY: 'Simu', BANK: 'Benki', CA
 const SETTLE: Record<string, string> = { DRAFT: 'Inasubiri idhini', APPROVED: 'Imeidhinishwa — haijalipwa', PAID: 'Imelipwa', CANCELLED: 'Imefutwa' };
 
 interface Market {
-  id: string; marketNo: string; marketDate: string; location: string | null; buyerName: string | null; exchangeRate: string | null; status: string; notes: string | null;
+  id: string; marketNo: string; marketDate: string; location: string | null; buyerName: string | null; exchangeRate: string | null; status: string; notes: string | null; buyerDueDate?: string | null;
   bales: number; rejected: number; farmers: number; kg: string; usd: string; settlement: string | null; grossTzs?: string; netTzs?: string; paid?: string; approvalId: string | null;
 }
 interface Limits { rate: { min: number; max: number; warnMin: number; warnMax: number }; price: { max: number; warn: number }; kg: { max: number; warn: number } }
@@ -46,19 +47,20 @@ function baleCheck(r: { grossKg: string; netKg?: string | null; priceUsd?: strin
 interface Rule { id: string; name: string; code: string; basis: string; basisLabel: string; rate: string; currency: string; priority: number; glAccountCode: string | null; glCode: string; isActive: boolean }
 
 export function Sales() {
+  const t = useT();
   const { may } = useAuth();
-  const [tab, setTab] = useState<'markets' | 'buyers' | 'rules'>('markets');
+  const [tab, setTab] = useState<'markets' | 'buyers' | 'rules'>(() => (new URLSearchParams(window.location.search).get('tab') === 'buyers' ? 'buyers' : 'markets'));
   const sum = useFetch<{ season: { name: string }; pending: { markets: number; open: number; waiting: number; bales: number; kg: string; usd: string; tzs: string }; farmers: number; kg: string; grossTzs: string; deductions: string; netTzs: string; paid: string; unpaid: string; deductionsByRule: { name: string; amount: string }[] }>('/sales/summary');
   return (
     <>
-      <PageHead title="Mauzo ya tumbaku na makato" sub={<>Masoko, mabelo, makato ya kisheria, deni la pembejeo na malipo ya wakulima{sum.data ? <> · Msimu <strong>{sum.data.season.name}</strong></> : null}</>} />
+      <PageHead title="Mauzo ya tumbaku na makato" sub={<>{t('Masoko, mabelo, makato ya kisheria, deni la pembejeo na malipo ya wakulima')}{sum.data ? <> {t('· Msimu')} <strong>{sum.data.season.name}</strong></> : null}</>} />
       {sum.data && sum.data.pending.markets > 0 && (
         <div className="pending-note" role="status">
           <span className="pn-dot" />
           <div>
             <strong>{sum.data.pending.open > 0 && `Masoko ${sum.data.pending.open} yako wazi`}{sum.data.pending.open > 0 && sum.data.pending.waiting > 0 && ' · '}{sum.data.pending.waiting > 0 && `${sum.data.pending.waiting} yanasubiri idhini ya Meneja`}</strong>
             {' '}— mabelo {num(sum.data.pending.bales)} · kilo {num(sum.data.pending.kg)} · {usd(sum.data.pending.usd)}{Number(sum.data.pending.tzs) > 0 && <> (≈ {tsh(sum.data.pending.tzs)})</>}.
-            <div className="muted">Takwimu za juu zinahesabu mauzo yaliyoidhinishwa na Meneja tu. Mauzo haya yataingia baada ya hesabu za wakulima kuidhinishwa.</div>
+            <div className="muted">{t('Takwimu za juu zinahesabu mauzo yaliyoidhinishwa na Meneja tu. Mauzo haya yataingia baada ya hesabu za wakulima kuidhinishwa.')}</div>
           </div>
         </div>
       )}
@@ -79,15 +81,16 @@ export function Sales() {
 }
 
 function Markets({ canManage }: { canManage: boolean }) {
+  const t = useT();
   const { data, loading, reload } = useFetch<{ data: Market[] }>('/sales/markets');
   const [add, setAdd] = useState(false);
   const nav = useNavigate();
   return (
     <section className="card">
-      <div className="toolbar"><div className="grow" />{canManage && <Button onClick={() => setAdd(true)}>+ Soko jipya</Button>}</div>
-      {loading && !data ? <Loading /> : !data?.data.length ? <Empty>Bado hakuna soko msimu huu. Anza kwa kuweka kanuni za makato, kisha fungua soko.</Empty> : (
+      <div className="toolbar"><div className="grow" />{canManage && <Button onClick={() => setAdd(true)}>{t('+ Soko jipya')}</Button>}</div>
+      {loading && !data ? <Loading /> : !data?.data.length ? <Empty>{t('Bado hakuna soko msimu huu. Anza kwa kuweka kanuni za makato, kisha fungua soko.')}</Empty> : (
         <div className="table-wrap"><table className="table">
-          <thead><tr><th>Soko</th><th>Mnunuzi</th><th className="num">Mabelo / kilo</th><th className="num">Thamani</th><th className="num">Malipo halisi</th><th>Hali</th></tr></thead>
+          <thead><tr><th>{t('Soko')}</th><th>{t('Mnunuzi')}</th><th className="num">{t('Mabelo / kilo')}</th><th className="num">{t('Thamani')}</th><th className="num">{t('Malipo halisi')}</th><th>{t('Hali')}</th></tr></thead>
           <tbody>{data.data.map((m) => (
             <tr key={m.id} onClick={() => nav(`/sales/markets/${m.id}`)} style={{ cursor: 'pointer' }}>
               <td><strong>{m.marketNo}</strong><div className="muted" style={{ fontSize: 12 }}>{date(m.marketDate)}{m.location ? ` · ${m.location}` : ''}</div></td>
@@ -106,7 +109,8 @@ function Markets({ canManage }: { canManage: boolean }) {
 }
 
 function MarketForm({ market, onClose, onDone }: { market?: Market; onClose: () => void; onDone: (id: string) => void }) {
-  const [f, setF] = useState({ marketDate: market?.marketDate ?? today(), buyerName: market?.buyerName ?? '', exchangeRate: market?.exchangeRate ?? '', location: market?.location ?? '', notes: market?.notes ?? '' });
+  const t = useT();
+  const [f, setF] = useState({ marketDate: market?.marketDate ?? today(), buyerName: market?.buyerName ?? '', exchangeRate: market?.exchangeRate ?? '', location: market?.location ?? '', notes: market?.notes ?? '', buyerDueDate: market?.buyerDueDate ?? '' });
   const opts = useFetch<{ data: { name: string; official: boolean }[]; limits: Limits }>('/sales/buyer-options');
   const L = opts.data?.limits ?? DEFAULT_LIMITS;
   const known = opts.data?.data ?? [];
@@ -119,11 +123,11 @@ function MarketForm({ market, onClose, onDone }: { market?: Market; onClose: () 
   const valid = f.buyerName.trim().length >= 2 && !ttb && Number(f.exchangeRate) > 0 && rc.level !== 'error';
   return (
     <Modal open title={market ? `Hariri ${market.marketNo}` : 'Soko jipya'} onClose={onClose}
-      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={!valid} onClick={async () => {
-        const body = { ...f, location: f.location || null, notes: f.notes || null };
+      footer={<><Button variant="secondary" onClick={onClose}>{t('Ghairi')}</Button><Button busy={busy} disabled={!valid} onClick={async () => {
+        const body = { ...f, location: f.location || null, notes: f.notes || null, buyerDueDate: f.buyerDueDate || null };
         const r = await run(() => market ? api<{ market: Market }>(`/sales/markets/${market.id}`, { method: 'PATCH', body }) : api<{ market: Market }>('/sales/markets', { method: 'POST', body }));
         if (r) onDone(r.market.id);
-      }}>Hifadhi</Button></>}>
+      }}>{t('Hifadhi')}</Button></>}>
       <Alert>{error}</Alert>
       <div className="form-grid">
         <TextField label="Tarehe ya soko *" type="date" value={f.marketDate} onChange={(v) => setF({ ...f, marketDate: v })} />
@@ -136,7 +140,7 @@ function MarketForm({ market, onClose, onDone }: { market?: Market; onClose: () 
             <TextField label="Kampuni ya ununuzi *" value={f.buyerName} onChange={(v) => setF({ ...f, buyerName: v })} placeholder="mf. Alliance One, TLTC" autoFocus={other}
               help={known.length ? undefined : 'Jina kamili la kampuni inayonunua tumbaku'} />
           )}
-          {typing && known.length > 0 && <button type="button" className="link-btn" onClick={() => { setOther(false); setF({ ...f, buyerName: '' }); }}>← Chagua kutoka orodha</button>}
+          {typing && known.length > 0 && <button type="button" className="link-btn" onClick={() => { setOther(false); setF({ ...f, buyerName: '' }); }}>{t('← Chagua kutoka orodha')}</button>}
           {ttb && <p className="name-note bad">TTB (Bodi ya Tumbaku) ni msimamizi, si mnunuzi. Weka kampuni inayonunua tumbaku.</p>}
         </div>
         <div>
@@ -144,6 +148,7 @@ function MarketForm({ market, onClose, onDone }: { market?: Market; onClose: () 
           {rc.text && <p className={`name-note ${rc.level === 'error' ? 'bad' : 'warn'}`}>{rc.text}</p>}
         </div>
         <TextField label="Mahali" value={f.location} onChange={(v) => setF({ ...f, location: v })} />
+        <TextField label="Tarehe mnunuzi atalipa (hiari)" type="date" min={f.marketDate} value={f.buyerDueDate} onChange={(v) => setF({ ...f, buyerDueDate: v })} help="Isipowekwa: siku 30 baada ya soko" />
       </div>
       <TextField label="Maelezo" value={f.notes} onChange={(v) => setF({ ...f, notes: v })} />
     </Modal>
@@ -151,6 +156,7 @@ function MarketForm({ market, onClose, onDone }: { market?: Market; onClose: () 
 }
 
 function Rules({ canManage, byRule }: { canManage: boolean; byRule: { name: string; amount: string }[] }) {
+  const t = useT();
   const { data, reload } = useFetch<{ data: Rule[]; season: { name: string } }>('/sales/deduction-rules');
   const [edit, setEdit] = useState<Rule | 'new' | null>(null);
   const deducted = new Map(byRule.map((b) => [b.name, b.amount]));
@@ -159,11 +165,11 @@ function Rules({ canManage, byRule }: { canManage: boolean; byRule: { name: stri
       <div className="toolbar">
         <span className="muted">Makato yanakatwa kwa mpangilio (namba ndogo kwanza). Deni la pembejeo linawekwa mwisho ili ushuru wa kisheria ukatwe kwanza.</span>
         <div className="grow" />
-        {canManage && <Button onClick={() => setEdit('new')}>+ Kanuni mpya</Button>}
+        {canManage && <Button onClick={() => setEdit('new')}>{t('+ Kanuni mpya')}</Button>}
       </div>
       {!data ? <Loading /> : data.data.length === 0 ? <Empty>Hakuna kanuni za makato msimu huu. Ongeza mf. Ushuru wa Halmashauri (3%), Ushuru wa Chama Kikuu, Ushuru wa chama, Deni la pembejeo.</Empty> : (
         <div className="table-wrap"><table className="table">
-          <thead><tr><th>#</th><th>Kanuni</th><th>Msingi</th><th className="num">Kiwango</th><th>Akaunti</th><th className="num">Imekatwa msimu huu</th><th /></tr></thead>
+          <thead><tr><th>#</th><th>{t('Kanuni')}</th><th>{t('Msingi')}</th><th className="num">{t('Kiwango')}</th><th>{t('Akaunti')}</th><th className="num">{t('Imekatwa msimu huu')}</th><th /></tr></thead>
           <tbody>{data.data.map((r) => (
             <tr key={r.id} style={{ opacity: r.isActive ? 1 : 0.5 }}>
               <td>{r.priority}</td>
@@ -172,7 +178,7 @@ function Rules({ canManage, byRule }: { canManage: boolean; byRule: { name: stri
               <td className="num">{r.basis === 'OUTSTANDING_LOAN' ? 'Deni lote' : r.basis === 'PERCENT_OF_GROSS' ? `${num(r.rate)}%` : `${r.currency === 'USD' ? usd(r.rate) : tsh(r.rate)}${r.basis === 'PER_KG' ? ' /kg' : ''}`}</td>
               <td>{r.glCode}</td>
               <td className="num">{deducted.has(r.name) ? tsh(deducted.get(r.name)!) : '—'}</td>
-              <td className="num">{canManage && <Button size="sm" variant="ghost" onClick={() => setEdit(r)}>Hariri</Button>}</td>
+              <td className="num">{canManage && <Button size="sm" variant="ghost" onClick={() => setEdit(r)}>{t('Hariri')}</Button>}</td>
             </tr>
           ))}</tbody>
         </table></div>
@@ -192,15 +198,16 @@ const GL_FOR_RULE = [
 ];
 
 function RuleForm({ rule, onClose, onDone }: { rule: Rule | null; onClose: () => void; onDone: () => void }) {
+  const t = useT();
   const [f, setF] = useState({ name: rule?.name ?? '', code: rule?.code ?? '', basis: rule?.basis ?? 'PERCENT_OF_GROSS', rate: rule?.rate ?? '', currency: rule?.currency ?? 'TZS', priority: String(rule?.priority ?? 100), glAccountCode: rule?.glAccountCode ?? '', isActive: rule?.isActive ?? true });
   const { busy, error, run } = useAction();
   const loan = f.basis === 'OUTSTANDING_LOAN';
   return (
     <Modal open title={rule ? `Hariri: ${rule.name}` : 'Kanuni mpya ya makato'} onClose={onClose}
-      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={f.name.trim().length < 3 || (!rule && !/^[A-Za-z0-9_]{2,20}$/.test(f.code)) || (!loan && f.rate === '')} onClick={async () => {
+      footer={<><Button variant="secondary" onClick={onClose}>{t('Ghairi')}</Button><Button busy={busy} disabled={f.name.trim().length < 3 || (!rule && !/^[A-Za-z0-9_]{2,20}$/.test(f.code)) || (!loan && f.rate === '')} onClick={async () => {
         const body = { name: f.name, basis: f.basis, rate: loan ? '0' : f.rate, currency: f.currency, priority: Number(f.priority), glAccountCode: f.glAccountCode || null, ...(rule ? { isActive: f.isActive } : { code: f.code.toUpperCase() }) };
         if (await run(() => rule ? api(`/sales/deduction-rules/${rule.id}`, { method: 'PATCH', body }) : api('/sales/deduction-rules', { method: 'POST', body }))) onDone();
-      }}>Hifadhi</Button></>}>
+      }}>{t('Hifadhi')}</Button></>}>
       <Alert>{error}</Alert>
       <div className="form-grid">
         <TextField label="Jina *" value={f.name} onChange={(v) => setF({ ...f, name: v })} placeholder="mf. Ushuru wa Halmashauri" />
@@ -212,7 +219,7 @@ function RuleForm({ rule, onClose, onDone }: { rule: Rule | null; onClose: () =>
         <TextField label="Mpangilio" type="number" min="1" value={f.priority} onChange={(v) => setF({ ...f, priority: v })} />
         <SelectField label="Akaunti ya daftari kuu" value={f.glAccountCode} onChange={(v) => setF({ ...f, glAccountCode: v })} options={GL_FOR_RULE} />
       </div>
-      {rule && <label className="check"><input type="checkbox" checked={f.isActive} onChange={(e) => setF({ ...f, isActive: e.target.checked })} /> Kanuni iko hai</label>}
+      {rule && <label className="check"><input type="checkbox" checked={f.isActive} onChange={(e) => setF({ ...f, isActive: e.target.checked })} /> {t('Kanuni iko hai')}</label>}
     </Modal>
   );
 }
@@ -224,6 +231,7 @@ interface Batch { id: string; batchNo: string; totalAmount: string; status: stri
 interface PreviewRow { memberId: string; memberNo: string; name: string; bales: number; groupName: string | null; coveredByGroup: string; totalKg: string; grossUsd: string; grossTzs: string; deductions: { code: string; description: string; amount: string; kind?: string }[]; totalDeductions: string; netTzs: string; debtBefore: string }
 
 export function MarketDetail() {
+  const t = useT();
   const { id } = useParams();
   const { may } = useAuth();
   const { data, reload } = useFetch<{ market: Market; limits?: Limits; bales: Bale[]; settlements: Settlement[]; batches: Batch[]; approval: { requestNo: string; status: string; decisionNote: string | null } | null }>(`/sales/markets/${id}`);
@@ -256,15 +264,15 @@ export function MarketDetail() {
     <>
       <PageHead title={<>{m.marketNo} <Badge status={m.settlement ?? m.status} label={m.settlement ? SETTLE[m.settlement] : m.status === 'OPEN' ? 'Wazi' : undefined} /></>}
         sub={<>{date(m.marketDate)} · {m.buyerName}{m.location ? ` · ${m.location}` : ''} · 1 USD = {num(m.exchangeRate ?? 0)} TZS</>}>
-        <Link className="btn btn-secondary" to="/sales">← Masoko</Link>
-        {manage && editable && <Button variant="secondary" onClick={() => setEdit(true)}>Hariri soko</Button>}
+        <Link className="btn btn-secondary" to="/sales">{t('← Masoko')}</Link>
+        {manage && editable && <Button variant="secondary" onClick={() => setEdit(true)}>{t('Hariri soko')}</Button>}
       </PageHead>
       <Alert kind="ok">{ok}</Alert>
       <Alert>{error}</Alert>
       {step && (
         <div className={`next-step${step.title.startsWith('Rekebisha') ? ' bad' : ''}`}>
           <div className="ns-steps" aria-hidden>{[1, 2, 3, 4].map((k) => <span key={k} className={k < step.n ? 'done' : k === step.n ? 'cur' : ''}>{k}</span>)}</div>
-          <div className="ns-body"><div className="ns-label">Hatua inayofuata</div><strong>{step.title}</strong><div className="muted">{step.text}</div></div>
+          <div className="ns-body"><div className="ns-label">{t('Hatua inayofuata')}</div><strong>{step.title}</strong><div className="muted">{step.text}</div></div>
           {step.action && <Button onClick={step.action.go}>{step.action.label}</Button>}
         </div>
       )}
@@ -281,7 +289,7 @@ export function MarketDetail() {
           <div className="print-doc">
             <div className="print-only"><DocHead title="HESABU ZA MALIPO YA WAKULIMA" no={m.marketNo} sub={`${date(m.marketDate)} · ${m.buyerName ?? ''}`} /></div>
             <div className="table-wrap"><table className="table fin-table">
-              <thead><tr><th>Mkulima</th><th className="num">Kilo</th><th className="num">Mauzo (TZS)</th><th>Makato</th><th className="num">Malipo halisi</th><th>Hali</th></tr></thead>
+              <thead><tr><th>{t('Mkulima')}</th><th className="num">{t('Kilo')}</th><th className="num">Mauzo (TZS)</th><th>{t('Makato')}</th><th className="num">{t('Malipo halisi')}</th><th>{t('Hali')}</th></tr></thead>
               <tbody>{data.settlements.map((s) => (
                 <tr key={s.id}>
                   <td><Link to={`/sales/settlements/${s.id}`}>{s.memberName}</Link><div className="muted" style={{ fontSize: 12 }}>{s.memberNo} · {s.settlementNo}</div></td>
@@ -301,11 +309,11 @@ export function MarketDetail() {
           </div>
           {manage && unpaidApproved.length > 0 && (
             <div className="card-pad no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <span>Wakulima <strong>{unpaidApproved.length}</strong> wako tayari kulipwa ({tsh(unpaidApproved.reduce((t, s) => t + Number(s.netTzs), 0))})</span>
+              <span>{t('Wakulima')} <strong>{unpaidApproved.length}</strong> wako tayari kulipwa ({tsh(unpaidApproved.reduce((t, s) => t + Number(s.netTzs), 0))})</span>
               <Button busy={busy} onClick={async () => {
                 const r = await run(() => api<{ batch: Batch; approval: { requestNo: string } }>(`/sales/markets/${m.id}/payment-batch`, { method: 'POST' }));
                 if (r) nav(`/sales/batches/${r.batch.id}`);
-              }}>Andaa orodha ya malipo</Button>
+              }}>{t('Andaa orodha ya malipo')}</Button>
             </div>
           )}
         </Section>
@@ -314,7 +322,7 @@ export function MarketDetail() {
         <Section pad={false} title="Orodha za malipo">
           {data.batches.length === 0 ? <Empty>Hakuna orodha ya malipo bado. Hesabu zikiidhinishwa, andaa orodha kwenye "Hesabu za wakulima".</Empty> : (
             <div className="table-wrap"><table className="table">
-              <thead><tr><th>Orodha</th><th className="num">Wakulima</th><th className="num">Jumla</th><th className="num">Imelipwa</th><th>Hali</th></tr></thead>
+              <thead><tr><th>{t('Orodha')}</th><th className="num">{t('Wakulima')}</th><th className="num">{t('Jumla')}</th><th className="num">{t('Imelipwa')}</th><th>{t('Hali')}</th></tr></thead>
               <tbody>{data.batches.map((b) => (
                 <tr key={b.id} onClick={() => nav(`/sales/batches/${b.id}`)} style={{ cursor: 'pointer' }}>
                   <td><strong>{b.batchNo}</strong><div className="muted" style={{ fontSize: 12 }}>{dateTime(b.createdAt)}</div></td>
@@ -335,6 +343,7 @@ interface Row { memberNo: string; baleNo: string; grossKg: string; netKg: string
 const emptyRow = (): Row => ({ memberNo: '', baleNo: '', grossKg: '', netKg: '', grade: '', priceUsd: '', rejected: false });
 
 function Bales({ marketId, rate, limits: L, bales, editable, onChanged }: { marketId: string; rate: string | null; limits: Limits; bales: Bale[]; editable: boolean; onChanged: (m: string) => void }) {
+  const t = useT();
   const fx = rateCheck(rate, L).level === 'error' ? 0 : Number(rate ?? 0);
   const tzsOf = (kg: string, price: string) => (fx && Number(kg) > 0 && price !== '' ? Number(kg) * Number(price) * fx : null);
   const [rows, setRows] = useState<Row[]>([emptyRow(), emptyRow(), emptyRow()]);
@@ -364,10 +373,10 @@ function Bales({ marketId, rate, limits: L, bales, editable, onChanged }: { mark
   return (
     <div className="stack">
       {editable && (
-        <Section title="Ingiza mabelo" actions={<Button size="sm" variant="secondary" onClick={() => setPaste(true)}>Bandika kutoka Excel</Button>}>
+        <Section title="Ingiza mabelo" actions={<Button size="sm" variant="secondary" onClick={() => setPaste(true)}>{t('Bandika kutoka Excel')}</Button>}>
           <Alert>{error}</Alert>
           <div className="table-wrap"><table className="table bale-entry">
-            <thead><tr><th>Namba ya mkulima</th><th>Namba ya belo / tiketi</th><th>Kilo</th><th>Kilo halisi</th><th>Daraja</th><th>Bei USD/kg</th><th className="num">Thamani (TZS)</th><th>Limekataliwa</th><th /></tr></thead>
+            <thead><tr><th>{t('Namba ya mkulima')}</th><th>{t('Namba ya belo / tiketi')}</th><th>{t('Kilo')}</th><th>{t('Kilo halisi')}</th><th>{t('Daraja')}</th><th>{t('Bei USD/kg')}</th><th className="num">Thamani (TZS)</th><th>{t('Limekataliwa')}</th><th /></tr></thead>
             <tbody>{rows.map((r, i) => (<Fragment key={i}>
               <tr className={checks[i].level ? `row-${checks[i].level}` : undefined}>
                 <td><input className="input" value={r.memberNo} onChange={(e) => set(i, { memberNo: e.target.value })} aria-label={`Namba ya mkulima ${i + 1}`} /></td>
@@ -386,23 +395,23 @@ function Bales({ marketId, rate, limits: L, bales, editable, onChanged }: { mark
           {!fx && <Alert kind="warn">Kiwango cha fedha cha soko hili si sahihi — thamani kwa shilingi haiwezi kuonyeshwa. Bonyeza "Hariri soko" kukirekebisha.</Alert>}
           {(errors > 0 || warns > 0) && <p className={`name-note ${errors ? 'bad' : 'warn'}`}>{errors ? `Mistari ${errors} ina makosa — rekebisha kabla ya kuhifadhi.` : `Mistari ${warns} ina takwimu zisizo za kawaida — hakiki kabla ya kuhifadhi.`}</p>}
           <div className="actions" style={{ justifyContent: 'space-between', marginTop: 10 }}>
-            <Button size="sm" variant="secondary" onClick={() => setRows([...rows, emptyRow()])}>+ Mstari</Button>
+            <Button size="sm" variant="secondary" onClick={() => setRows([...rows, emptyRow()])}>{t('+ Mstari')}</Button>
             <Button busy={busy} disabled={!valid} onClick={save}>Hifadhi mabelo {filled.length || ''}</Button>
           </div>
         </Section>
       )}
       <Section pad={false} title={`Mabelo yaliyoingizwa (${bales.length})`}>
-        {bales.length === 0 ? <Empty>Bado hakuna mabelo.</Empty> : (
+        {bales.length === 0 ? <Empty>{t('Bado hakuna mabelo.')}</Empty> : (
           <div className="table-wrap"><table className="table">
-            <thead><tr><th>Belo</th><th>Mkulima</th><th className="num">Kilo</th><th>Daraja</th><th className="num">Bei</th><th className="num">Thamani (USD)</th><th className="num">Thamani (TZS)</th><th /></tr></thead>
+            <thead><tr><th>{t('Belo')}</th><th>{t('Mkulima')}</th><th className="num">{t('Kilo')}</th><th>{t('Daraja')}</th><th className="num">{t('Bei')}</th><th className="num">Thamani (USD)</th><th className="num">Thamani (TZS)</th><th /></tr></thead>
             <tbody>{bales.map((b) => { const bc = b.status === 'SOLD' ? baleCheck(b, L) : { level: null, text: null }; return (
               <tr key={b.id} className={bc.level ? `row-${bc.level}` : undefined} style={{ opacity: b.status === 'REJECTED' ? 0.6 : 1 }}>
-                <td><strong>{b.baleNo}</strong>{bc.text && <div className={`name-note ${bc.level === 'error' ? 'bad' : 'warn'}`} style={{ margin: '2px 0 0' }}>{bc.level === 'error' ? 'Si halisi: ' : ''}{bc.text}</div>}{b.status === 'REJECTED' && <div><span className="badge badge-bad">Limekataliwa</span> <span className="muted" style={{ fontSize: 12 }}>{b.rejectReason}</span></div>}</td>
+                <td><strong>{b.baleNo}</strong>{bc.text && <div className={`name-note ${bc.level === 'error' ? 'bad' : 'warn'}`} style={{ margin: '2px 0 0' }}>{bc.level === 'error' ? 'Si halisi: ' : ''}{bc.text}</div>}{b.status === 'REJECTED' && <div><span className="badge badge-bad">{t('Limekataliwa')}</span> <span className="muted" style={{ fontSize: 12 }}>{b.rejectReason}</span></div>}</td>
                 <td>{b.memberName}<div className="muted" style={{ fontSize: 12 }}>{b.memberNo}</div></td>
                 <td className="num">{num(b.netKg ?? b.grossKg)}</td><td>{b.grade ?? '—'}</td>
                 <td className="num">{b.priceUsd ? usd(b.priceUsd) : '—'}</td><td className="num">{b.valueUsd ? usd(b.valueUsd) : '—'}</td>
                 <td className="num">{b.valueUsd && fx ? tsh(Number(b.valueUsd) * fx) : '—'}</td>
-                <td className="num">{editable && <Button size="sm" variant="ghost" onClick={async () => { if (await run(() => api(`/sales/bales/${b.id}`, { method: 'DELETE' }))) onChanged(`Belo ${b.baleNo} limeondolewa`); }}>Ondoa</Button>}</td>
+                <td className="num">{editable && <Button size="sm" variant="ghost" onClick={async () => { if (await run(() => api(`/sales/bales/${b.id}`, { method: 'DELETE' }))) onChanged(`Belo ${b.baleNo} limeondolewa`); }}>{t('Ondoa')}</Button>}</td>
               </tr>
             ); })}
               <tr className="row-total"><td colSpan={2}>Jumla (yaliyouzwa)</td><td className="num">{num(sold.reduce((t, b) => t + Number(b.netKg ?? b.grossKg), 0))}</td><td /><td />
@@ -413,8 +422,8 @@ function Bales({ marketId, rate, limits: L, bales, editable, onChanged }: { mark
         )}
       </Section>
       {paste && (
-        <Modal open title="Bandika mabelo kutoka Excel" onClose={() => setPaste(false)} footer={<><Button variant="secondary" onClick={() => setPaste(false)}>Ghairi</Button><Button onClick={applyPaste}>Weka kwenye fomu</Button></>}>
-          <p className="muted">Nakili safu kutoka Excel kwa mpangilio huu: <strong>Namba ya mkulima · Namba ya belo · Kilo · Daraja · Bei USD</strong></p>
+        <Modal open title="Bandika mabelo kutoka Excel" onClose={() => setPaste(false)} footer={<><Button variant="secondary" onClick={() => setPaste(false)}>{t('Ghairi')}</Button><Button onClick={applyPaste}>{t('Weka kwenye fomu')}</Button></>}>
+          <p className="muted">{t('Nakili safu kutoka Excel kwa mpangilio huu:')} <strong>{t('Namba ya mkulima · Namba ya belo · Kilo · Daraja · Bei USD')}</strong></p>
           <textarea className="textarea" rows={10} value={pasteText} onChange={(e) => setPasteText(e.target.value)} aria-label="Data ya mabelo" placeholder={'UHA-000001\tT-1001\t102.5\tL1F\t2.10'} />
         </Modal>
       )}
@@ -423,10 +432,11 @@ function Bales({ marketId, rate, limits: L, bales, editable, onChanged }: { mark
 }
 
 function SettlementPreview({ market, canSubmit, onDone }: { market: Market; canSubmit: boolean; onDone: (m: string) => void }) {
+  const tt = useT();
   const [nonSellers, setNonSellers] = useState(false);
   const pv = useFetch<{ rows: PreviewRow[]; totals: { farmers: number; kg: string; grossUsd: string; grossTzs: string; deductions: string; netTzs: string }; guarantees: { groupName: string; debtorName: string; remaining: string; covered: string; uncovered: string; sold: boolean }[] }>(market.bales ? `/sales/markets/${market.id}/preview` : null, { includeNonSellers: nonSellers ? 'true' : undefined });
   const { busy, error, run } = useAction();
-  if (!market.bales) return <Empty>Ingiza mabelo kwanza.</Empty>;
+  if (!market.bales) return <Empty>{tt('Ingiza mabelo kwanza.')}</Empty>;
   if (pv.error) return <Alert>{pv.error}</Alert>;
   if (!pv.data) return <Loading />;
   const t = pv.data.totals;
@@ -434,13 +444,13 @@ function SettlementPreview({ market, canSubmit, onDone }: { market: Market; canS
     <Section pad={false} title="Hakiki hesabu kabla ya kuwasilisha" actions={canSubmit ? <Button busy={busy} onClick={async () => {
       const r = await run(() => api<{ approval: { requestNo: string } }>(`/sales/markets/${market.id}/settlements`, { method: 'POST', body: { includeNonSellers: nonSellers } }));
       if (r) onDone(`Hesabu za wakulima ${t.farmers} zimetumwa kwa Meneja (${r.approval.requestNo})`);
-    }}>Wasilisha kwa Meneja</Button> : undefined}>
+    }}>{tt('Wasilisha kwa Meneja')}</Button> : undefined}>
       <Alert>{error}</Alert>
       <div className="card-pad stack" style={{ gap: 10 }}>
-        <Alert kind="warn">Hesabu hizi bado si rasmi. Zikiidhinishwa na Meneja, mauzo na makato yanaingia kwenye ledger za wakulima na daftari kuu, na soko linafungwa.</Alert>
+        <Alert kind="warn">{tt('Hesabu hizi bado si rasmi. Zikiidhinishwa na Meneja, mauzo na makato yanaingia kwenye ledger za wakulima na daftari kuu, na soko linafungwa.')}</Alert>
         {pv.data.guarantees.length > 0 && (
           <div className="alert alert-warn" role="status">
-            <strong>Dhamana ya kikundi</strong> — wanachama hawa hawajamaliza madeni yao; salio linakatwa kwa wenzao wa kikundi waliouza soko hili (kwa uwiano wa malipo yao):
+            <strong>{tt('Dhamana ya kikundi')}</strong> — wanachama hawa hawajamaliza madeni yao; salio linakatwa kwa wenzao wa kikundi waliouza soko hili (kwa uwiano wa malipo yao):
             <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{pv.data.guarantees.map((g, i) => (
               <li key={i}>{g.debtorName} · {g.groupName}{!g.sold ? ' (hajauza soko hili)' : ''}: salio {tsh(g.remaining)} → wenzake wanalipa <strong>{tsh(g.covered)}</strong>{Number(g.uncovered) > 0 ? `, linabaki ${tsh(g.uncovered)}` : ''}</li>
             ))}</ul>
@@ -449,7 +459,7 @@ function SettlementPreview({ market, canSubmit, onDone }: { market: Market; canS
         <label className="check" style={{ marginTop: 0 }}><input type="checkbox" checked={nonSellers} onChange={(e) => setNonSellers(e.target.checked)} /> Kata pia madeni ya wanakikundi ambao hawajauza kwenye soko hili (mf. soko la mwisho la msimu)</label>
       </div>
       <div className="table-wrap"><table className="table fin-table">
-        <thead><tr><th>Mkulima</th><th className="num">Kilo</th><th className="num">Mauzo</th><th>Makato</th><th className="num">Malipo halisi</th></tr></thead>
+        <thead><tr><th>{tt('Mkulima')}</th><th className="num">{tt('Kilo')}</th><th className="num">{tt('Mauzo')}</th><th>{tt('Makato')}</th><th className="num">{tt('Malipo halisi')}</th></tr></thead>
         <tbody>{pv.data.rows.map((r) => (
           <tr key={r.memberId}>
             <td>{r.name}<div className="muted" style={{ fontSize: 12 }}>{r.memberNo}{r.groupName ? ` · ${r.groupName}` : ''} · mabelo {r.bales}{Number(r.debtBefore) > 0 ? ` · deni ${tsh(r.debtBefore)}` : ''}</div></td>
@@ -477,6 +487,7 @@ interface BatchData {
 }
 
 export function BatchDetail() {
+  const t = useT();
   const { id } = useParams();
   const { may } = useAuth();
   const { data, reload } = useFetch<BatchData>(`/sales/batches/${id}`);
@@ -498,13 +509,13 @@ export function BatchDetail() {
   return (
     <>
       <PageHead title={<>{b.batchNo} <Badge status={b.status === 'DRAFT' ? 'PENDING_APPROVAL' : b.status} /></>} sub={<>{data.market ? `Soko ${data.market.marketNo} · ${date(data.market.marketDate)} · ` : ''}Jumla {tsh(b.totalAmount)} · Imelipwa {tsh(data.summary.paid)}</>}>
-        <Button variant="secondary" className="no-print" onClick={() => window.history.back()}>← Rudi</Button>
-        <Button variant="secondary" onClick={() => apiDownload(`/sales/batches/${b.id}/csv`, { filename: `malipo-${b.batchNo}.csv` })}>CSV ya benki / M-Pesa</Button>
+        <Button variant="secondary" className="no-print" onClick={() => window.history.back()}>{t('← Rudi')}</Button>
+        <Button variant="secondary" onClick={() => apiDownload(`/sales/batches/${b.id}/csv`, { filename: `malipo-${b.batchNo}.csv` })}>{t('CSV ya benki / M-Pesa')}</Button>
         <PrintButton label="Chapisha orodha" />
       </PageHead>
       <Alert kind="ok">{ok}</Alert>
       <Alert>{error}</Alert>
-      {b.status === 'DRAFT' && <Alert kind="warn">Orodha hii inasubiri idhini ya Meneja. Hakuna malipo yanayofanyika kabla ya idhini.</Alert>}
+      {b.status === 'DRAFT' && <Alert kind="warn">{t('Orodha hii inasubiri idhini ya Meneja. Hakuna malipo yanayofanyika kabla ya idhini.')}</Alert>}
       {payable && open.length > 0 && <Alert kind="warn">Fanya malipo halisi (bulk M-Pesa, benki au taslimu), kisha chagua waliolipwa na uthibitishe hapa kwa kumbukumbu ya malipo. Mfumo hauweki malipo "yamefanikiwa" wenyewe.</Alert>}
       <div className="grid grid-kpi no-print">
         <Kpi label="Kwa simu (M-Pesa n.k.)" value={tsh(data.summary.MOBILE_MONEY)} />
@@ -519,7 +530,7 @@ export function BatchDetail() {
             <table className="table fin-table">
               <thead><tr>{payable && <th className="no-print" style={{ width: 36 }}><input type="checkbox" aria-label={`Chagua wote ${METHOD[k]}`} onChange={(e) => {
                 const n = new Set(picked); list.filter((p) => p.status === 'PENDING' || p.status === 'FAILED').forEach((p) => (e.target.checked ? n.add(p.id) : n.delete(p.id))); setPicked(n);
-              }} /></th>}<th>{METHOD[k]} — Mkulima</th><th>{k === 'CASH' ? 'Sahihi ya mpokeaji' : 'Namba / akaunti'}</th><th className="num">Kiasi</th><th>Hali</th></tr></thead>
+              }} /></th>}<th>{METHOD[k]} — Mkulima</th><th>{k === 'CASH' ? 'Sahihi ya mpokeaji' : 'Namba / akaunti'}</th><th className="num">{t('Kiasi')}</th><th>{t('Hali')}</th></tr></thead>
               <tbody>
                 {list.map((p) => (
                   <tr key={p.id} className={picked.has(p.id) ? 'row-picked' : ''}>
@@ -540,20 +551,20 @@ export function BatchDetail() {
       </section>
       {payable && picked.size > 0 && (
         <div className="sticky-bar no-print">
-          <span>Umechagua <strong>{picked.size}</strong> · {tsh(pickedTotal)}</span>
+          <span>{t('Umechagua')} <strong>{picked.size}</strong> · {tsh(pickedTotal)}</span>
           <div className="actions">
             <Button variant="secondary" onClick={() => setMode('fail')}>Weka "yameshindwa"</Button>
-            <Button onClick={() => setMode('confirm')}>Thibitisha yamelipwa</Button>
+            <Button onClick={() => setMode('confirm')}>{t('Thibitisha yamelipwa')}</Button>
           </div>
         </div>
       )}
       {mode === 'confirm' && (
         <Modal open title={`Thibitisha malipo ${picked.size} (${tsh(pickedTotal)})`} onClose={() => setMode(null)}
-          footer={<><Button variant="secondary" onClick={() => setMode(null)}>Ghairi</Button><Button busy={busy} disabled={!accountId || reference.trim().length < 2} onClick={async () => {
+          footer={<><Button variant="secondary" onClick={() => setMode(null)}>{t('Ghairi')}</Button><Button busy={busy} disabled={!accountId || reference.trim().length < 2} onClick={async () => {
             const r = await run(() => api<{ confirmed: number; status: string }>(`/sales/batches/${b.id}/confirm`, { method: 'POST', body: { accountId, paymentIds: [...picked], reference } }));
             if (r) { setOk(`Malipo ${r.confirmed} yamethibitishwa na kuingia kwenye ledger za wakulima`); setPicked(new Set()); setMode(null); reload(); }
-          }}>Thibitisha</Button></>}>
-          <Alert kind="warn">Thibitisha tu malipo ambayo fedha zimeshatoka kweli. Kila mkulima atapata muamala wake na ledger yake itaonyesha malipo.</Alert>
+          }}>{t('Thibitisha')}</Button></>}>
+          <Alert kind="warn">{t('Thibitisha tu malipo ambayo fedha zimeshatoka kweli. Kila mkulima atapata muamala wake na ledger yake itaonyesha malipo.')}</Alert>
           <Alert>{error}</Alert>
           <div className="form-grid">
             <SelectField label="Akaunti iliyolipa *" value={accountId} onChange={setAccountId} placeholder="Chagua…" options={accounts.data?.data.filter((a) => a.isActive).map((a) => ({ value: a.id, label: `${a.name} · ${tsh(a.balance)}` })) ?? []} />
@@ -563,10 +574,10 @@ export function BatchDetail() {
       )}
       {mode === 'fail' && (
         <Modal open title="Malipo yameshindwa" onClose={() => setMode(null)}
-          footer={<><Button variant="secondary" onClick={() => setMode(null)}>Ghairi</Button><Button variant="danger" busy={busy} disabled={reason.trim().length < 3} onClick={async () => {
+          footer={<><Button variant="secondary" onClick={() => setMode(null)}>{t('Ghairi')}</Button><Button variant="danger" busy={busy} disabled={reason.trim().length < 3} onClick={async () => {
             const r = await run(() => api<{ failed: number }>(`/sales/batches/${b.id}/fail`, { method: 'POST', body: { paymentIds: [...picked], reason } }));
             if (r) { setOk(`Malipo ${r.failed} yamewekwa "yameshindwa" — yatalipwa tena baadaye`); setPicked(new Set()); setMode(null); reload(); }
-          }}>Hifadhi</Button></>}>
+          }}>{t('Hifadhi')}</Button></>}>
           <TextField label="Sababu *" value={reason} onChange={setReason} placeholder="mf. Namba ya M-Pesa haijasajiliwa" />
         </Modal>
       )}
@@ -576,6 +587,7 @@ export function BatchDetail() {
 
 // ------------------------------ TAARIFA YA MKULIMA ------------------------------
 export function SettlementStatement() {
+  const t = useT();
   const { id } = useParams();
   const { data } = useFetch<{
     settlement: { settlementNo: string; totalKg: string; grossUsd: string; exchangeRate: string; grossTzs: string; totalDeductions: string; netTzs: string; status: string; approvedAt: string | null };
@@ -589,19 +601,19 @@ export function SettlementStatement() {
   const s = data.settlement;
   return (
     <>
-      <div className="actions no-print" style={{ justifyContent: 'space-between', marginBottom: 12 }}><a href="#" onClick={(e) => { e.preventDefault(); history.back(); }}>← Rudi</a><PrintButton /></div>
+      <div className="actions no-print" style={{ justifyContent: 'space-between', marginBottom: 12 }}><a href="#" onClick={(e) => { e.preventDefault(); history.back(); }}>{t('← Rudi')}</a><PrintButton /></div>
       <article className="card card-pad print-doc">
         <DocHead title="TAARIFA YA MAUZO YA MKULIMA" no={s.settlementNo} sub={data.market ? `${data.market.marketNo} · ${date(data.market.marketDate)}` : undefined} />
         <dl className="dl">
-          <dt>Mkulima</dt><dd><strong>{data.member.firstName} {data.member.lastName}</strong> · {data.member.memberNo}{data.member.village ? ` · ${data.member.village}` : ''}</dd>
-          <dt>Mnunuzi</dt><dd>{data.market?.buyerName ?? '—'} · 1 USD = {num(s.exchangeRate)} TZS</dd>
-          <dt>Hali</dt><dd><Badge status={s.status} label={SETTLE[s.status]} /></dd>
+          <dt>{t('Mkulima')}</dt><dd><strong>{data.member.firstName} {data.member.lastName}</strong> · {data.member.memberNo}{data.member.village ? ` · ${data.member.village}` : ''}</dd>
+          <dt>{t('Mnunuzi')}</dt><dd>{data.market?.buyerName ?? '—'} · 1 USD = {num(s.exchangeRate)} TZS</dd>
+          <dt>{t('Hali')}</dt><dd><Badge status={s.status} label={SETTLE[s.status]} /></dd>
         </dl>
         <div className="table-wrap"><table className="table fin-table">
-          <thead><tr><th>Belo</th><th>Daraja</th><th className="num">Kilo</th><th className="num">Bei (USD)</th><th className="num">Thamani (USD)</th></tr></thead>
+          <thead><tr><th>{t('Belo')}</th><th>{t('Daraja')}</th><th className="num">{t('Kilo')}</th><th className="num">Bei (USD)</th><th className="num">Thamani (USD)</th></tr></thead>
           <tbody>
             {data.bales.map((b) => <tr key={b.id} style={{ opacity: b.status === 'REJECTED' ? 0.55 : 1 }}><td>{b.baleNo}{b.status === 'REJECTED' && ' (limekataliwa)'}</td><td>{b.grade ?? '—'}</td><td className="num">{num(b.netKg ?? b.grossKg)}</td><td className="num">{b.priceUsd ? usd(b.priceUsd) : '—'}</td><td className="num">{b.valueUsd ? usd(b.valueUsd) : '—'}</td></tr>)}
-            <tr className="row-total"><td colSpan={2}>Jumla</td><td className="num">{num(s.totalKg)}</td><td /><td className="num">{usd(s.grossUsd)}</td></tr>
+            <tr className="row-total"><td colSpan={2}>{t('Jumla')}</td><td className="num">{num(s.totalKg)}</td><td /><td className="num">{usd(s.grossUsd)}</td></tr>
           </tbody>
         </table></div>
         <table className="table fin-table" style={{ maxWidth: 520, marginLeft: 'auto' }}><tbody>
@@ -617,57 +629,131 @@ export function SettlementStatement() {
 }
 
 // ------------------------------ MALIPO YA MNUNUZI ------------------------------
-interface BuyerRow { id: string; marketNo: string; marketDate: string; buyerName: string | null; due: string; paid: string; outstanding: string; lastPaid: string | null; days: number; bucket: string }
+interface BuyerRow { id: string; marketNo: string; marketDate: string; buyerName: string | null; due: string; paid: string; outstanding: string; lastPaid: string | null; days: number; bucket: string; dueDate: string; overdueDays: number; state: 'PAID' | 'OVERDUE' | 'NOT_DUE' }
+interface BuyerSum { name: string; outstanding: string; overdue: string; markets: number; oldestDue: string | null }
+interface BuyersData { data: BuyerRow[]; buckets: Record<string, string>; unallocated: string; totalOutstanding: string; termsDays: number; overdue: { count: number; amount: string }; byBuyer: BuyerSum[] }
 const BUCKET: Record<string, string> = { '0-30': 'Siku 0–30', '31-60': 'Siku 31–60', '61-90': 'Siku 61–90', '90+': 'Zaidi ya siku 90' };
 
 function Buyers({ canRecord }: { canRecord: boolean }) {
-  const { data, reload } = useFetch<{ data: BuyerRow[]; buckets: Record<string, string>; unallocated: string; totalOutstanding: string; byBuyer: { name: string; outstanding: string }[] }>('/sales/buyers');
+  const t = useT();
+  const { may } = useAuth();
+  const { data, reload } = useFetch<BuyersData>('/sales/buyers');
   const [pay, setPay] = useState<BuyerRow | null>(null);
+  const [dueEdit, setDueEdit] = useState<BuyerRow | null>(null);
+  const [letter, setLetter] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   if (!data) return <Loading />;
+  if (letter !== null) return <BuyerLetter name={letter} data={data} onBack={() => setLetter(null)} />;
   return (
     <div className="stack">
       <Alert kind="ok">{ok}</Alert>
       <div className="grid grid-kpi">
         <Kpi tone={Number(data.totalOutstanding) > 0 ? 'gold' : 'dark'} label="Wanunuzi wanadaiwa" value={tsh(data.totalOutstanding)} />
-        {Object.entries(data.buckets).map(([k, v]) => <Kpi key={k} tone={k === '90+' && Number(v) > 0 ? 'bad' : k === '61-90' && Number(v) > 0 ? 'warn' : undefined} label={BUCKET[k]} value={tsh(v)} />)}
+        <Kpi tone={data.overdue.count ? 'bad' : undefined} label="Yamepita tarehe ya kulipa" value={tsh(data.overdue.amount)} hint={data.overdue.count ? `Masoko ${data.overdue.count}` : 'Hakuna lililochelewa'} />
+        {Object.entries(data.buckets).map(([k, v]) => <Kpi key={k} tone={k === '90+' && Number(v) > 0 ? 'bad' : k === '61-90' && Number(v) > 0 ? 'warn' : undefined} label={`Umri: ${BUCKET[k]}`} value={tsh(v)} />)}
       </div>
       {Number(data.unallocated) !== 0 && <Alert kind="warn">Malipo ya {tsh(data.unallocated)} yalirekodiwa kama "Mauzo ya tumbaku" bila kuunganishwa na soko. Yanapunguza deni la wanunuzi kwenye daftari kuu, lakini hayaonekani kwenye soko lolote hapa chini.</Alert>}
-      <section className="card">
-        {data.data.length === 0 ? <Empty>Hakuna soko lililoidhinishwa bado.</Empty> : (
+      {data.byBuyer.length > 0 && (
+        <Section pad={false} title="Kwa kila mnunuzi">
           <div className="table-wrap"><table className="table">
-            <thead><tr><th>Soko</th><th>Mnunuzi</th><th className="num">Anadaiwa</th><th className="num">Amelipa</th><th className="num">Salio</th><th>Umri</th><th /></tr></thead>
+            <thead><tr><th>{t('Mnunuzi')}</th><th className="num">{t('Masoko')}</th><th className="num">{t('Anadaiwa')}</th><th className="num">{t('Imechelewa')}</th><th>{t('Tarehe ya zamani zaidi')}</th><th /></tr></thead>
+            <tbody>{data.byBuyer.map((b) => (
+              <tr key={b.name}><td><strong>{b.name}</strong></td><td className="num">{b.markets}</td><td className="num">{tsh(b.outstanding)}</td>
+                <td className="num">{Number(b.overdue) > 0 ? <strong className="money-neg">{tsh(b.overdue)}</strong> : '—'}</td>
+                <td>{b.oldestDue ? date(b.oldestDue) : '—'}</td>
+                <td className="num"><Button size="sm" variant="secondary" onClick={() => setLetter(b.name)}>{t('Barua ya madai')}</Button></td></tr>
+            ))}</tbody>
+          </table></div>
+        </Section>
+      )}
+      <section className="card">
+        {data.data.length === 0 ? <Empty>{t('Hakuna soko lililoidhinishwa bado.')}</Empty> : (
+          <div className="table-wrap"><table className="table">
+            <thead><tr><th>{t('Soko')}</th><th>{t('Mnunuzi')}</th><th className="num">{t('Anadaiwa')}</th><th className="num">{t('Amelipa')}</th><th className="num">{t('Salio')}</th><th>{t('Tarehe ya kulipa')}</th><th /></tr></thead>
             <tbody>{data.data.map((r) => (
-              <tr key={r.id}>
-                <td><Link to={`/sales/markets/${r.id}`}><strong>{r.marketNo}</strong></Link><div className="muted" style={{ fontSize: 12 }}>{date(r.marketDate)}</div></td>
+              <tr key={r.id} className={r.state === 'OVERDUE' ? 'row-error' : undefined}>
+                <td><Link to={`/sales/markets/${r.id}`}><strong>{r.marketNo}</strong></Link><div className="muted" style={{ fontSize: 12 }}>{date(r.marketDate)} · siku {r.days}</div></td>
                 <td>{r.buyerName ?? '—'}</td>
                 <td className="num">{tsh(r.due)}</td><td className="num">{tsh(r.paid)}{r.lastPaid && <div className="muted" style={{ fontSize: 12 }}>{date(r.lastPaid)}</div>}</td>
                 <td className="num"><strong className={Number(r.outstanding) > 0 ? 'money-neg' : ''}>{tsh(r.outstanding)}</strong></td>
-                <td>{r.bucket === 'PAID' ? <Badge status="PAID" /> : <span className={`badge ${r.days > 60 ? 'badge-bad' : r.days > 30 ? 'badge-warn' : 'badge-neutral'}`}>Siku {r.days}</span>}</td>
-                <td className="num">{canRecord && Number(r.outstanding) > 0 && <Button size="sm" onClick={() => setPay(r)}>Rekodi malipo</Button>}</td>
+                <td>{r.state === 'PAID' ? <Badge status="PAID" /> : <>
+                  <div>{date(r.dueDate)}</div>
+                  {r.state === 'OVERDUE' ? <span className="badge badge-bad">Imechelewa siku {r.overdueDays}</span> : <span className="badge badge-neutral">{t('Bado haijafika')}</span>}
+                  {may('sales.manage') && <button className="link-btn" style={{ display: 'block', fontSize: 12 }} onClick={() => setDueEdit(r)}>{t('Badili tarehe')}</button>}
+                </>}</td>
+                <td className="num">{canRecord && Number(r.outstanding) > 0 && <Button size="sm" onClick={() => setPay(r)}>{t('Rekodi malipo')}</Button>}</td>
               </tr>
             ))}</tbody>
           </table></div>
         )}
       </section>
+      <p className="muted" style={{ fontSize: 12.5 }}>Soko lisilowekewa tarehe ya kulipa, mnunuzi anatakiwa kulipa ndani ya siku {data.termsDays} baada ya soko.</p>
       {pay && <BuyerPayment row={pay} onClose={() => setPay(null)} onDone={(m) => { setPay(null); setOk(m); reload(); }} />}
+      {dueEdit && <BuyerDue row={dueEdit} onClose={() => setDueEdit(null)} onDone={() => { setDueEdit(null); setOk(`Tarehe ya kulipa ya ${dueEdit.marketNo} imehifadhiwa`); reload(); }} />}
+    </div>
+  );
+}
+
+function BuyerDue({ row, onClose, onDone }: { row: BuyerRow; onClose: () => void; onDone: () => void }) {
+  const t = useT();
+  const [d, setD] = useState(row.dueDate);
+  const { busy, error, run } = useAction();
+  return (
+    <Modal open title={`Tarehe ya kulipa — ${row.marketNo}`} onClose={onClose}
+      footer={<><Button variant="secondary" onClick={onClose}>{t('Ghairi')}</Button><Button busy={busy} disabled={!d} onClick={async () => {
+        if (await run(() => api(`/sales/markets/${row.id}/buyer-due`, { method: 'PUT', body: { dueDate: d } }))) onDone();
+      }}>{t('Hifadhi')}</Button></>}>
+      <Alert>{error}</Alert>
+      <TextField label="Tarehe mnunuzi aliyokubali kulipa" type="date" min={row.marketDate} value={d} onChange={setD} help={`${row.buyerName ?? 'Mnunuzi'} · soko la ${date(row.marketDate)}. Baada ya tarehe hii, deni linaonekana "limechelewa".`} />
+    </Modal>
+  );
+}
+
+/** Barua ya madai kwa mnunuzi (ya kuchapisha au kuhifadhi PDF) */
+function BuyerLetter({ name, data, onBack }: { name: string; data: BuyersData; onBack: () => void }) {
+  const t = useT();
+  const { amcos } = useAuth();
+  const rows = data.data.filter((r) => (r.buyerName ?? '—') === name && Number(r.outstanding) > 0);
+  const total = rows.reduce((t, r) => t + Number(r.outstanding), 0);
+  const overdue = rows.filter((r) => r.state === 'OVERDUE').reduce((t, r) => t + Number(r.outstanding), 0);
+  return (
+    <div className="stack">
+      <div className="actions no-print"><Button variant="secondary" onClick={onBack}>{t('← Rudi')}</Button><PrintButton label="Chapisha / Hifadhi PDF" /></div>
+      <section className="card card-pad print-doc">
+        <DocHead title="TAARIFA YA DENI LA MNUNUZI" sub={`Tarehe: ${date(new Date().toISOString())}`} />
+        <p style={{ marginTop: 16 }}>{t('Kwa:')} <strong>{name}</strong></p>
+        <p><strong>YAH: MADAI YA MALIPO YA TUMBAKU ILIYONUNULIWA KUTOKA {(amcos?.name ?? 'CHAMA').toUpperCase()}</strong></p>
+        <p>{t('Kwa mujibu wa kumbukumbu zetu, kampuni yenu bado haijakamilisha malipo ya tumbaku mliyonunua kwenye masoko yafuatayo. Jumla ya kiasi kinachodaiwa ni')} <strong>{tsh(total)}</strong>{overdue > 0 ? <>{t(', ambapo')} <strong>{tsh(overdue)}</strong> {t('kimepita tarehe ya kulipa')}</> : null}.</p>
+        <div className="table-wrap"><table className="table fin-table">
+          <thead><tr><th>{t('Soko')}</th><th>{t('Tarehe ya soko')}</th><th className="num">{t('Thamani')}</th><th className="num">{t('Imelipwa')}</th><th className="num">{t('Salio')}</th><th>{t('Tarehe ya kulipa')}</th></tr></thead>
+          <tbody>{rows.map((r) => (
+            <tr key={r.id}><td>{r.marketNo}</td><td>{date(r.marketDate)}</td><td className="num">{tsh(r.due)}</td><td className="num">{tsh(r.paid)}</td>
+              <td className="num">{tsh(r.outstanding)}</td><td>{date(r.dueDate)}{r.state === 'OVERDUE' ? ` (imechelewa siku ${r.overdueDays})` : ''}</td></tr>
+          ))}
+            <tr className="row-grand"><td colSpan={4}>JUMLA INAYODAIWA</td><td className="num">{tsh(total)}</td><td /></tr>
+          </tbody>
+        </table></div>
+        <p>{t('Tunaomba malipo yafanyike haraka iwezekanavyo kwenye akaunti ya chama. Mkiwa na tofauti yoyote na kumbukumbu hizi, tafadhali wasiliana nasi ndani ya siku 7 ili tuzilinganishe.')}</p>
+        <Signatures items={['Meneja', 'Mhasibu']} />
+      </section>
     </div>
   );
 }
 
 function BuyerPayment({ row, onClose, onDone }: { row: BuyerRow; onClose: () => void; onDone: (m: string) => void }) {
+  const t = useT();
   const accounts = useFetch<{ data: { id: string; name: string; balance: string; isActive: boolean }[] }>('/finance/accounts');
   const [f, setF] = useState({ amount: row.outstanding, accountId: '', txnDate: today(), reference: '' });
   const { busy, error, run } = useAction();
   return (
     <Modal open title={`Malipo ya ${row.buyerName ?? 'mnunuzi'} — ${row.marketNo}`} onClose={onClose}
-      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={!f.accountId || !(Number(f.amount) > 0)} onClick={async () => {
+      footer={<><Button variant="secondary" onClick={onClose}>{t('Ghairi')}</Button><Button busy={busy} disabled={!f.accountId || !(Number(f.amount) > 0)} onClick={async () => {
         const r = await run(() => api<{ transaction: { txnNo: string } }>('/finance/income', { method: 'POST', body: {
           category: 'TOBACCO_SALES', marketId: row.id, amount: f.amount, accountId: f.accountId, txnDate: f.txnDate, reference: f.reference || null,
           payee: row.buyerName, description: `Malipo ya mnunuzi ${row.buyerName ?? ''} soko ${row.marketNo}`.replace('  ', ' '),
         } }));
         if (r) onDone(`${r.transaction.txnNo}: malipo ya ${row.marketNo} yamerekodiwa`);
-      }}>Rekodi</Button></>}>
+      }}>{t('Rekodi')}</Button></>}>
       <Alert>{error}</Alert>
       <div className="form-grid">
         <TextField label="Kiasi kilichopokelewa (TSh) *" type="number" min="1" value={f.amount} onChange={(v) => setF({ ...f, amount: v })} help={`Salio la soko hili: ${tsh(row.outstanding)}`} />

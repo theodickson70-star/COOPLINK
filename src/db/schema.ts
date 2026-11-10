@@ -397,6 +397,7 @@ export const markets = pgTable('markets', {
   status: marketStatusEnum().notNull().default('SCHEDULED'),
   buyerName: text(),                                             // kampuni ya ununuzi (mf. TLTC, Alliance One)
   exchangeRate: numeric({ precision: 12, scale: 4 }),            // USD -> TZS siku ya soko
+  buyerDueDate: date(),                                          // tarehe mnunuzi aliyokubali kulipa (isipowekwa: siku 30 baada ya soko)
   approvalId: uuid(),                                            // idhini ya mauzo (TOBACCO_SALE)
   notes: text(),
   createdById: uuid(),

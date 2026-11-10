@@ -928,3 +928,40 @@ tr.row-msg.row-warn td { color: var(--warn-ink); }
 .legal-check { display: flex; gap: 10px; align-items: flex-start; font-weight: 600; color: var(--head); cursor: pointer; }
 .legal-check input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--green); flex: none; }
 @media print { .legal-top, .legal-foot { display: none; } .legal-main { box-shadow: none; border: 0; } }
+
+
+/* ---- Taarifa ya mkulima ---- */
+.stmt-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.stmt-toolbar label { font-weight: 600; font-size: 13.5px; color: var(--head); }
+.stmt-toolbar .select { max-width: 280px; }
+.stmt-who { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px 16px; margin: 14px 0 6px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--tint); }
+.stmt-who span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.stmt-h { font-size: 14px; margin: 18px 0 6px; color: var(--head); }
+.stmt-sum td:first-child { width: 70%; }
+.stmt-note { font-size: 12px; color: var(--muted); margin-top: 14px; }
+@media print { .stmt-who { background: #fff; } .stmt { page-break-inside: auto; } .stmt-h { page-break-after: avoid; } }
+
+/* ---- Kitufe cha sehemu mbili (mf. Muhtasari / Kila mwezi) ---- */
+.seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--line-2); border: 1px solid var(--line); }
+.seg button { border: none; background: none; padding: 5px 11px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; min-height: 30px; font-family: inherit; }
+.seg button.on { background: var(--paper); color: var(--head); box-shadow: 0 1px 3px rgba(11, 47, 35, .12); }
+
+/* ---- Tahadhari za fedha (dashibodi) ---- */
+.fin-alerts { display: grid; gap: 8px; }
+.fin-alert { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--tint-gold); font-size: 14px; }
+.fin-alert.bad { background: var(--tint-red); }
+.fin-alert .fa-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--gold); flex: none; }
+.fin-alert.bad .fa-dot { background: var(--danger); }
+.fin-alert .fa-text { flex: 1; min-width: 200px; }
+.fin-alert a { font-weight: 600; white-space: nowrap; }
+
+/* ---------- Mwongozo wa ukurasa (mara ya kwanza) ---------- */
+.guide { padding: 16px 18px; margin-bottom: 16px; border-left: 4px solid var(--gold, #C9A227); background: var(--tint-gold); animation: guide-in .35s ease-out; }
+.guide-head { display: flex; gap: 12px; align-items: center; }
+.guide-head small { color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-size: 11px; font-weight: 600; }
+.guide-head h3 { margin: 2px 0 0; font-family: var(--font-head); color: var(--head); font-size: 17px; }
+.guide-icon { font-size: 26px; line-height: 1; }
+.guide-steps { margin: 12px 0 12px; padding-left: 22px; display: grid; gap: 6px; font-size: 14px; color: var(--ink); }
+.guide-foot { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+@keyframes guide-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .guide { animation: none; } }

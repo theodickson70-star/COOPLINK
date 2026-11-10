@@ -7,6 +7,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api, apiDownload, type Paged } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
+import { FinanceAlerts } from '../components/FinanceAlerts';
 import { APPROVAL_TYPE_LABEL, date, dateTime, num, tsh } from '../lib/format';
 import { Alert, Button, Empty, Loading, Modal, PageHead, Pager, Select, SelectField, TextField } from '../components/ui';
 import { DateRangeFilter, Kpi, presetRange, Section, Tabs, type Range } from '../components/owner-ui';
@@ -39,6 +40,7 @@ export function AccountingHome({ embedded }: { embedded?: boolean }) {
   return (
     <div className="stack">
       {!embedded && <PageHead title="Dashibodi ya fedha" sub="Hali ya fedha za chama kutoka daftari kuu (double-entry) — kila shilingi ina pande mbili." />}
+      <FinanceAlerts />
       {manage && (
         <div className="quick-actions no-print">
           <Link className="qa" to="/finance"><strong>Vocha na miamala</strong><span>Mapato, matumizi, malipo</span></Link>

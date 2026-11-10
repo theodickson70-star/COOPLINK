@@ -641,3 +641,61 @@ test('Pesa ya kuni: kikomo kwa ekari, riba ya msimu, orodha kwa idhini, deni lin
   const loanLine = pv.deductions.find((d: any) => d.basis === 'OUTSTANDING_LOAN');
   assert.equal(loanLine.amount, '247500.00', 'Pesa ya kuni 225,000 + riba 22,500');
 });
+
+// v0.16 -----------------------------------------------------------------
+test('Madeni ya wanunuzi: tarehe ya kulipa, kuchelewa, kwa kila mnunuzi; tarehe kabla ya soko inakataliwa', async () => {
+  const b = (await call('GET', '/api/v1/sales/buyers', manager)).body;
+  assert.equal(b.termsDays, 30);
+  const due = b.data.find((x: any) => Number(x.due) > 0);
+  assert.ok(due, 'Kuna soko lenye deni');
+  assert.equal(due.state, 'NOT_DUE');
+  assert.ok(due.dueDate > due.marketDate, 'Tarehe ya kulipa = soko + siku 30');
+  assert.ok(b.byBuyer.length >= 1 && Number(b.byBuyer[0].outstanding) > 0);
+  // Tarehe kabla ya soko inakataliwa; Meneja haandiki mauzo
+  assert.equal((await call('PUT', `/api/v1/sales/markets/${due.id}/buyer-due`, accountant, { dueDate: '2000-01-01' })).status, 400);
+  assert.equal((await call('PUT', `/api/v1/sales/markets/${due.id}/buyer-due`, manager, { dueDate: due.marketDate })).status, 403);
+  assert.equal((await call('PUT', `/api/v1/sales/markets/${due.id}/buyer-due`, accountant, { dueDate: due.marketDate })).status, 200);
+  // Tarehe iliyopita (imewekwa moja kwa moja) -> imechelewa
+  await db.execute(sql`update markets set buyer_due_date = ${daysAgo(5)}::date where id = ${due.id}`);
+  const b2 = (await call('GET', '/api/v1/sales/buyers', manager)).body;
+  const r2 = b2.data.find((x: any) => x.id === due.id);
+  assert.equal(r2.state, 'OVERDUE'); assert.equal(r2.overdueDays, 5);
+  assert.ok(b2.overdue.count >= 1 && Number(b2.overdue.amount) > 0);
+  await db.execute(sql`update markets set buyer_due_date = null where id = ${due.id}`);
+});
+
+test('Bajeti dhidi ya matumizi: hali kwa kila kundi na onyo kabla ya kurekodi matumizi', async () => {
+  const base0 = Number((await call('GET', '/api/v1/finance/budgets/check?category=OFFICE&amount=0', accountant)).body.actual ?? 0);
+  const before0 = (await call('GET', '/api/v1/finance/budgets', manager)).body.data.find((x: any) => x.category === 'OFFICE');
+  const spent0 = Number(before0?.actual ?? 0);
+  const budget = spent0 + 100000;
+  assert.equal(base0, 0, 'Kabla ya bajeti hakuna takwimu za check');
+  assert.equal((await call('PUT', '/api/v1/finance/budgets', accountant, { category: 'OFFICE', amount: String(budget) })).status, 200);
+  const c1 = (await call('GET', '/api/v1/finance/budgets/check?category=OFFICE&amount=150000', accountant)).body;
+  assert.equal(c1.exceeds, true); assert.equal(Number(c1.budget), budget); assert.equal(Number(c1.actual), spent0);
+  const c0 = (await call('GET', '/api/v1/finance/budgets/check?category=OFFICE&amount=1000', accountant)).body;
+  assert.equal(c0.exceeds, false);
+  assert.equal((await call('GET', '/api/v1/finance/budgets/check?category=TRANSPORT&amount=5', accountant)).body.budget, null, 'Hakuna bajeti');
+  const t = await call('POST', '/api/v1/finance/expenses', accountant, { category: 'OFFICE', amount: '95000', accountId: bank.id, description: 'Vifaa vya ofisi' });
+  assert.equal(t.status, 201, JSON.stringify(t.body));
+  await approve(t.body.transaction.id);
+  await call('POST', `/api/v1/finance/transactions/${t.body.transaction.id}/post`, accountant, {});
+  const bg = (await call('GET', '/api/v1/finance/budgets', manager)).body;
+  const office = bg.data.find((x: any) => x.category === 'OFFICE');
+  assert.equal(Number(office.actual), spent0 + 95000); assert.equal(office.remaining, '5000.00');
+  assert.equal(office.state, 'NEAR');
+  assert.ok(Array.isArray(bg.months) && bg.months.length >= 1);
+  assert.equal(Object.values(office.byMonth).reduce((s: number, v: any) => s + Number(v), 0), spent0 + 95000);
+});
+
+test('Taarifa ya mkulima kwa msimu: salio la kuanzia + mwendo = salio; mauzo yanaonekana', async () => {
+  const d = (await call('GET', `/api/v1/finance/farmers/${farmerA.id}`, accountant)).body;
+  assert.ok(d.seasons.length >= 1);
+  assert.ok(d.sales.length >= 1 && d.sales[0].settlementNo);
+  assert.equal(d.member.phone, undefined, 'Hakuna taarifa binafsi');
+  const sid = (d.seasons.find((x: any) => x.isCurrent) ?? d.seasons[0]).id;
+  const s = (await call('GET', `/api/v1/finance/farmers/${farmerA.id}?seasonId=${sid}`, accountant)).body;
+  assert.equal(s.season.id, sid);
+  assert.equal(s.statement.at(-1)?.balance ?? s.opening, s.balance);
+  assert.equal((await call('GET', `/api/v1/finance/farmers/${farmerA.id}?seasonId=not-a-uuid`, accountant)).status, 400);
+});

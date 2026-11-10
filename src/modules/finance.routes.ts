@@ -6,7 +6,7 @@
 // =====================================================================
 import { Router, type Request } from 'express';
 import { z } from 'zod';
-import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or, sql, isNull } from 'drizzle-orm';
 import { db, schema } from '../db';
 import { ah, decimalSchema, paged, paginationQuery, uuidParam } from '../lib/http';
 import { badRequest, conflict, notFound } from '../lib/errors';
@@ -364,25 +364,63 @@ financeRouter.post('/transactions/:id/reverse', requireAmcosPerm('finance.record
 }));
 
 // ------------------------------ BAJETI ------------------------------
+/**
+ * Bajeti ya msimu dhidi ya matumizi halisi: kwa kila kundi — bajeti, kilichotumika, kinachobaki, asilimia,
+ * matumizi ya kila mwezi, na hali (SAWA / KARIBU / IMEZIDI / KASI) ikilinganishwa na muda wa msimu uliopita.
+ */
 financeRouter.get('/budgets', requireAmcosPerm('finance.read'), ah(async (req, res) => {
   const { seasonId } = z.object({ seasonId: z.string().uuid().optional() }).parse(req.query);
-  const season = seasonId ? { id: seasonId } : await currentSeason();
-  if (!season) return res.json({ data: [] });
+  const season = seasonId ? (await db.select().from(schema.seasons).where(eq(schema.seasons.id, seasonId)))[0] : await currentSeason();
+  if (!season) return res.json({ data: [], months: [], totals: null });
   const B = schema.financeBudgets;
   const budgets = await db.select().from(B).where(and(amcosScope(req, B.amcosId), eq(B.seasonId, season.id)));
-  const actual = await db.select({ category: T.category, v: sql<string>`coalesce(sum(case when ${T.kind} = 'REVERSAL' then -${T.amount} else ${T.amount} end), 0)` })
+  const monthly = await db.select({ category: T.category, month: sql<string>`to_char(${T.txnDate}, 'YYYY-MM')`, v: sql<string>`coalesce(sum(case when ${T.kind} = 'REVERSAL' then -${T.amount} else ${T.amount} end), 0)` })
     .from(T).where(and(amcosScope(req, T.amcosId), eq(T.seasonId, season.id), eq(T.status, 'POSTED'),
       inArray(T.kind, ['EXPENSE', 'REVERSAL']), inArray(T.category, Object.keys(EXPENSE_CATEGORIES))))
-    .groupBy(T.category);
-  const act = new Map(actual.map((a) => [a.category, a.v]));
-  const cats = new Set([...budgets.map((b) => b.category), ...act.keys()]);
+    .groupBy(T.category, sql`to_char(${T.txnDate}, 'YYYY-MM')`);
+  // Miezi ya msimu hadi leo (au mwisho wa msimu)
+  const today = todayStr();
+  const last = (season.endDate < today ? season.endDate : today).slice(0, 7);
+  const months: string[] = [];
+  for (let d = new Date(`${season.startDate.slice(0, 7)}-01T00:00:00Z`); d.toISOString().slice(0, 7) <= last && months.length < 24; d.setUTCMonth(d.getUTCMonth() + 1)) months.push(d.toISOString().slice(0, 7));
+  for (const x of monthly) if (!months.includes(x.month)) months.push(x.month);
+  months.sort();
+  // Sehemu ya msimu iliyopita (0–1): kulinganisha kasi ya matumizi
+  const span = Date.parse(season.endDate) - Date.parse(season.startDate);
+  const elapsed = span > 0 ? Math.min(1, Math.max(0, (Date.parse(today) - Date.parse(season.startDate)) / span)) : 1;
+  const cats = new Set([...budgets.map((b) => b.category), ...monthly.map((m) => m.category)]);
   const data = [...cats].map((c) => {
     const b = budgets.find((x) => x.category === c);
-    const spent = act.get(c) ?? '0';
+    const byMonth: Record<string, string> = {};
+    let spent = D(0);
+    for (const m of monthly.filter((x) => x.category === c)) { byMonth[m.month] = fmt2(m.v); spent = spent.plus(m.v); }
+    const pct = b && D(b.amount).gt(0) ? Number(spent.div(b.amount).times(100).toFixed(1)) : null;
+    const state = !b ? (spent.gt(0) ? 'NO_BUDGET' : 'OK') : pct! > 100 ? 'OVER' : pct! >= 90 ? 'NEAR' : pct! > elapsed * 100 + 15 ? 'FAST' : 'OK';
     return { category: c, label: EXPENSE_CATEGORIES[c] ?? c, budget: b?.amount ?? null, notes: b?.notes ?? null, actual: fmt2(spent),
-      percent: b && D(b.amount).gt(0) ? Number(D(spent).div(b.amount).times(100).toFixed(1)) : null };
+      remaining: b ? fmt2(D(b.amount).minus(spent)) : null, percent: pct, state, byMonth };
+  }).sort((a, b) => (b.percent ?? -1) - (a.percent ?? -1));
+  const tb = budgets.reduce((t, b) => t.plus(b.amount), D(0));
+  const ta = data.reduce((t, x) => t.plus(x.actual), D(0));
+  res.json({
+    data, months, seasonId: season.id, season: { id: season.id, name: season.name, startDate: season.startDate, endDate: season.endDate },
+    elapsedPercent: Math.round(elapsed * 100),
+    totals: { budget: fmt2(tb), actual: fmt2(ta), remaining: fmt2(tb.minus(ta)), percent: tb.gt(0) ? Number(ta.div(tb).times(100).toFixed(1)) : null },
   });
-  res.json({ data, seasonId: season.id });
+}));
+
+/** Kabla ya kurekodi matumizi: yataathiri bajeti kiasi gani? (onyo tu — hakuna kinachozuiwa) */
+financeRouter.get('/budgets/check', requireAmcosPerm('finance.read'), ah(async (req, res) => {
+  const q = z.object({ category: z.string(), amount: z.coerce.number().min(0).default(0) }).parse(req.query);
+  const season = await currentSeason();
+  if (!season || !(q.category in EXPENSE_CATEGORIES)) return res.json({ budget: null });
+  const B = schema.financeBudgets;
+  const [b] = await db.select().from(B).where(and(amcosScope(req, B.amcosId), eq(B.seasonId, season.id), eq(B.category, q.category)));
+  if (!b) return res.json({ budget: null, label: EXPENSE_CATEGORIES[q.category] });
+  const [a] = await db.select({ v: sql<string>`coalesce(sum(case when ${T.kind} = 'REVERSAL' then -${T.amount} else ${T.amount} end), 0)` })
+    .from(T).where(and(amcosScope(req, T.amcosId), eq(T.seasonId, season.id), eq(T.status, 'POSTED'), inArray(T.kind, ['EXPENSE', 'REVERSAL']), eq(T.category, q.category)));
+  const after = D(a.v).plus(q.amount);
+  res.json({ label: EXPENSE_CATEGORIES[q.category], budget: b.amount, actual: fmt2(a.v), after: fmt2(after),
+    percentAfter: D(b.amount).gt(0) ? Number(after.div(b.amount).times(100).toFixed(1)) : null, exceeds: after.gt(b.amount), over: fmt2(after.minus(b.amount)) });
 }));
 
 financeRouter.put('/budgets', requireAmcosPerm('finance.accounts'), ah(async (req, res) => {
@@ -524,12 +562,39 @@ financeRouter.get('/farmers', requireAmcosPerm('finance.read'), ah(async (req, r
 
 financeRouter.get('/farmers/:id', requireAmcosPerm('finance.read'), ah(async (req, res) => {
   const { id } = uuidParam.parse(req.params);
+  const { seasonId } = z.object({ seasonId: z.string().uuid().optional() }).parse(req.query);
   const m = await findMemberScoped(req, id);
-  const entries = await db.select().from(MLE).where(eq(MLE.memberId, m.id)).orderBy(asc(MLE.createdAt));
-  let run = D(0);
+  const allEntries = await db.select().from(MLE).where(eq(MLE.memberId, m.id)).orderBy(asc(MLE.createdAt));
+  // Taarifa ya msimu mmoja: salio la kuanzia (kabla ya msimu) + miamala ya msimu + salio la kufunga
+  const seasonList = await db.select({ id: schema.seasons.id, name: schema.seasons.name, startDate: schema.seasons.startDate, endDate: schema.seasons.endDate, isCurrent: schema.seasons.isCurrent })
+    .from(schema.seasons).orderBy(desc(schema.seasons.startDate));
+  const season = seasonId ? seasonList.find((x) => x.id === seasonId) : undefined;
+  if (seasonId && !season) throw notFound('Msimu');
+  const dar = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Africa/Dar_es_Salaam' });
+  const before = season ? allEntries.filter((e) => dar(e.createdAt) < season.startDate) : [];
+  const entries = season ? allEntries.filter((e) => dar(e.createdAt) >= season.startDate && dar(e.createdAt) <= season.endDate) : allEntries;
+  const opening = before.reduce((t, e) => t.plus(e.credit).minus(e.debit), D(0));
+  let run = opening;
   const statement = entries.map((e) => { run = run.plus(e.credit).minus(e.debit); return { id: e.id, date: e.createdAt, type: e.type, description: e.description, debit: e.debit, credit: e.credit, balance: fmt2(run) }; });
+  // Jumla kwa aina ya muamala ndani ya kipindi
+  const totals: Record<string, { debit: string; credit: string }> = {};
+  for (const e of entries) {
+    const t = totals[e.type] ?? { debit: '0', credit: '0' };
+    totals[e.type] = { debit: fmt2(D(t.debit).plus(e.debit)), credit: fmt2(D(t.credit).plus(e.credit)) };
+  }
+  // Mauzo ya tumbaku ya mkulima (hesabu zilizoidhinishwa)
+  const S = schema.settlements;
+  const sales = await db.select({ id: S.id, settlementNo: S.settlementNo, kg: S.totalKg, grossTzs: S.grossTzs, deductions: S.totalDeductions, netTzs: S.netTzs, status: S.status,
+    marketNo: schema.markets.marketNo, marketDate: schema.markets.marketDate, buyer: schema.markets.buyerName })
+    .from(S).innerJoin(schema.markets, eq(schema.markets.id, S.marketId))
+    .where(and(eq(S.memberId, m.id), inArray(S.status, ['APPROVED', 'PAID']), season ? eq(S.seasonId, season.id) : undefined))
+    .orderBy(asc(schema.markets.marketDate));
+  const [grp] = await db.select({ name: schema.memberGroups.name }).from(schema.memberGroupMembers)
+    .innerJoin(schema.memberGroups, eq(schema.memberGroups.id, schema.memberGroupMembers.groupId))
+    .where(and(eq(schema.memberGroupMembers.memberId, m.id), isNull(schema.memberGroupMembers.leftAt))).limit(1);
   const I = schema.inputIssues;
-  const issues = await db.select().from(I).where(and(eq(I.memberId, m.id), sql`${I.status} in ('ISSUED', 'CANCELLED', 'PENDING_APPROVAL')`)).orderBy(desc(I.issuedAt));
+  const issues = (await db.select().from(I).where(and(eq(I.memberId, m.id), sql`${I.status} in ('ISSUED', 'CANCELLED', 'PENDING_APPROVAL')`)).orderBy(desc(I.issuedAt)))
+    .filter((i) => !season || (i.issuedAt ? dar(i.issuedAt) >= season.startDate && dar(i.issuedAt) <= season.endDate : true));
   const lines = issues.length ? await db.select({ l: schema.inputIssueLines, name: schema.inputItems.name, unit: schema.inputItems.unit })
     .from(schema.inputIssueLines).innerJoin(schema.inputItems, eq(schema.inputItems.id, schema.inputIssueLines.inputItemId))
     .where(inArray(schema.inputIssueLines.inputIssueId, issues.map((i) => i.id))) : [];
@@ -543,8 +608,10 @@ financeRouter.get('/farmers/:id', requireAmcosPerm('finance.read'), ah(async (re
   }
   const amcos = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, m.amcosId) }))!;
   res.json({
-    member: { id: m.id, memberNo: m.memberNo, firstName: m.firstName, lastName: m.lastName, village: m.village, status: m.status },
+    member: { id: m.id, memberNo: m.memberNo, firstName: m.firstName, middleName: m.middleName, lastName: m.lastName, village: m.village, status: m.status, group: grp?.name ?? null },
     amcos: { name: amcos.name, code: amcos.code },
+    seasons: seasonList, season: season ?? null, opening: fmt2(opening), totals,
+    sales: sales.map((x) => ({ ...x, kg: fmt2(x.kg), grossTzs: fmt2(x.grossTzs), deductions: fmt2(x.deductions), netTzs: fmt2(x.netTzs) })),
     balance: fmt2(run), amountOwed: fmt2(run.lt(0) ? run.neg() : 0),
     inputsSummary: [...byItem.values()].map((v) => ({ name: v.name, unit: v.unit, quantity: fmt2(v.quantity), amount: fmt2(v.amount) })),
     issues: issues.map((i) => ({ id: i.id, issueNo: i.issueNo, issuedAt: i.issuedAt, status: i.status, totalAmount: i.totalAmount, cancelReason: i.cancelReason,

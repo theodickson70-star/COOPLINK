@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useT } from '../lib/prefs';
 import { Link } from 'react-router-dom';
 import { api, type Paged } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
@@ -33,6 +34,7 @@ export function entityLink(a: Pick<Approval, 'entityType' | 'entityId'>) {
 }
 
 export function Approvals() {
+  const t = useT();
   const { may } = useAuth();
   const decider = may('approvals.decide');
   const [tab, setTab] = useState<'PENDING' | 'ALL'>('PENDING');
@@ -53,13 +55,13 @@ export function Approvals() {
       <section className="card">
         <div className="toolbar">
           <Select aria-label="Aina ya ombi" value={type} onChange={(e) => { setType(e.target.value); setPage(1); }}>
-            <option value="">Aina zote</option>
+            <option value="">{t('Aina zote')}</option>
             {Object.entries(APPROVAL_TYPE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
         </div>
         {loading && !data ? <Loading /> : data?.data.length === 0 ? <Empty>{tab === 'PENDING' ? 'Hakuna ombi linalosubiri. 👍' : 'Hakuna maombi bado.'}</Empty> : (
           <div className="table-wrap"><table className="table">
-            <thead><tr><th>Ombi</th><th>Maelezo</th><th className="num">Kiasi</th><th>Aliyeomba</th><th>Hali</th><th /></tr></thead>
+            <thead><tr><th>{t('Ombi')}</th><th>{t('Maelezo')}</th><th className="num">{t('Kiasi')}</th><th>{t('Aliyeomba')}</th><th>{t('Hali')}</th><th /></tr></thead>
             <tbody>{data?.data.map((a) => (
               <tr key={a.id}>
                 <td style={{ whiteSpace: 'nowrap' }}><strong>{a.requestNo}</strong><div className="muted" style={{ fontSize: 12 }}>{a.typeLabel}</div></td>
@@ -81,6 +83,7 @@ export function Approvals() {
 }
 
 export function DecideModal({ approval: a, onClose, onDone }: { approval: Approval; onClose: () => void; onDone: (msg: string) => void }) {
+  const t = useT();
   const { user, may } = useAuth();
   const [note, setNote] = useState('');
   const rp = a.type === 'STOCK_RECEIPT' ? (a.payload as { quantity: string; unitPrice: string; currentPrice: string | null; unitCost: string | null; unit: string; itemName: string; source: string | null; reference: string; newItem: { name: string; category: string; unit: string } | null; prNo: string | null } | null) : null;
@@ -104,41 +107,41 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
   return (
     <Modal open title={`${a.requestNo} · ${a.typeLabel ?? APPROVAL_TYPE_LABEL[a.type]}`} onClose={onClose}
       footer={canDecide ? <>
-        <Button variant="danger" busy={busy} disabled={note.trim().length < 3} onClick={() => act('REJECTED')}>Kataa</Button>
-        <Button busy={busy} disabled={note.trim().length < 3 || !pw || (!!user?.totpEnabled && code.length !== 6)} onClick={() => act('APPROVED')}>Idhinisha</Button>
-      </> : canCancel ? <Button variant="danger" busy={busy} disabled={note.trim().length < 3} onClick={() => act('CANCEL')}>Ondoa ombi</Button> : <Button variant="secondary" onClick={onClose}>Funga</Button>}>
+        <Button variant="danger" busy={busy} disabled={note.trim().length < 3} onClick={() => act('REJECTED')}>{t('Kataa')}</Button>
+        <Button busy={busy} disabled={note.trim().length < 3 || !pw || (!!user?.totpEnabled && code.length !== 6)} onClick={() => act('APPROVED')}>{t('Idhinisha')}</Button>
+      </> : canCancel ? <Button variant="danger" busy={busy} disabled={note.trim().length < 3} onClick={() => act('CANCEL')}>{t('Ondoa ombi')}</Button> : <Button variant="secondary" onClick={onClose}>{t('Funga')}</Button>}>
       <dl className="dl">
-        <dt>Ombi</dt><dd>{a.title}</dd>
-        {a.amount && <><dt>Kiasi</dt><dd><strong>{tsh(a.amount)}</strong></dd></>}
-        {a.reason && <><dt>Sababu</dt><dd>{a.reason}</dd></>}
-        {p?.balanceAtRequest && <><dt>Salio wakati wa ombi</dt><dd>{p.balanceAtRequest}</dd></>}
-        <dt>Aliyeomba</dt><dd>{a.requestedBy} ({ROLE_LABEL[a.requestedRole] ?? a.requestedRole}) · {dateTime(a.createdAt)}</dd>
-        {a.decidedAt && <><dt>Uamuzi</dt><dd>{STATUS[a.status]} na {a.decidedBy} · {dateTime(a.decidedAt)}<div className="muted">"{a.decisionNote}"</div></dd></>}
+        <dt>{t('Ombi')}</dt><dd>{a.title}</dd>
+        {a.amount && <><dt>{t('Kiasi')}</dt><dd><strong>{tsh(a.amount)}</strong></dd></>}
+        {a.reason && <><dt>{t('Sababu')}</dt><dd>{a.reason}</dd></>}
+        {p?.balanceAtRequest && <><dt>{t('Salio wakati wa ombi')}</dt><dd>{p.balanceAtRequest}</dd></>}
+        <dt>{t('Aliyeomba')}</dt><dd>{a.requestedBy} ({ROLE_LABEL[a.requestedRole] ?? a.requestedRole}) · {dateTime(a.createdAt)}</dd>
+        {a.decidedAt && <><dt>{t('Uamuzi')}</dt><dd>{STATUS[a.status]} na {a.decidedBy} · {dateTime(a.decidedAt)}<div className="muted">"{a.decisionNote}"</div></dd></>}
       </dl>
       {a.type === 'JOURNAL' && p?.lines && (
         <div className="table-wrap"><table className="table fin-table">
-          <thead><tr><th>Akaunti</th><th className="num">Debit</th><th className="num">Credit</th></tr></thead>
+          <thead><tr><th>{t('Akaunti')}</th><th className="num">{t('Debit')}</th><th className="num">{t('Credit')}</th></tr></thead>
           <tbody>{p.lines.map((l, i) => <tr key={i}><td><strong>{l.code}</strong> {l.name}{l.memo ? <div className="muted" style={{ fontSize: 12 }}>{l.memo}</div> : null}</td><td className="num">{l.debit ? tsh(l.debit) : ''}</td><td className="num">{l.credit ? tsh(l.credit) : ''}</td></tr>)}</tbody>
         </table><p className="muted" style={{ margin: '6px 0 0' }}>Tarehe ya journal: {p.date}</p></div>
       )}
       {rp && (
         <>
           <dl className="dl">
-            <dt>Bidhaa</dt><dd>{rp.itemName}{rp.newItem && <> <span className="badge badge-warn">Bidhaa mpya — itasajiliwa ukiidhinisha</span></>}</dd>
-            {rp.source && <><dt>Kutoka</dt><dd>{rp.source} · hati {rp.reference}</dd></>}
-            <dt>Bei ya sasa</dt><dd>{rp.currentPrice ? tsh(rp.currentPrice) : 'Haijawekwa'}</dd>
-            {rp.unitCost && <><dt>Gharama ya chama</dt><dd>{tsh(rp.unitCost)} kwa kipimo</dd></>}
+            <dt>{t('Bidhaa')}</dt><dd>{rp.itemName}{rp.newItem && <> <span className="badge badge-warn">{t('Bidhaa mpya — itasajiliwa ukiidhinisha')}</span></>}</dd>
+            {rp.source && <><dt>{t('Kutoka')}</dt><dd>{rp.source} · hati {rp.reference}</dd></>}
+            <dt>{t('Bei ya sasa')}</dt><dd>{rp.currentPrice ? tsh(rp.currentPrice) : 'Haijawekwa'}</dd>
+            {rp.unitCost && <><dt>{t('Gharama ya chama')}</dt><dd>{tsh(rp.unitCost)} kwa kipimo</dd></>}
           </dl>
           {canDecide && <div className="form-grid">
             <TextField label="Idadi iliyopokelewa *" type="number" min="0" value={qty} onChange={setQty} />
             <TextField label="Bei ya kumkopesha mkulima (TSh) *" type="number" min="1" value={price} onChange={setPrice} />
           </div>}
-          {canDecide && <p className="muted" style={{ margin: 0 }}>Thamani: <strong>{tsh(Number(qty || 0) * Number(price || 0))}</strong>. Ukibadilisha idadi au bei, mabadiliko yako ndiyo yatakayotumika na yatahifadhiwa kwenye kumbukumbu.</p>}
+          {canDecide && <p className="muted" style={{ margin: 0 }}>{t('Thamani:')} <strong>{tsh(Number(qty || 0) * Number(price || 0))}</strong>{t('. Ukibadilisha idadi au bei, mabadiliko yako ndiyo yatakayotumika na yatahifadhiwa kwenye kumbukumbu.')}</p>}
         </>
       )}
       {a.type === 'OPENING_BALANCE' && p?.totals && (
         <>
-          <dl className="dl"><dt>Tarehe</dt><dd>{p.date}</dd><dt>Debit / Credit</dt><dd>{tsh(p.totals.debit)} / {tsh(p.totals.credit)}</dd><dt>Wakulima</dt><dd>{p.farmers?.length ?? 0}</dd></dl>
+          <dl className="dl"><dt>{t('Tarehe')}</dt><dd>{p.date}</dd><dt>{t('Debit / Credit')}</dt><dd>{tsh(p.totals.debit)} / {tsh(p.totals.credit)}</dd><dt>{t('Wakulima')}</dt><dd>{p.farmers?.length ?? 0}</dd></dl>
           {(p.lines?.length || p.farmers?.length) ? (
             <div className="table-wrap" style={{ maxHeight: 260, overflow: 'auto' }}><table className="table fin-table"><tbody>
               {p.lines?.map((l, i) => <tr key={'l' + i}><td><strong>{l.code}</strong> {l.name}</td><td className="num">{l.debit ? tsh(l.debit) : ''}</td><td className="num">{l.credit ? tsh(l.credit) : ''}</td></tr>)}
@@ -148,16 +151,16 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
         </>
       )}
       {a.type === 'YEAR_END_CLOSE' && p?.totals && (
-        <dl className="dl"><dt>Hadi tarehe</dt><dd>{p.closeDate}</dd><dt>Mapato</dt><dd>{tsh(p.totals.income)}</dd><dt>Matumizi</dt><dd>{tsh(p.totals.expense)}</dd><dt>Ziada → 3200</dt><dd><strong>{tsh(p.totals.surplus)}</strong></dd></dl>
+        <dl className="dl"><dt>{t('Hadi tarehe')}</dt><dd>{p.closeDate}</dd><dt>{t('Mapato')}</dt><dd>{tsh(p.totals.income)}</dd><dt>{t('Matumizi')}</dt><dd>{tsh(p.totals.expense)}</dd><dt>{t('Ziada → 3200')}</dt><dd><strong>{tsh(p.totals.surplus)}</strong></dd></dl>
       )}
       {(a.type === 'PERIOD_CLOSE' || a.type === 'YEAR_END_CLOSE') && <Alert kind="warn">Ukiidhinisha, vitabu vitafungwa hadi {p?.lockedThrough ?? p?.closeDate}: hakuna muamala wala journal wa tarehe hiyo au kabla yake utakaoruhusiwa. Haitenguliwi.{p?.openTransactions ? ` Miamala ${p.openTransactions} ya kipindi hicho bado haijakamilika.` : ''}</Alert>}
       {a.type === 'MEMBER_REGISTRATION' && (a.payload as { nameOverride?: { name: string; phoneOwnerName: string | null; phone: string | null; reason: string } } | null)?.nameOverride && (() => { const n = (a.payload as { nameOverride: { name: string; phoneOwnerName: string | null; phone: string | null; reason: string } }).nameOverride; return (
-        <Alert kind="warn">Jina la mkulima <b>{n.name}</b> ni tofauti na mwenye namba {n.phone ? phone(n.phone) : ''} {n.phoneOwnerName ? <>(<b>{n.phoneOwnerName}</b>)</> : '(haijasajiliwa kwenye mobile money)'}. Sababu: {n.reason}. Ukiidhinisha usajili, unaidhinisha pia jina hili.</Alert>
+        <Alert kind="warn">{t('Jina la mkulima')} <b>{n.name}</b> ni tofauti na mwenye namba {n.phone ? phone(n.phone) : ''} {n.phoneOwnerName ? <>(<b>{n.phoneOwnerName}</b>)</> : '(haijasajiliwa kwenye mobile money)'}. Sababu: {n.reason}. Ukiidhinisha usajili, unaidhinisha pia jina hili.</Alert>
       ); })()}
       {a.type === 'KUNI_BATCH' && a.payload && (() => { const k = a.payload as { farmers: number; total: string; interest: string; rate: string; amountPerAcre: string }; return (
-        <dl className="dl"><dt>Wakulima</dt><dd>{k.farmers}</dd><dt>Pesa ya kuni</dt><dd><strong>{tsh(k.total)}</strong></dd><dt>Riba ({Number(k.rate)}%)</dt><dd>{tsh(k.interest)}</dd><dt>Kikomo kwa ekari</dt><dd>{tsh(k.amountPerAcre)}</dd></dl>
+        <dl className="dl"><dt>{t('Wakulima')}</dt><dd>{k.farmers}</dd><dt>{t('Pesa ya kuni')}</dt><dd><strong>{tsh(k.total)}</strong></dd><dt>Riba ({Number(k.rate)}%)</dt><dd>{tsh(k.interest)}</dd><dt>{t('Kikomo kwa ekari')}</dt><dd>{tsh(k.amountPerAcre)}</dd></dl>
       ); })()}
-      {a.type === 'KUNI_BATCH' && <Alert kind="warn">Ukiidhinisha, Mhasibu atatuma pesa kwenye akaunti za wakulima. Mkopo na riba vitakatwa kwenye mauzo ya tumbaku pamoja na deni la pembejeo.</Alert>}
+      {a.type === 'KUNI_BATCH' && <Alert kind="warn">{t('Ukiidhinisha, Mhasibu atatuma pesa kwenye akaunti za wakulima. Mkopo na riba vitakatwa kwenye mauzo ya tumbaku pamoja na deni la pembejeo.')}</Alert>}
       {a.type === 'GROUP_REGISTRATION' && p?.members && (
         <div className="table-wrap"><table className="table"><tbody>{p.members.map((m) => <tr key={m.memberNo}><td>{m.name}</td><td className="muted">{m.memberNo}</td></tr>)}</tbody></table></div>
       )}
@@ -165,10 +168,10 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
         <Alert kind="warn">Dhamana ya kikundi: {p.guarantees.map((g) => `${g.debtorName} (${g.groupName}) — wenzake wanalipa ${tsh(g.covered)}${Number(g.uncovered) > 0 ? `, bado ${tsh(g.uncovered)}` : ''}`).join('; ')}</Alert>
       )}
       {a.type === 'TOBACCO_SALE' && p?.totals && (
-        <dl className="dl"><dt>Wakulima</dt><dd>{p.totals.farmers} · kilo {Number(p.totals.kg).toLocaleString('en-US')}</dd><dt>Mauzo</dt><dd>{tsh(p.totals.grossTzs)}</dd><dt>Makato</dt><dd>{tsh(p.totals.deductions)}</dd><dt>Malipo halisi</dt><dd><strong>{tsh(p.totals.netTzs)}</strong></dd></dl>
+        <dl className="dl"><dt>{t('Wakulima')}</dt><dd>{p.totals.farmers} · kilo {Number(p.totals.kg).toLocaleString('en-US')}</dd><dt>{t('Mauzo')}</dt><dd>{tsh(p.totals.grossTzs)}</dd><dt>{t('Makato')}</dt><dd>{tsh(p.totals.deductions)}</dd><dt>{t('Malipo halisi')}</dt><dd><strong>{tsh(p.totals.netTzs)}</strong></dd></dl>
       )}
-      {link && <p style={{ margin: 0 }}><Link to={link} onClick={onClose}>Fungua rekodi inayohusika →</Link></p>}
-      {mine && a.status === 'PENDING' && may('approvals.decide') && <Alert kind="warn">Huwezi kuidhinisha ombi ulilolianzisha mwenyewe.</Alert>}
+      {link && <p style={{ margin: 0 }}><Link to={link} onClick={onClose}>{t('Fungua rekodi inayohusika →')}</Link></p>}
+      {mine && a.status === 'PENDING' && may('approvals.decide') && <Alert kind="warn">{t('Huwezi kuidhinisha ombi ulilolianzisha mwenyewe.')}</Alert>}
       <Alert>{error}</Alert>
       {(canDecide || canCancel) && <TextField label={canDecide ? 'Maelezo ya uamuzi *' : 'Sababu ya kuondoa *'} placeholder={canDecide ? 'mf. Nimekagua risiti, gharama ni sahihi' : ''} value={note} onChange={setNote} />}
       {canDecide && (

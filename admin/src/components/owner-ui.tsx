@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { useAuth } from '../lib/auth';
-import { Alert, Button, Modal, TextField } from './ui';
+import { Alert, Button, Modal, TextField, tx } from './ui';
+import { useT } from '../lib/prefs';
 
 // ------------------------------ TAREHE ------------------------------
 const todayStr = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Dar_es_Salaam' }).format(new Date());
@@ -20,21 +21,22 @@ export function presetRange(p: RangePreset, custom?: { from: string; to: string 
   }
 }
 
-const PRESETS: [RangePreset, string][] = [['today', 'Leo'], ['7d', 'Siku 7'], ['30d', 'Siku 30'], ['month', 'Mwezi huu'], ['year', 'Mwaka huu'], ['custom', 'Chagua']];
+const PRESETS: [RangePreset, string][] = [['today', 'Leo'], ['7d', 'Siku 7'], ['30d', 'Siku 30'], ['month', 'Mwezi huu'], ['year', 'Mwaka huu'], ['custom', 'Chagua tarehe']];
 
 export function DateRangeFilter({ value, onChange }: { value: Range; onChange: (r: Range) => void }) {
+  const t = useT();
   return (
-    <div className="range-filter" role="group" aria-label="Kipindi">
+    <div className="range-filter" role="group" aria-label={t('Kipindi')}>
       <div className="seg">
         {PRESETS.map(([k, label]) => (
           <button key={k} type="button" className={value.preset === k ? 'on' : ''} aria-pressed={value.preset === k}
-            onClick={() => onChange(presetRange(k, value))}>{label}</button>
+            onClick={() => onChange(presetRange(k, value))}>{t(label)}</button>
         ))}
       </div>
       {value.preset === 'custom' && (
         <div className="actions">
           <input className="input" type="date" aria-label="Kuanzia" value={value.from} max={value.to} onChange={(e) => onChange({ ...value, from: e.target.value })} />
-          <span className="muted">hadi</span>
+          <span className="muted">{t('hadi')}</span>
           <input className="input" type="date" aria-label="Hadi" value={value.to} min={value.from} onChange={(e) => onChange({ ...value, to: e.target.value })} />
         </div>
       )}
@@ -51,6 +53,7 @@ export function ConfirmDialog({ open, title, message, confirmLabel = 'Thibitisha
   onClose: () => void; onConfirm: (c: Confirmation) => Promise<unknown>; children?: ReactNode;
 }) {
   const { user } = useAuth();
+  const t = useT();
   const [pw, setPw] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -70,9 +73,9 @@ export function ConfirmDialog({ open, title, message, confirmLabel = 'Thibitisha
   };
   return (
     <Modal open={open} title={title} onClose={close}
-      footer={<><Button variant="secondary" onClick={close}>Ghairi</Button>
-        <Button variant={danger ? 'danger' : 'primary'} busy={busy} disabled={!pw || (user?.totpEnabled && code.length !== 6)} onClick={go}>{confirmLabel}</Button></>}>
-      <div>{message}</div>
+      footer={<><Button variant="secondary" onClick={close}>{t('Ghairi')}</Button>
+        <Button variant={danger ? 'danger' : 'primary'} busy={busy} disabled={!pw || (user?.totpEnabled && code.length !== 6)} onClick={go}>{t(confirmLabel)}</Button></>}>
+      <div>{tx(t, message)}</div>
       {children}
       <Alert>{error}</Alert>
       <TextField label="Thibitisha kwa nenosiri lako" type="password" autoComplete="current-password" value={pw} onChange={setPw} />
@@ -83,10 +86,11 @@ export function ConfirmDialog({ open, title, message, confirmLabel = 'Thibitisha
 
 // ------------------------------ VIPENGELE VINGINE ------------------------------
 export function Tabs<T extends string>({ value, onChange, items }: { value: T; onChange: (v: T) => void; items: [T, string][] }) {
+  const t = useT();
   return (
     <div className="tabs" role="tablist">
       {items.map(([k, label]) => (
-        <button key={k} type="button" role="tab" aria-selected={value === k} className={value === k ? 'active' : ''} onClick={() => onChange(k)}>{label}</button>
+        <button key={k} type="button" role="tab" aria-selected={value === k} className={value === k ? 'active' : ''} onClick={() => onChange(k)}>{t(label)}</button>
       ))}
     </div>
   );
@@ -109,23 +113,26 @@ export const LABELS: Record<string, string> = {
   IN_APP: 'Ndani ya mfumo', EMAIL: 'Email', RAILWAY: 'Railway', EXPORT: 'Export ya data',
 };
 export function Pill({ value, label }: { value: string; label?: string }) {
-  return <span className={`badge badge-${TONES[value] ?? 'neutral'}`}>{label ?? LABELS[value] ?? value}</span>;
+  const t = useT();
+  return <span className={`badge badge-${TONES[value] ?? 'neutral'}`}>{t(label ?? LABELS[value] ?? value)}</span>;
 }
 
 export function Kpi({ label, value, hint, tone, icon }: { label: string; value: ReactNode; hint?: ReactNode; tone?: 'dark' | 'gold' | 'warn' | 'bad'; icon?: ReactNode }) {
+  const t = useT();
   return (
     <div className={`card kpi ${tone ? `kpi-${tone}` : ''}`}>
-      <div className="kpi-top"><span className="label">{label}</span>{icon && <span className="kpi-icon" aria-hidden="true">{icon}</span>}</div>
+      <div className="kpi-top"><span className="label">{t(label)}</span>{icon && <span className="kpi-icon" aria-hidden="true">{icon}</span>}</div>
       <span className="value">{value}</span>
-      {hint && <span className="hint">{hint}</span>}
+      {hint && <span className="hint">{tx(t, hint)}</span>}
     </div>
   );
 }
 
 export function Section({ title, actions, children, pad = true }: { title: ReactNode; actions?: ReactNode; children: ReactNode; pad?: boolean }) {
+  const t = useT();
   return (
     <section className="card">
-      <div className="section-head"><h2>{title}</h2>{actions && <div className="actions">{actions}</div>}</div>
+      <div className="section-head"><h2>{tx(t, title)}</h2>{actions && <div className="actions">{actions}</div>}</div>
       <div className={pad ? 'card-pad' : ''} style={pad ? { paddingTop: 0 } : undefined}>{children}</div>
     </section>
   );

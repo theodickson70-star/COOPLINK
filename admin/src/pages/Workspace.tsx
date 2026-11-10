@@ -8,6 +8,7 @@ import { Alert, Badge, Empty, Loading, PageHead } from '../components/ui';
 import { Kpi, Section } from '../components/owner-ui';
 import { Dashboard } from './Dashboard';
 import { useT } from '../lib/prefs';
+import { FinanceAlerts } from '../components/FinanceAlerts';
 import { AccountingHome } from './Accounting';
 
 interface Summary {
@@ -105,6 +106,7 @@ function Manager({ d }: { d: Summary }) {
   const f = d.finance, s = d.stock, p = d.production;
   return (
     <div className="stack">
+      <FinanceAlerts />
       <div className="grid grid-kpi">
         <Kpi tone={d.approvals?.total ? 'gold' : 'dark'} label={t('Maombi yanayosubiri idhini')} value={num(d.approvals?.total)} hint={d.approvals?.total ? t('Bofya "Idhini" kuamua') : t('Hakuna kinachosubiri')} />
         <Kpi label={t('Wakulima hai')} value={num(d.members.active)} hint={d.members.pending ? t('{n} wanasubiri uthibitisho', { n: d.members.pending }) : t('{n} wanawake', { n: num(d.members.female) })} tone={d.members.pending ? 'warn' : undefined} />

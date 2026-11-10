@@ -1,0 +1,1 @@
+ALTER TABLE "markets" ADD COLUMN "buyer_due_date" date;

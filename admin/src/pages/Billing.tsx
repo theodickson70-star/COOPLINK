@@ -2,6 +2,7 @@
 //  ADA YA COOPLINK (Mhasibu analipa; Meneja anaona — analipa kama chama hakina Mhasibu): kingilio + ada ya msimu kwa mitandao ya simu (TeePay au Abliner).
 //  Malipo yakithibitishwa na mtoa huduma, chama kinafunguka papo hapo na risiti inatolewa.
 // =====================================================================
+import { useT } from '../lib/prefs';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -32,6 +33,7 @@ const FEE_STATUS: Record<string, string> = { UNPAID: 'Haijalipwa', PARTIAL: 'Ime
 const MONTHS = ['', 'Januari', 'Februari', 'Machi', 'Aprili', 'Mei', 'Juni', 'Julai', 'Agosti', 'Septemba', 'Oktoba', 'Novemba', 'Desemba'];
 
 export function Billing() {
+  const t = useT();
   const { data, reload, error } = useFetch<BillingData>('/billing');
   const [ok, setOk] = useState<string | null>(null);
   if (error) return <Alert>{error}</Alert>;
@@ -46,14 +48,14 @@ export function Billing() {
       <Alert kind="ok">{ok}</Alert>
       {data.lock && (
         <div className="lock-card">
-          <strong>Chama kimefungwa kwa muda</strong>
+          <strong>{t('Chama kimefungwa kwa muda')}</strong>
           <p>{data.lock.label} ({tsh(data.lock.outstanding)}) haijalipwa tangu {date(data.lock.dueDate)}. Watumishi wengine wote (pamoja na Meneja) hawawezi kuingia kwenye mfumo mpaka ilipwe. Lipa kwa simu hapa chini — mfumo utafunguka papo hapo malipo yakithibitishwa.</p>
         </div>
       )}
       {!isPayer && open.length > 0 && <Alert kind="warn"><strong>{data.payer!.label} wa chama ndiye analipa ada ya CoopLink.</strong> Hapa unaona hali ya ada na risiti tu. Hakikisha {data.payer!.label.toLowerCase()} analipa kabla ya tarehe ya mwisho — ada isipolipwa, chama kizima kinafungwa (hata Meneja hataingia).</Alert>}
-      {!data.teepayEnabled && <Alert kind="warn">Malipo kwa simu bado hayajawashwa na CoopLink. Wasiliana na CoopLink.</Alert>}
-      {open.length === 0 && done.length > 0 && !data.lock && <Alert kind="ok">Hakuna ada inayodaiwa kwa sasa. Asante!</Alert>}
-      {data.fees.length === 0 && <Empty>Chama hiki hakina ada inayodaiwa kwa sasa.</Empty>}
+      {!data.teepayEnabled && <Alert kind="warn">{t('Malipo kwa simu bado hayajawashwa na CoopLink. Wasiliana na CoopLink.')}</Alert>}
+      {open.length === 0 && done.length > 0 && !data.lock && <Alert kind="ok">{t('Hakuna ada inayodaiwa kwa sasa. Asante!')}</Alert>}
+      {data.fees.length === 0 && <Empty>{t('Chama hiki hakina ada inayodaiwa kwa sasa.')}</Empty>}
       <div className="stack" style={{ gap: 16 }}>
         {open.map((f) => <FeeCard key={f.id} f={f} canPay={data.teepayEnabled && isPayer} canCancel={isPayer} onChange={(m) => { if (m) setOk(m); reload(); }} />)}
         {done.map((f) => <FeeCard key={f.id} f={f} canPay={false} canCancel={false} onChange={() => reload()} />)}
@@ -63,8 +65,8 @@ export function Billing() {
         <ul className="rules">
           <li><strong>Ada ya kingilio — {tsh(c.entranceFee)}</strong>: inalipwa mara moja, ndani ya siku {c.entranceDays} baada ya akaunti ya chama kufunguliwa.</li>
           <li><strong>Ada ya msimu — {tsh(c.seasonFee)}</strong> kwa kila msimu wa tumbaku, kwa awamu {c.seasonInstallments} ({tsh(c.seasonFee / c.seasonInstallments)} kila moja). Mwisho wa kulipa kwa vyama vyote ni tarehe {c.deadlineDay} {MONTHS[c.deadlineMonth]} kila mwaka.</li>
-          <li><strong>Mhasibu</strong> ndiye analipa ada za CoopLink (kama chama bado hakina Mhasibu, Meneja analipa). Meneja anaona hali ya ada na risiti.</li>
-          <li>Ada isipolipwa kufikia tarehe yake, chama kizima kinafungwa mpaka ilipwe — Mhasibu peke yake ndiye anaingia, kwenye ukurasa huu tu, ili alipe.</li>
+          <li><strong>{t('Mhasibu')}</strong> ndiye analipa ada za CoopLink (kama chama bado hakina Mhasibu, Meneja analipa). Meneja anaona hali ya ada na risiti.</li>
+          <li>{t('Ada isipolipwa kufikia tarehe yake, chama kizima kinafungwa mpaka ilipwe — Mhasibu peke yake ndiye anaingia, kwenye ukurasa huu tu, ili alipe.')}</li>
           <li>Malipo ni kwa simu: weka namba, kisha thibitisha kwa PIN ombi litakalokuja kwenye simu hiyo (M-Pesa, Airtel Money, Mixx by Yas, HaloPesa).</li>
         </ul>
       </Section>
@@ -76,6 +78,7 @@ const PNAME: Record<string, string> = { TEEPAY: 'TeePay', ABLINER: 'Abliner' };
 const DETAIL: Record<string, string> = { cancelled: 'Ombi limeghairiwa kwenye simu', expired: 'Muda wa kuweka PIN umeisha' };
 
 function FeeCard({ f, canPay, canCancel = canPay, onChange }: { f: Fee; canPay: boolean; canCancel?: boolean; onChange: (msg?: string) => void }) {
+  const t = useT();
   const { user } = useAuth();
   const act = useAction();
   const inst = Number(f.amount) / f.installments;
@@ -118,10 +121,10 @@ function FeeCard({ f, canPay, canCancel = canPay, onChange }: { f: Fee; canPay: 
         <Badge status={f.status === 'UNPAID' ? (f.overdue ? 'FAILED' : 'PENDING') : f.status} label={f.overdue ? 'Imepita tarehe' : FEE_STATUS[f.status]} />
       </div>
       <div className="fee-figs">
-        <div><span>Kiasi</span><strong>{tsh(f.amount)}</strong></div>
-        <div><span>Imelipwa</span><strong>{tsh(f.paid)}</strong></div>
-        <div><span>Salio</span><strong>{f.status === 'WAIVED' ? '—' : tsh(f.outstanding)}</strong></div>
-        <div><span>Mwisho wa kulipa</span><strong className={f.overdue ? 'text-bad' : ''}>{date(f.dueDate)}</strong></div>
+        <div><span>{t('Kiasi')}</span><strong>{tsh(f.amount)}</strong></div>
+        <div><span>{t('Imelipwa')}</span><strong>{tsh(f.paid)}</strong></div>
+        <div><span>{t('Salio')}</span><strong>{f.status === 'WAIVED' ? '—' : tsh(f.outstanding)}</strong></div>
+        <div><span>{t('Mwisho wa kulipa')}</span><strong className={f.overdue ? 'text-bad' : ''}>{date(f.dueDate)}</strong></div>
       </div>
       {f.status === 'WAIVED' && f.waivedReason && <p className="muted" style={{ margin: 0 }}>Imesamehewa na CoopLink: {f.waivedReason}</p>}
       <Alert>{act.error}</Alert>
@@ -130,7 +133,7 @@ function FeeCard({ f, canPay, canCancel = canPay, onChange }: { f: Fee; canPay: 
         <div className="cn-box pay-wait">
           <div className="cn-label">Inasubiri uthibitisho kwenye simu · kupitia {PNAME[open.provider] ?? open.provider}</div>
           <div className="cn-number">{open.phoneLocal}</div>
-          <div className="cn-amount">Ombi la kulipa <strong>{tsh(open.amount)}</strong> limetumwa</div>
+          <div className="cn-amount">{t('Ombi la kulipa')} <strong>{tsh(open.amount)}</strong> {t('limetumwa')}</div>
           <p className="muted" style={{ margin: '6px 0 0' }}>
             {open.status === 'SENDING' ? 'Tunatuma ombi kwa mtandao wa simu…' : 'Fungua simu yako, weka PIN kuthibitisha malipo. Ukurasa huu utajisasisha wenyewe malipo yakithibitishwa.'}
             {waited >= 120 && ' Kama ombi halijafika kwenye simu, subiri dakika chache kisha jaribu tena.'}
@@ -170,10 +173,10 @@ function FeeCard({ f, canPay, canCancel = canPay, onChange }: { f: Fee; canPay: 
 
       {f.payments.length > 0 && (
         <div className="table-wrap"><table className="table">
-          <thead><tr><th>Risiti</th><th>Tarehe</th><th className="num">Kiasi</th><th /></tr></thead>
+          <thead><tr><th>{t('Risiti')}</th><th>{t('Tarehe')}</th><th className="num">{t('Kiasi')}</th><th /></tr></thead>
           <tbody>{f.payments.map((p) => (
             <tr key={p.id}><td><strong>{p.receiptNo}</strong>{p.isTest && <> <Badge status="DRAFT" label="Jaribio" /></>}</td><td>{dateTime(p.paidAt)}</td><td className="num">{tsh(p.amount)}</td>
-              <td style={{ textAlign: 'right' }}><Link className="btn btn-secondary btn-sm" to={`/billing/receipts/${p.id}`}>Risiti</Link></td></tr>
+              <td style={{ textAlign: 'right' }}><Link className="btn btn-secondary btn-sm" to={`/billing/receipts/${p.id}`}>{t('Risiti')}</Link></td></tr>
           ))}</tbody>
         </table></div>
       )}
@@ -191,6 +194,7 @@ interface Receipt {
 }
 
 export function BillingReceipt({ base = '/billing' }: { base?: string }) {
+  const t = useT();
   const { id } = useParams();
   const { data, error } = useFetch<Receipt>(`${base}/receipts/${id}`);
   if (error) return <Alert>{error}</Alert>;
@@ -199,7 +203,7 @@ export function BillingReceipt({ base = '/billing' }: { base?: string }) {
   return (
     <>
       <PageHead title={`Risiti ${r.receiptNo}`}>
-        <Link className="btn btn-secondary no-print" to={base === '/billing' ? '/billing' : '/owner/subscriptions?tab=fees'}>← Rudi</Link>
+        <Link className="btn btn-secondary no-print" to={base === '/billing' ? '/billing' : '/owner/subscriptions?tab=fees'}>{t('← Rudi')}</Link>
         <PrintButton label="Chapisha / PDF" />
       </PageHead>
       <section className="card card-pad print-doc receipt-doc">
@@ -219,11 +223,11 @@ export function BillingReceipt({ base = '/billing' }: { base?: string }) {
         </div>
         <div className="receipt-msg">{data.message}</div>
         <dl className="dl receipt-dl">
-          <dt>Imepokelewa kutoka</dt><dd><strong>{data.amcos.name}</strong> ({data.amcos.code})</dd>
-          <dt>Kwa ajili ya</dt><dd>{f.label}</dd>
-          <dt>Kiasi</dt><dd><strong>{tsh(r.amount)}</strong><div className="muted" style={{ fontSize: 13 }}>{amountInWords(r.amount)}</div></dd>
-          <dt>Njia ya malipo</dt><dd>{r.method}{r.providerRef ? ` · kumb. ${r.providerRef}` : ''}</dd>
-          {f.kind === 'SEASON' && <><dt>Ada ya msimu</dt><dd>{tsh(f.amount)} · imelipwa {tsh(f.paidToDate)} · salio {tsh(f.balance)}{Number(f.balance) > 0 ? ` (mwisho ${date(f.dueDate)})` : ''}</dd></>}
+          <dt>{t('Imepokelewa kutoka')}</dt><dd><strong>{data.amcos.name}</strong> ({data.amcos.code})</dd>
+          <dt>{t('Kwa ajili ya')}</dt><dd>{f.label}</dd>
+          <dt>{t('Kiasi')}</dt><dd><strong>{tsh(r.amount)}</strong><div className="muted" style={{ fontSize: 13 }}>{amountInWords(r.amount)}</div></dd>
+          <dt>{t('Njia ya malipo')}</dt><dd>{r.method}{r.providerRef ? ` · kumb. ${r.providerRef}` : ''}</dd>
+          {f.kind === 'SEASON' && <><dt>{t('Ada ya msimu')}</dt><dd>{tsh(f.amount)} · imelipwa {tsh(f.paidToDate)} · salio {tsh(f.balance)}{Number(f.balance) > 0 ? ` (mwisho ${date(f.dueDate)})` : ''}</dd></>}
         </dl>
         <p className="muted" style={{ fontSize: 12, marginTop: 24 }}>Risiti hii imetolewa na mfumo wa {b.productName} baada ya malipo kuthibitishwa na mtoa huduma wa malipo. Haihitaji sahihi.</p>
       </section>

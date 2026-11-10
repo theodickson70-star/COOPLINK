@@ -101,6 +101,9 @@ const MARKERS: Record<string, string[]> = {
   '0017_rebrand_dukalangu': [
     "select not exists (select 1 from platform_settings where key = 'business.profile' and upper(trim(value->>'companyName')) in ('NAYA GROUP', 'NAYA'))",
   ],
+  '0019_buyer_due_date': [
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'markets' and column_name = 'buyer_due_date')",
+  ],
   '0018_terms_acceptance': [
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'users' and column_name = 'terms_version')",
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'users' and column_name = 'terms_accepted_at')",

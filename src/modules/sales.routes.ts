@@ -130,6 +130,7 @@ const marketBody = z.object({
   location: z.string().trim().nullable().optional(),
   buyerName: z.string().trim().min(2, 'Weka jina la kampuni ya ununuzi').max(80),
   exchangeRate: decimalSchema({ min: 1 }),
+  buyerDueDate: dateStr.nullable().optional(),
   notes: z.string().trim().nullable().optional(),
 });
 
@@ -599,11 +600,14 @@ salesRouter.get('/summary', requireAmcosPerm('sales.read'), ah(async (req, res) 
 }));
 
 // ------------------------------ MALIPO YA MNUNUZI (wadaiwa: makampuni ya tumbaku) ------------------------------
+/** Mnunuzi asipowekewa tarehe ya kulipa, anatakiwa kulipa ndani ya siku hizi baada ya soko */
+export const BUYER_TERMS_DAYS = 30;
 /** Kila soko: thamani iliyoidhinishwa (mnunuzi anadaiwa) - malipo yaliyopokelewa kwa soko hilo, na umri wa deni. */
 salesRouter.get('/buyers', requireAmcosPerm('sales.read'), ah(async (req, res) => {
   const amcosId = await readAmcosId(req);
-  const r = await db.execute<{ id: string; market_no: string; market_date: string; buyer_name: string | null; due: string; paid: string; last_paid: string | null }>(sql`
+  const r = await db.execute<{ id: string; market_no: string; market_date: string; buyer_name: string | null; due: string; paid: string; last_paid: string | null; due_date: string }>(sql`
     select m.id, m.market_no, m.market_date::text as market_date, m.buyer_name,
+      coalesce(m.buyer_due_date, m.market_date + ${BUYER_TERMS_DAYS}::int)::text as due_date,
       coalesce((select sum(s.gross_tzs) from settlements s where s.market_id = m.id and s.status in ('APPROVED', 'PAID')), 0) as due,
       coalesce((select sum(case when t.kind = 'REVERSAL' then -t.amount else t.amount end) from finance_transactions t
         where t.market_id = m.id and t.status = 'POSTED' and t.category = 'TOBACCO_SALES'), 0) as paid,
@@ -616,7 +620,9 @@ salesRouter.get('/buyers', requireAmcosPerm('sales.read'), ah(async (req, res) =
   const rows = r.rows.map((x) => {
     const outstanding = D(x.due).minus(x.paid);
     const age = days(x.market_date);
+    const overdueDays = outstanding.gt(0) ? Math.max(0, Math.round((Date.parse(today) - Date.parse(x.due_date)) / 86_400_000)) : 0;
     return { id: x.id, marketNo: x.market_no, marketDate: x.market_date, buyerName: x.buyer_name, due: fmt2(x.due), paid: fmt2(x.paid), outstanding: fmt2(outstanding), lastPaid: x.last_paid,
+      dueDate: x.due_date, overdueDays, state: outstanding.lte(0) ? 'PAID' : overdueDays > 0 ? 'OVERDUE' : 'NOT_DUE',
       days: age, bucket: outstanding.lte(0) ? 'PAID' : age <= 30 ? '0-30' : age <= 60 ? '31-60' : age <= 90 ? '61-90' : '90+' };
   });
   const [un] = (await db.execute<{ v: string }>(sql`
@@ -624,11 +630,35 @@ salesRouter.get('/buyers', requireAmcosPerm('sales.read'), ah(async (req, res) =
     where amcos_id = ${amcosId} and status = 'POSTED' and category = 'TOBACCO_SALES' and market_id is null`)).rows;
   const buckets: Record<string, string> = {};
   for (const b of ['0-30', '31-60', '61-90', '90+']) buckets[b] = fmt2(rows.filter((x) => x.bucket === b).reduce((s, x) => s.plus(x.outstanding), D(0)));
-  const byBuyer = new Map<string, Decimal>();
-  for (const x of rows) if (D(x.outstanding).gt(0)) byBuyer.set(x.buyerName ?? '—', (byBuyer.get(x.buyerName ?? '—') ?? D(0)).plus(x.outstanding));
+  const byBuyer = new Map<string, { outstanding: Decimal; overdue: Decimal; markets: number; oldestDue: string | null }>();
+  for (const x of rows) {
+    if (D(x.outstanding).lte(0)) continue;
+    const k = x.buyerName ?? '—';
+    const b = byBuyer.get(k) ?? { outstanding: D(0), overdue: D(0), markets: 0, oldestDue: null };
+    b.outstanding = b.outstanding.plus(x.outstanding); b.markets++;
+    if (x.state === 'OVERDUE') b.overdue = b.overdue.plus(x.outstanding);
+    if (!b.oldestDue || x.dueDate < b.oldestDue) b.oldestDue = x.dueDate;
+    byBuyer.set(k, b);
+  }
+  const overdue = rows.filter((x) => x.state === 'OVERDUE');
   res.json({
-    data: rows, buckets, unallocated: fmt2(un.v),
+    data: rows, buckets, unallocated: fmt2(un.v), termsDays: BUYER_TERMS_DAYS,
     totalOutstanding: fmt2(rows.reduce((s, x) => s.plus(D(x.outstanding).gt(0) ? x.outstanding : 0), D(0))),
-    byBuyer: [...byBuyer].map(([name, v]) => ({ name, outstanding: fmt2(v) })),
+    overdue: { count: overdue.length, amount: fmt2(overdue.reduce((s, x) => s.plus(x.outstanding), D(0))) },
+    byBuyer: [...byBuyer].map(([name, v]) => ({ name, outstanding: fmt2(v.outstanding), overdue: fmt2(v.overdue), markets: v.markets, oldestDue: v.oldestDue }))
+      .sort((a, b) => Number(b.outstanding) - Number(a.outstanding)),
   });
+}));
+
+/** Tarehe ya mnunuzi kulipa soko hili (makubaliano). Inaweza kuwekwa hata baada ya soko kufungwa — haigusi hesabu. */
+salesRouter.put('/markets/:id/buyer-due', requireAmcosPerm('sales.manage'), ah(async (req, res) => {
+  const { id } = uuidParam.parse(req.params);
+  const { dueDate } = z.object({ dueDate: dateStr.nullable() }).parse(req.body);
+  const m = await findMarket(req, id);
+  if (dueDate && dueDate < m.marketDate) throw badRequest('Tarehe ya kulipa haiwezi kuwa kabla ya siku ya soko');
+  await db.transaction(async (tx) => {
+    await tx.update(MK).set({ buyerDueDate: dueDate }).where(eq(MK.id, id));
+    await audit(tx, req, { action: 'MARKET_BUYER_DUE', entity: 'Market', entityId: id, amcosId: m.amcosId, before: { buyerDueDate: m.buyerDueDate }, after: { buyerDueDate: dueDate } });
+  });
+  res.json({ ok: true });
 }));

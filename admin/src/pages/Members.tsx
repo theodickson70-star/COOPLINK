@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useT } from '../lib/prefs';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, type Paged } from '../lib/api';
 import { useAction, useDebounced, useFetch } from '../lib/hooks';
@@ -19,6 +20,7 @@ export interface Member {
 }
 
 export function Members() {
+  const t = useT();
   const { may } = useAuth();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
@@ -30,25 +32,25 @@ export function Members() {
     <>
       <PageHead title="Wanachama" sub="Orodha ya wanachama wote wa chama">
         {may('members.approve') && <Link className="btn btn-secondary" to="/members/import">Pakia daftari (CSV)</Link>}
-        {may('members.write') && <Link className="btn btn-primary" to="/members/new">+ Sajili mwanachama</Link>}
+        {may('members.write') && <Link className="btn btn-primary" to="/members/new">{t('+ Sajili mwanachama')}</Link>}
       </PageHead>
       <section className="card">
         <div className="toolbar">
           <Input aria-label="Tafuta" placeholder="Tafuta jina, namba ya uanachama, simu, NIDA au kadi ya mpiga kura…" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
           <Select aria-label="Hali" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
-            <option value="">Hali zote</option>
-            <option value="ACTIVE">Hai</option>
-            <option value="PENDING">Wanasubiri uthibitisho</option>
-            <option value="SUSPENDED">Amesimamishwa</option>
-            <option value="EXITED">Ametoka</option>
-            <option value="DECEASED">Marehemu</option>
+            <option value="">{t('Hali zote')}</option>
+            <option value="ACTIVE">{t('Hai')}</option>
+            <option value="PENDING">{t('Wanasubiri uthibitisho')}</option>
+            <option value="SUSPENDED">{t('Amesimamishwa')}</option>
+            <option value="EXITED">{t('Ametoka')}</option>
+            <option value="DECEASED">{t('Marehemu')}</option>
           </Select>
         </div>
         {error && <div className="card-pad"><Alert>{error}</Alert></div>}
-        {loading && !data ? <Loading /> : data && data.data.length === 0 ? <Empty>Hakuna mwanachama aliyepatikana.</Empty> : (
+        {loading && !data ? <Loading /> : data && data.data.length === 0 ? <Empty>{t('Hakuna mwanachama aliyepatikana.')}</Empty> : (
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Namba</th><th>Jina</th><th>Simu</th><th>Kijiji</th><th>Alijiunga</th><th>Hali</th></tr></thead>
+              <thead><tr><th>{t('Namba')}</th><th>{t('Jina')}</th><th>{t('Simu')}</th><th>{t('Kijiji')}</th><th>{t('Alijiunga')}</th><th>{t('Hali')}</th></tr></thead>
               <tbody>
                 {data?.data.map((m) => (
                   <tr key={m.id}>
@@ -162,6 +164,7 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
   initial?: Form; onSubmit: (payload: Record<string, unknown>, photo: PhotoChange | null) => void; submitLabel: string; busy: boolean; error: string | null;
   editing?: boolean; currentPhoto?: string | null;
 }) {
+  const t = useT();
   const { may } = useAuth();
   const draft = !editing ? readDraft() : null;
   const [f, setF] = useState<Form>(initial ?? draft?.f ?? EMPTY);
@@ -238,7 +241,7 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
       <div className="wizard-progress" aria-hidden="true"><span style={{ width: `${(step / 3) * 100}%` }} /></div>
 
       {restored && (
-        <Alert kind="ok">Tumerejesha fomu uliyokuwa ukijaza kwenye kifaa hiki. <button type="button" className="link-btn" onClick={() => { setF(EMPTY); setIdType('NIDA'); setRestored(false); setStep(0); writeDraft(null); }}>Anza upya</button></Alert>
+        <Alert kind="ok">{t('Tumerejesha fomu uliyokuwa ukijaza kwenye kifaa hiki.')} <button type="button" className="link-btn" onClick={() => { setF(EMPTY); setIdType('NIDA'); setRestored(false); setStep(0); writeDraft(null); }}>{t('Anza upya')}</button></Alert>
       )}
       <Alert>{error}</Alert>
       {tried && errs.length > 0 && <Alert>Kamilisha: {errs.join(' · ')}</Alert>}
@@ -260,7 +263,7 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
                     try { setPhoto(await shrinkPhoto(file)); } catch (err) { setPhotoErr((err as Error).message); }
                   }} />
                 </label>
-                <small className="muted">Unaweza kupiga picha kwa simu. Inapunguzwa ukubwa yenyewe.</small>
+                <small className="muted">{t('Unaweza kupiga picha kwa simu. Inapunguzwa ukubwa yenyewe.')}</small>
                 {photoErr && <small className="money-neg">{photoErr}</small>}
               </div>
             </div>
@@ -279,8 +282,8 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
             </div>
             {diff && (
               <div className="override-box">
-                <strong>Jina tofauti na la mwenye namba</strong>
-                <p>{own.state === 'found' ? <>Namba hii imesajiliwa kwa jina la <b>{own.name}</b>.</> : own.state === 'not_found' ? 'Namba hii haijasajiliwa kwenye mobile money.' : null} Andika majina ya mkulima hapa chini na ueleze sababu. {may('members.approve') ? 'Wewe kama Meneja unaidhinisha jina hili ukihifadhi.' : 'Meneja ataidhinisha jina hili pamoja na usajili.'}</p>
+                <strong>{t('Jina tofauti na la mwenye namba')}</strong>
+                <p>{own.state === 'found' ? <>{t('Namba hii imesajiliwa kwa jina la')} <b>{own.name}</b>.</> : own.state === 'not_found' ? 'Namba hii haijasajiliwa kwenye mobile money.' : null} Andika majina ya mkulima hapa chini na ueleze sababu. {may('members.approve') ? 'Wewe kama Meneja unaidhinisha jina hili ukihifadhi.' : 'Meneja ataidhinisha jina hili pamoja na usajili.'}</p>
                 <div className="form-grid">
                   <SelectField label="Sababu *" value={reasonKind} placeholder="Chagua sababu…" onChange={(v) => { setReasonKind(v); setF((s) => ({ ...s, nameOverrideReason: v === 'OTHER' ? '' : v })); }}
                     options={[...REASONS.map((r) => ({ value: r, label: r })), { value: 'OTHER', label: 'Sababu nyingine…' }]} />
@@ -305,11 +308,11 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
 
         {step === 1 && (
           <div className="form-grid">
-            <div className="form-section">Hisa na kiingilio</div>
+            <div className="form-section">{t('Hisa na kiingilio')}</div>
             <TextField label="Idadi ya hisa" type="number" min={0} value={f.sharesCount} onChange={set('sharesCount')} />
             <TextField label="Kiingilio cha uanachama (TSh)" type="number" min={0} value={f.entryFee} onChange={set('entryFee')} />
             {paidInSystem ? (
-              <div className="field"><label>Hali ya kiingilio</label><div><Badge status="APPROVED" label="Kimelipwa" /> <span className="muted">· {f.entryFeeReference}{f.entryFeePaidAt ? ` · ${date(f.entryFeePaidAt)}` : ''}</span></div></div>
+              <div className="field"><label>{t('Hali ya kiingilio')}</label><div><Badge status="APPROVED" label="Kimelipwa" /> <span className="muted">· {f.entryFeeReference}{f.entryFeePaidAt ? ` · ${date(f.entryFeePaidAt)}` : ''}</span></div></div>
             ) : (
               <SelectField label="Hali ya kiingilio" value={f.entryFeePaid} onChange={set('entryFeePaid')}
                 options={[{ value: 'no', label: 'Hajalipa' }, { value: 'yes', label: 'Alishalipa zamani' }]} />
@@ -318,12 +321,12 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
               <TextField label="Namba ya risiti ya kiingilio *" value={f.entryFeeReference} onChange={set('entryFeeReference')} />
               <TextField label="Tarehe aliyolipa" type="date" value={f.entryFeePaidAt} onChange={set('entryFeePaidAt')} />
             </>}
-            {!paidInSystem && f.entryFeePaid === 'no' && <p className="muted form-note">Mkulima akilipa, Mhasibu atarekodi kwenye <strong>Fedha → + Mapato → Ada za uanachama</strong> akimchagua mkulima huyu; hali itabadilika kuwa "Kimelipwa" yenyewe.</p>}
+            {!paidInSystem && f.entryFeePaid === 'no' && <p className="muted form-note">{t('Mkulima akilipa, Mhasibu atarekodi kwenye')} <strong>{t('Fedha → + Mapato → Ada za uanachama')}</strong> akimchagua mkulima huyu; hali itabadilika kuwa "Kimelipwa" yenyewe.</p>}
 
-            <div className="form-section">Mzamini wa mkulima</div>
+            <div className="form-section">{t('Mzamini wa mkulima')}</div>
             <PhoneNameFields phoneLabel="Simu ya mzamini" phone={f.guarantorPhone} onPhone={set('guarantorPhone')} nameLabel="Majina ya mzamini" name={f.guarantorName} onName={(v) => set('guarantorName')(v)} optionalPhone />
 
-            <div className="form-section">Mrithi / ndugu wa karibu</div>
+            <div className="form-section">{t('Mrithi / ndugu wa karibu')}</div>
             <PhoneNameFields phoneLabel="Simu ya mrithi" phone={f.nextOfKinPhone} onPhone={set('nextOfKinPhone')} nameLabel="Jina la mrithi" name={f.nextOfKinName} onName={(v) => set('nextOfKinName')(v)} optionalPhone />
             <TextField label="Uhusiano" placeholder="mf. Mke, Mtoto" value={f.nextOfKinRelation} onChange={set('nextOfKinRelation')} />
           </div>
@@ -352,7 +355,7 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
                 <TextField label="Namba ya akaunti" value={f.bankAccountNumber} onChange={set('bankAccountNumber')} />
               </div>
             )}
-            {f.preferredPayment === 'CASH' && <p className="muted" style={{ margin: 0 }}>Mkulima atalipwa fedha taslimu ofisini kwa chama.</p>}
+            {f.preferredPayment === 'CASH' && <p className="muted" style={{ margin: 0 }}>{t('Mkulima atalipwa fedha taslimu ofisini kwa chama.')}</p>}
           </div>
         )}
 
@@ -360,11 +363,11 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
           <div className="review">
             <div className="review-head">
               <div className="photo-box">{shown ? <img src={shown} alt="" /> : <span aria-hidden="true">{(f.firstName || '?').charAt(0).toUpperCase()}</span>}</div>
-              <div><h3>{fullNameStr || '—'}</h3><span className="muted">Namba ya uanachama: <strong>{f.memberNo || 'itatolewa na mfumo'}</strong></span></div>
+              <div><h3>{fullNameStr || '—'}</h3><span className="muted">{t('Namba ya uanachama:')} <strong>{f.memberNo || 'itatolewa na mfumo'}</strong></span></div>
             </div>
             <div className="review-grid">
               <div className="review-block">
-                <div className="review-title"><strong>Taarifa binafsi</strong><button type="button" className="link-btn" onClick={() => go(0)}>Badilisha</button></div>
+                <div className="review-title"><strong>{t('Taarifa binafsi')}</strong><button type="button" className="link-btn" onClick={() => go(0)}>{t('Badilisha')}</button></div>
                 <dl className="dl">
                   <R k="Jinsia" v={f.gender === 'FEMALE' ? 'Mwanamke' : 'Mwanaume'} />
                   <R k="Tarehe ya kuzaliwa" v={f.dateOfBirth ? date(f.dateOfBirth) : ''} />
@@ -374,7 +377,7 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
                 </dl>
               </div>
               <div className="review-block">
-                <div className="review-title"><strong>Uanachama</strong><button type="button" className="link-btn" onClick={() => go(1)}>Badilisha</button></div>
+                <div className="review-title"><strong>{t('Uanachama')}</strong><button type="button" className="link-btn" onClick={() => go(1)}>{t('Badilisha')}</button></div>
                 <dl className="dl">
                   <R k="Hisa" v={f.sharesCount} />
                   <R k="Kiingilio" v={f.entryFee ? `TSh ${Number(f.entryFee).toLocaleString()} · ${f.entryFeePaid === 'yes' ? 'Kimelipwa' : 'Hakijalipwa'}` : ''} />
@@ -383,7 +386,7 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
                 </dl>
               </div>
               <div className="review-block">
-                <div className="review-title"><strong>Malipo</strong><button type="button" className="link-btn" onClick={() => go(2)}>Badilisha</button></div>
+                <div className="review-title"><strong>{t('Malipo')}</strong><button type="button" className="link-btn" onClick={() => go(2)}>{t('Badilisha')}</button></div>
                 <dl className="dl">
                   <R k="Njia" v={f.preferredPayment === 'BANK' ? 'Benki' : f.preferredPayment === 'CASH' ? 'Taslimu' : 'Simu'} />
                   {f.preferredPayment === 'MOBILE_MONEY' && <R k="Namba" v={f.mobileMoneyNumber ? `${PROVIDERS[f.mobileMoneyProvider] ?? ''} · ${f.mobileMoneyNumber}` : ''} />}
@@ -391,18 +394,18 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
                 </dl>
               </div>
             </div>
-            {!editing && !may('members.approve') && <Alert kind="warn">Mkulima huyu atasubiri uthibitisho wa Meneja kabla ya kupewa pembejeo.</Alert>}
+            {!editing && !may('members.approve') && <Alert kind="warn">{t('Mkulima huyu atasubiri uthibitisho wa Meneja kabla ya kupewa pembejeo.')}</Alert>}
           </div>
         )}
       </section>
 
       <div className="wizard-actions">
-        {step > 0 ? <Button type="button" variant="secondary" onClick={() => go(step - 1)}>← Nyuma</Button> : <span />}
+        {step > 0 ? <Button type="button" variant="secondary" onClick={() => go(step - 1)}>{t('← Nyuma')}</Button> : <span />}
         <div className="actions">
           {editing && step < 3 && <Button type="button" variant="secondary" busy={busy} onClick={() => submit()}>{submitLabel}</Button>}
           {/* key tofauti: React isitumie kitufe kilekile (kingegeuka "submit" katikati ya kubofya na kusajili bila kuhakiki) */}
           {step < 3
-            ? <Button key="next" type="button" onClick={(e) => { e.preventDefault(); go(step + 1); }}>Endelea →</Button>
+            ? <Button key="next" type="button" onClick={(e) => { e.preventDefault(); go(step + 1); }}>{t('Endelea →')}</Button>
             : <Button key="submit" type="submit" busy={busy}>{submitLabel}</Button>}
         </div>
       </div>

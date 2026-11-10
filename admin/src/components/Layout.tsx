@@ -10,6 +10,7 @@ import { Button, Loading } from './ui';
 import { AnnouncementBar, MaintenanceOverlay, SystemBanner } from './Notices';
 import { PrefSwitches, useT } from '../lib/prefs';
 import { LegalLinks } from './LegalLinks';
+import { hasGuide, OPEN_GUIDE, PageGuide } from './PageGuide';
 import { prefetchPages } from '../lib/prefetch';
 import type { BillingData } from '../pages/Billing';
 import { date, tsh } from '../lib/format';
@@ -192,6 +193,11 @@ export function Layout() {
               <Icon d={I.help} /><span className="hide-sm">{t('Pata msaada')}</span>
             </Link>
           )}
+          {hasGuide(loc.pathname, user.role) && (
+            <Button variant="ghost" size="sm" className="help-btn" title={t('Onyesha mwongozo wa ukurasa huu')} onClick={() => { window.dispatchEvent(new Event(OPEN_GUIDE)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
+              💡<span className="hide-sm">{t('Mwongozo')}</span>
+            </Button>
+          )}
           <PrefSwitches compact />
           <div className="user-chip">
             <span className="avatar" aria-hidden="true">{user.fullName.charAt(0)}</span>
@@ -214,7 +220,7 @@ export function Layout() {
               <p>{lockMsg ?? fees.error}</p>
               <Button onClick={logout}>{t('Toka')}</Button>
             </section>
-          ) : <Suspense fallback={<Loading />}><Outlet /></Suspense>}
+          ) : <><PageGuide /><Suspense fallback={<Loading />}><Outlet /></Suspense></>}
         </main>
       </div>
       <MaintenanceOverlay />
