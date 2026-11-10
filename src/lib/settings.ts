@@ -21,6 +21,10 @@ export interface FeeConfig {
   primaryProvider?: 'TEEPAY' | 'ABLINER'; // njia ya kwanza ya malipo; ikishindwa, nyingine inajaribiwa
 }
 export interface Maintenance { enabled: boolean; message: string }
+/** Swichi za dharura: kuzima kipengele kwa mfumo mzima bila deploy (Owner + nenosiri, kila badiliko kwenye audit). */
+export interface Switches { mobilePayments: boolean; sms: boolean; farmerPortal: boolean; nameLookup: boolean }
+/** Matokeo ya mwisho ya "Jaribu muunganiko" kwa kila integration */
+export type IntegrationTests = Record<string, { ok: boolean; message: string; at: string; ms: number }>;
 export interface Banner { enabled: boolean; message: string; tone: 'info' | 'warn' }
 export interface BusinessProfile {
   companyName: string; productName: string; slogan: string; ownerName: string; poweredBy: string;
@@ -34,6 +38,8 @@ export const DEFAULTS = {
   fees: { enabled: true, entranceFee: 45000, entranceDays: 3, seasonFee: 700000, seasonInstallments: 2, deadlineMonth: 10, deadlineDay: 15, primaryProvider: 'TEEPAY' } as FeeConfig,
   maintenance: { enabled: false, message: 'Mfumo uko kwenye matengenezo. Tafadhali jaribu tena baadaye.' } as Maintenance,
   banner: { enabled: false, message: '', tone: 'info' } as Banner,
+  switches: { mobilePayments: true, sms: true, farmerPortal: true, nameLookup: true } as Switches,
+  'integrations.tests': {} as IntegrationTests,
   'business.profile': {
     companyName: 'DUKALANGU SOLUTION', productName: 'CoopLink', slogan: 'Connecting Cooperatives. Empowering Farmers.',
     ownerName: '', phone: '', email: '', address: '', tin: '', website: '', poweredBy: 'DUKALANGU SOLUTION', supportPhone: '', supportEmail: '',

@@ -86,6 +86,8 @@ export const clearFeeLock = (amcosId?: string) => (amcosId ? lockCache.delete(am
 /** Ada iliyopita tarehe bila kulipwa yote. Bila njia yoyote ya malipo kuwashwa, hakuna chama kinachofungwa (hawana njia ya kulipa). */
 export async function feeLock(amcosId: string, opts: { fresh?: boolean } = {}): Promise<FeeLock | null> {
   if (!anyProvider()) return null;
+  // Malipo yakisitishwa kwa swichi ya dharura, vyama havina njia ya kulipa — kwa hiyo havifungwi
+  if (!(await getSetting('switches')).mobilePayments) return null;
   const c = lockCache.get(amcosId);
   if (!opts.fresh && c && Date.now() - c.at < 15_000) return c.v;
   const [f] = await db.select().from(F)
@@ -197,6 +199,7 @@ async function newAttempt(tx: DbOrTx, f: Fee, a: { name: string; code: string },
 /** Meneja anaomba kulipa ada: ombi la PIN linatumwa kwenye simu ya mlipaji (njia ya kwanza, ikishindwa — ya pili). */
 export async function requestMobilePayment(feeId: string, amount: string, payer: Payer, userId: string) {
   if (!anyProvider()) throw badRequest('Malipo kwa simu bado hayajawashwa na CoopLink. Wasiliana na CoopLink.');
+  if (!(await getSetting('switches')).mobilePayments) throw badRequest('Malipo kwa simu yamesitishwa kwa muda na CoopLink. Jaribu tena baadaye.');
   const order = await providerOrder(feeId);
   const { first, f, a } = await db.transaction(async (tx) => {
     await tx.execute(sql`select 1 from platform_fees where id = ${feeId} for update`);

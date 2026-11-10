@@ -49,6 +49,7 @@ const signFarmer = (m: Member) => jwt.sign({ sub: m.id, tv: m.portalTokenVersion
 async function portalOpen(amcosId: string) {
   const a = await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId), columns: { farmerPortal: true, isActive: true, name: true } });
   if (!a?.farmerPortal || !a.isActive) return null;
+  if (!(await getSetting('switches')).farmerPortal) return null;
   if (await feeLock(amcosId)) return null;
   if ((await getSetting('maintenance')).enabled) return null;
   return a;

@@ -989,7 +989,37 @@ export const systemErrors = pgTable('system_errors', {
   stack: text(),
   userId: uuid(),
   createdAt: createdAt(),
+  // Owner akibonyeza "Limerekebishwa": kosa la aina hii linawekwa kando mpaka litokee tena
+  resolvedAt: timestamp({ withTimezone: true }),
+  resolvedById: uuid(),
 }, (t) => [index().on(t.createdAt)]);
+
+/** Uptime: mfumo unajikagua kila dakika 5. Kipindi kisicho na rekodi = mfumo haukuwa hewani. */
+export const systemUptime = pgTable('system_uptime', {
+  bucket: timestamp({ withTimezone: true }).primaryKey(), // mwanzo wa dakika 5
+  ok: boolean().notNull(),
+  dbMs: integer(),
+  version: text(),
+  checkedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Tahadhari kwa Owner. Tahadhari moja iliyo wazi kwa kila `key` (zinazojirudia zinaongeza count). */
+export const systemAlerts = pgTable('system_alerts', {
+  id: id(),
+  key: text().notNull(),               // mf. JOB_FAILED:fees.sweep
+  kind: text().notNull(),              // ERROR_SPIKE | JOB_FAILED | JOB_STALE | PAYMENT_STUCK | DB_SLOW | DOWNTIME
+  severity: text().notNull(),          // CRITICAL | WARNING
+  title: text().notNull(),
+  body: text(),
+  count: integer().notNull().default(1),
+  firstAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  lastAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  resolvedAt: timestamp({ withTimezone: true }),
+  autoResolved: boolean().notNull().default(false),
+  ackAt: timestamp({ withTimezone: true }),
+  ackById: uuid(),
+  notifiedAt: timestamp({ withTimezone: true }),  // SMS imetumwa (tahadhari mpya ya CRITICAL tu)
+}, (t) => [uniqueIndex('system_alerts_open_key').on(t.key).where(sql`resolved_at is null`), index().on(t.lastAt)]);
 
 export const jobRuns = pgTable('job_runs', {
   id: id(),

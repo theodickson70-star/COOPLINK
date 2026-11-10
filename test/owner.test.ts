@@ -330,3 +330,59 @@ test('Wasifu wa kampuni: mawasiliano ya mauzo na msaada wa kiufundi yanaonekana 
   assert.equal(st.legal.supportEmail, 'msaada@example.com');
   await call('PUT', '/api/v1/owner/business/profile', owner, before); // rudisha
 });
+
+test('System Control Center: ufuatiliaji, tahadhari, makosa yaliyounganishwa, integrations, kazi na swichi za dharura', async () => {
+  const S = '/api/v1/owner/system';
+  // Ufuatiliaji: ukaguzi mmoja unaandika uptime
+  const mon = await call('POST', `${S}/jobs/system.monitor/run`, owner);
+  assert.equal(mon.status, 200, JSON.stringify(mon.body));
+  const up = (await call('GET', `${S}/uptime?days=7`, owner)).body;
+  assert.equal(up.days.length, 7);
+  assert.ok(up.lastCheck && up.lastCheck.ok === true);
+  assert.equal((await call('GET', `${S}/uptime?days=5`, owner)).status, 400);
+
+  // Makosa: ID tofauti kwenye njia ileile = kundi moja
+  const ids = ['11111111-2222-4333-8444-555555555555', '66666666-7777-4888-9999-aaaaaaaaaaaa'];
+  for (let i = 0; i < 12; i++) {
+    await db.execute(sql`insert into system_errors (method, path, status, message) values ('GET', ${`/members/${ids[i % 2]}`}, 500, ${`Kosa la majaribio ${i}`})`);
+  }
+  const g = (await call('GET', `${S}/errors/groups?days=1`, owner)).body;
+  const grp = g.data.find((x: any) => String(x.path).startsWith('/members/'));
+  assert.ok(grp, 'kundi lipo'); assert.equal(grp.n, 12);
+  const occ = (await call('GET', `${S}/errors/groups/${grp.fp}`, owner)).body;
+  assert.equal(occ.data.length, 12);
+
+  // Tahadhari: makosa 12 ndani ya dk 15 -> ERROR_SPIKE
+  await call('POST', `${S}/jobs/system.monitor/run`, owner);
+  let alerts = (await call('GET', `${S}/alerts`, owner)).body.data;
+  const spike = alerts.find((a: any) => a.key === 'ERROR_SPIKE');
+  assert.ok(spike && spike.severity === 'CRITICAL');
+  const sum1 = (await call('GET', `${S}/alerts/summary`, owner)).body;
+  assert.ok(sum1.critical >= 1);
+  assert.equal((await call('POST', `${S}/alerts/${spike.id}/ack`, owner)).status, 200);
+  const sum2 = (await call('GET', `${S}/alerts/summary`, owner)).body;
+  assert.equal(sum2.critical, sum1.critical - 1);
+  // Kosa likirekebishwa -> tahadhari inajifunga yenyewe
+  assert.equal((await call('POST', `${S}/errors/groups/${grp.fp}/resolve`, owner)).body.resolved, 12);
+  await call('POST', `${S}/jobs/system.monitor/run`, owner);
+  alerts = (await call('GET', `${S}/alerts`, owner)).body.data;
+  assert.equal(alerts.find((a: any) => a.key === 'ERROR_SPIKE'), undefined);
+  assert.equal((await call('GET', `${S}/errors/groups?days=1&state=resolved`, owner)).body.data.some((x: any) => x.fp === grp.fp), true);
+
+  // Integrations na kazi
+  const integ = (await call('GET', `${S}/integrations`, owner)).body.data;
+  assert.deepEqual(integ.map((x: any) => x.key), ['teepay', 'abliner', 'lookup', 'sms', 'email']);
+  assert.equal(JSON.stringify(integ).includes(process.env.TEEPAY_API_KEY || '__none__'), false);
+  const jobs = (await call('GET', `${S}/jobs`, owner)).body;
+  assert.deepEqual(jobs.data.map((x: any) => x.name), ['subscriptions.sweep', 'fees.sweep', 'system.monitor']);
+  assert.equal((await call('POST', `${S}/jobs/haipo/run`, owner)).status, 404);
+
+  // Swichi: kuzima kunahitaji sababu na nenosiri; badiliko linaonekana
+  assert.equal((await call('PUT', `${S}/switches`, owner, { key: 'farmerPortal', enabled: false, confirmPassword: OWNER_PW })).status, 400);
+  assert.equal((await call('PUT', `${S}/switches`, owner, { key: 'farmerPortal', enabled: false, reason: 'Majaribio ya swichi' })).status, 403);
+  const off = await call('PUT', `${S}/switches`, owner, { key: 'farmerPortal', enabled: false, reason: 'Majaribio ya swichi', confirmPassword: OWNER_PW });
+  assert.equal(off.status, 200, JSON.stringify(off.body));
+  const sw = (await call('GET', `${S}/switches`, owner)).body;
+  assert.equal(sw.switches.farmerPortal, false); assert.equal(sw.changes.farmerPortal.reason, 'Majaribio ya swichi');
+  assert.equal((await call('PUT', `${S}/switches`, owner, { key: 'farmerPortal', enabled: true, confirmPassword: OWNER_PW })).status, 200);
+});

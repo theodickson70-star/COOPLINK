@@ -55,6 +55,15 @@ export function OwnerLayout() {
   useEffect(() => setOpen(false), [loc.pathname]);
   // Tiketi zinazosubiri jibu la timu (alama kwenye menyu)
   const support = useFetch<{ waiting: number; overdue: number }>(user && has('support.read') ? '/owner/support/summary' : null, { p: loc.pathname });
+  // Tahadhari za mfumo zilizo wazi (alama kwenye System Control Center) — inaangaliwa tena kila dakika 2
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setTick((x) => x + 1);
+    const iv = window.setInterval(bump, 120_000);
+    window.addEventListener('cl:alerts', bump);
+    return () => { window.clearInterval(iv); window.removeEventListener('cl:alerts', bump); };
+  }, []);
+  const alerts = useFetch<{ open: number; critical: number }>(user && has('system.read') ? '/owner/system/alerts/summary' : null, { p: loc.pathname, tick });
   if (!user) return null;
   const isOwner = user.role === 'SUPER_ADMIN';
   const items = OWNER_NAV.filter((n) => !n.perm || has(n.perm));
@@ -85,6 +94,7 @@ export function OwnerLayout() {
                   <NavLink key={it.to} to={it.to} end={it.to === '/owner'} style={{ animationDelay: `${60 + n++ * 35}ms` }}>
                     <span className="nav-icon">{it.icon}</span>
                     <span className="nav-text"><span>{t(it.label)}</span><small>{t(it.sub)}</small></span>
+                    {it.to === '/owner/system' && !!alerts.data?.open && <span className={`nav-count${alerts.data.critical ? ' bad' : ''}`} title={t('Tahadhari za mfumo')}>{alerts.data.open}</span>}
                     {it.to === '/owner/support' && !!support.data?.waiting && <span className={`nav-count${support.data.overdue ? ' bad' : ''}`} title={support.data.overdue ? t('{n} zimechelewa', { n: support.data.overdue }) : t('Zinasubiri jibu')}>{support.data.waiting}</span>}
                   </NavLink>
                 ))}

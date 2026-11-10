@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { AlertsTab, ErrorsTab, IntegrationsTab, JobsTab, SwitchesTab, UptimeTab } from './SystemCenter';
 import { api, type Paged } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
@@ -21,64 +23,81 @@ interface Config { defaultTrialDays: number; defaultGraceDays: number; expiringW
 
 const uptime = (s: number) => (s > 86400 ? `${Math.floor(s / 86400)} siku ${Math.floor((s % 86400) / 3600)} saa` : s > 3600 ? `${Math.floor(s / 3600)} saa ${Math.floor((s % 3600) / 60)} dk` : `${Math.floor(s / 60)} dk`);
 
+type Tab = 'health' | 'alerts' | 'uptime' | 'integrations' | 'jobs' | 'errors' | 'switches' | 'settings';
+const TABS: Tab[] = ['health', 'alerts', 'uptime', 'integrations', 'jobs', 'errors', 'switches', 'settings'];
+
 export function OwnerSystem() {
   const { has } = useAuth();
-  const [tab, setTab] = useState<'health' | 'errors' | 'settings'>('health');
+  const [sp, setSp] = useSearchParams();
+  const tab = (TABS.includes(sp.get('tab') as Tab) ? sp.get('tab') : 'health') as Tab;
+  const setTab = (v: Tab) => { sp.set('tab', v); setSp(sp, { replace: true }); };
   const h = useFetch<Health>('/owner/system/health');
-  const act = useAction();
+  const al = useFetch<{ open: number; critical: number }>('/owner/system/alerts/summary');
+  const up = useFetch<{ pct: number | null; lastCheck: { checkedAt: string } | null }>(tab === 'health' ? '/owner/system/uptime' : null, { days: 30 });
+  const sw = useFetch<{ switches: Record<string, boolean> }>(tab === 'health' ? '/owner/system/switches' : null);
+  const refresh = () => { h.reload(); al.reload(); window.dispatchEvent(new Event('cl:alerts')); };
+  const paused = sw.data ? Object.values(sw.data.switches).filter((v) => !v).length : 0;
   return (
     <>
-      <PageHead title="System Control Center" sub="Hali ya mfumo, makosa na mipangilio. Siri (DB URL, API keys) hazionyeshwi hapa.">
-        <Button variant="secondary" onClick={h.reload}>Onyesha upya</Button>
+      <PageHead title="System Control Center" sub="Hali ya mfumo, tahadhari, uptime, integrations, kazi za nyuma, makosa na swichi za dharura. Siri (DB URL, API keys) hazionyeshwi hapa.">
+        <Button variant="secondary" onClick={refresh}>Onyesha upya</Button>
       </PageHead>
-      <Tabs value={tab} onChange={setTab} items={[['health', 'Hali ya mfumo'], ['errors', 'Makosa'], ['settings', 'Mipangilio']]} />
-      <Alert>{h.error ?? act.error}</Alert>
+      <Tabs value={tab} onChange={setTab} items={[
+        ['health', 'Muhtasari'], ['alerts', al.data?.open ? `Tahadhari (${al.data.open})` : 'Tahadhari'], ['uptime', 'Uptime'], ['integrations', 'Integrations'],
+        ['jobs', 'Kazi za nyuma'], ['errors', 'Makosa'], ['switches', 'Swichi za dharura'], ['settings', 'Mipangilio'],
+      ]} />
+      <Alert>{h.error}</Alert>
       {tab === 'health' && (h.loading && !h.data ? <Loading /> : h.data && (
         <div className="stack">
           {h.data.maintenance.enabled && <Alert kind="warn"><strong>Maintenance imewashwa:</strong> {h.data.maintenance.message}</Alert>}
+          {!!al.data?.open && (
+            <button type="button" className={`sc-banner ${al.data.critical ? 'bad' : 'warn'}`} onClick={() => setTab('alerts')}>
+              <strong>{al.data.critical ? `Tahadhari ${al.data.critical} za hatari` : `Tahadhari ${al.data.open}`}</strong> zinahitaji kuangaliwa →
+            </button>
+          )}
+          {paused > 0 && <button type="button" className="sc-banner warn" onClick={() => setTab('switches')}><strong>Swichi {paused} za dharura</strong> zimesitisha vipengele →</button>}
           <div className="grid grid-kpi">
             <StatusCard title="Backend" status={h.data.backend.status} detail={`v${h.data.backend.version} · ${h.data.backend.node}`} />
-            <StatusCard title="Frontend (Admin)" status={h.data.frontend.built ? 'ok' : 'down'} detail={h.data.frontend.built ? 'Imejengwa na inahudumiwa' : 'admin/dist haipo'} />
-            <StatusCard title="API" status={h.data.api.status} detail="/api/v1" />
             <StatusCard title="Database" status={h.data.database.status} detail={`${h.data.database.latencyMs} ms · ${h.data.database.size?.pretty ?? '—'}`} />
             <StatusCard title="Migrations" status={h.data.migrations.upToDate ? 'ok' : 'PENDING'} detail={`${h.data.migrations.applied}/${h.data.migrations.total} · ${h.data.migrations.latest ?? '—'}`} />
+            <button type="button" className="card kpi sc-kpi-btn" onClick={() => setTab('uptime')}>
+              <div className="kpi-top"><span className="label">Uptime (siku 30)</span><Pill value={up.data?.pct == null ? 'SKIPPED' : up.data.pct >= 99.5 ? 'ok' : 'PENDING'} label={up.data?.pct == null ? 'Bado' : `${up.data.pct}%`} /></div>
+              <span className="hint" style={{ fontSize: 13 }}>{up.data?.lastCheck ? `Ukaguzi wa mwisho ${dateTime(up.data.lastCheck.checkedAt)}` : 'Bado hakuna ukaguzi'}</span>
+            </button>
+            <button type="button" className="card kpi sc-kpi-btn" onClick={() => setTab('errors')}>
+              <div className="kpi-top"><span className="label">Makosa</span><Pill value={h.data.errors.h24 ? 'FAILED' : 'ok'} label={`${h.data.errors.h24} (saa 24)`} /></div>
+              <span className="hint" style={{ fontSize: 13 }}>Siku 7: {h.data.errors.d7}</span>
+            </button>
           </div>
           <div className="grid grid-2">
             <Section title="Server na deployment">
               <dl className="dl">
                 <dt>Imewaka tangu</dt><dd>{dateTime(h.data.backend.startedAt)} ({uptime(h.data.backend.uptimeSec)})</dd>
                 <dt>Kumbukumbu (RAM)</dt><dd>{h.data.backend.memoryMb} MB</dd>
+                <dt>Frontend</dt><dd>{h.data.frontend.built ? 'Imejengwa na inahudumiwa' : 'admin/dist haipo'}</dd>
                 <dt>Jukwaa</dt><dd>{h.data.deployment.platform} {h.data.deployment.environment ? `· ${h.data.deployment.environment}` : ''}</dd>
                 <dt>Service</dt><dd>{h.data.deployment.service ?? '—'}</dd>
                 <dt>Commit</dt><dd>{h.data.deployment.commit ?? '—'} {h.data.deployment.branch ? `(${h.data.deployment.branch})` : ''}</dd>
                 <dt>Deployment ID</dt><dd style={{ wordBreak: 'break-all' }}>{h.data.deployment.deploymentId ?? '—'}</dd>
               </dl>
             </Section>
-            <Section title="Kazi za nyuma (background jobs)" actions={(has('system.manage') || has('subscriptions.manage')) && (
-              <Button size="sm" variant="secondary" busy={act.busy} onClick={async () => { if (await act.run(() => api('/owner/system/jobs/subscriptions/run', { method: 'POST' }))) h.reload(); }}>Endesha sasa</Button>
-            )}>
-              {h.data.jobs.length === 0 ? <p className="muted">Bado hakuna kazi iliyoendeshwa. Kazi ya subscriptions inaendeshwa kila saa.</p> : (
+            <Section title="Kazi za nyuma" actions={<Button size="sm" variant="ghost" onClick={() => setTab('jobs')}>Zote →</Button>}>
+              {h.data.jobs.length === 0 ? <p className="muted">Bado hakuna kazi iliyoendeshwa.</p> : (
                 <table className="table"><tbody>{h.data.jobs.map((j) => (
-                  <tr key={j.name}><td><strong>{j.name}</strong><div className="muted" style={{ fontSize: 12 }}>{j.details ? Object.entries(j.details).map(([k, v]) => `${k}: ${v}`).join(' · ') : ''}</div></td>
-                    <td><Pill value={j.status} /></td><td className="muted">{dateTime(j.started_at)}</td></tr>
+                  <tr key={j.name}><td><strong>{j.name}</strong></td><td><Pill value={j.status} /></td><td className="muted">{dateTime(j.started_at)}</td></tr>
                 ))}</tbody></table>
               )}
-            </Section>
-            <Section title="Integrations">
-              <dl className="dl">
-                <dt>SMS (Africa's Talking)</dt><dd><Pill value={h.data.integrations.sms} /></dd>
-                <dt>Email</dt><dd><Pill value={h.data.integrations.email} /></dd>
-                <dt>Malipo</dt><dd><Pill value="PENDING" label={LABELS[h.data.integrations.payments]} /></dd>
-              </dl>
-              {h.data.integrations.sms !== 'configured' && <p className="muted" style={{ fontSize: 13 }}>SMS zitarekodiwa kama "Imerukwa" hadi uweke AT_USERNAME na AT_API_KEY kwenye Railway Variables.</p>}
-            </Section>
-            <Section title="Makosa ya mfumo">
-              <dl className="dl"><dt>Saa 24</dt><dd>{h.data.errors.h24}</dd><dt>Siku 7</dt><dd>{h.data.errors.d7}</dd></dl>
+              <div style={{ marginTop: 12 }}><Button size="sm" variant="ghost" onClick={() => setTab('integrations')}>Integrations →</Button></div>
             </Section>
           </div>
         </div>
       ))}
-      {tab === 'errors' && <Errors />}
+      {tab === 'alerts' && <AlertsTab onChange={refresh} />}
+      {tab === 'uptime' && <UptimeTab />}
+      {tab === 'integrations' && <IntegrationsTab />}
+      {tab === 'jobs' && <JobsTab />}
+      {tab === 'errors' && <ErrorsTab onChange={refresh} />}
+      {tab === 'switches' && <SwitchesTab />}
       {tab === 'settings' && h.data && <Settings h={h.data} canManage={has('system.manage')} onSaved={h.reload} />}
     </>
   );
@@ -90,22 +109,6 @@ function StatusCard({ title, status, detail }: { title: string; status: string; 
       <div className="kpi-top"><span className="label">{title}</span><Pill value={status} /></div>
       <span className="hint" style={{ fontSize: 13 }}>{detail}</span>
     </div>
-  );
-}
-
-function Errors() {
-  const [page, setPage] = useState(1);
-  const { data, loading } = useFetch<Paged<{ id: string; method: string; path: string; message: string; createdAt: string }>>('/owner/system/errors', { page, pageSize: 25 });
-  return (
-    <section className="card">
-      {loading && !data ? <Loading /> : data?.data.length === 0 ? <Empty>Hakuna makosa yaliyorekodiwa. 🎉</Empty> : (
-        <div className="table-wrap"><table className="table">
-          <thead><tr><th>Wakati</th><th>Njia</th><th>Ujumbe</th></tr></thead>
-          <tbody>{data?.data.map((e) => <tr key={e.id}><td style={{ whiteSpace: 'nowrap' }}>{dateTime(e.createdAt)}</td><td><code>{e.method} {e.path}</code></td><td>{e.message}</td></tr>)}</tbody>
-        </table></div>
-      )}
-      <Pager meta={data?.meta} onPage={setPage} />
-    </section>
   );
 }
 

@@ -9,6 +9,7 @@ import { db, schema } from '../db';
 import { badRequest, AppError } from './errors';
 import { lookupName } from './abliner';
 import { normalizePhone } from './http';
+import { getSetting } from './settings';
 
 const L = schema.phoneNameLookups;
 const FOUND_TTL = 30 * 86_400_000; // jina lililopatikana: siku 30
@@ -38,7 +39,7 @@ export type Lookup =
 export async function resolvePhoneName(input: string): Promise<Lookup> {
   const phone = normalizePhone(input);
   if (!phone) return { status: 'INVALID', phone: input };
-  if (!lookupEnabled()) return { status: 'DISABLED', phone };
+  if (!lookupEnabled() || !(await getSetting('switches')).nameLookup) return { status: 'DISABLED', phone };
   const [c] = await db.select().from(L).where(eq(L.phone, phone));
   if (c) {
     const age = Date.now() - c.checkedAt.getTime();

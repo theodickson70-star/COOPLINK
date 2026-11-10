@@ -4,8 +4,11 @@ import { eq, sql } from 'drizzle-orm';
 import { db, pool, schema } from '../db';
 import { runSubscriptionSweep } from './subscriptions';
 import { runFeesSweep } from './fees';
+import { runMonitor } from './monitor';
 
-const LOCK_KEY = 815_204; // nambari yoyote ya kipekee
+const LOCK_BASE = 815_204; // nambari yoyote ya kipekee
+/** Kila kazi ina lock yake (kazi mbili tofauti zinaweza kuendeshwa pamoja; kazi moja haiendeshwi mara mbili). */
+export const lockKeyFor = (name: string) => LOCK_BASE + ([...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 100_000);
 
 async function jobTableExists() {
   const r = await pool.query<{ ok: boolean }>("select to_regclass('public.job_runs') is not null as ok");
@@ -31,6 +34,7 @@ export async function runJob(name: string, fn: () => Promise<unknown>) {
 async function runJobInner(name: string, fn: () => Promise<unknown>) {
   const client = await pool.connect();
   try {
+    const LOCK_KEY = lockKeyFor(name);
     const got = await client.query<{ ok: boolean }>('select pg_try_advisory_lock($1) as ok', [LOCK_KEY]);
     if (!got.rows[0].ok) {
       await db.insert(schema.jobRuns).values({ name, status: 'SKIPPED', details: { reason: 'inaendeshwa na replica nyingine' }, finishedAt: new Date() });
@@ -56,11 +60,22 @@ export const JOBS = {
   fees: () => runJob('fees.sweep', () => runFeesSweep()),
 };
 
+/** Orodha ya kazi zote za nyuma (System Control Center). Kazi ya ufuatiliaji haiandikwi job_runs (inaendeshwa kila dk 5). */
+export const JOB_CATALOG = [
+  { name: 'subscriptions.sweep', label: 'Subscriptions', desc: 'Inasitisha vyama ambavyo subscription imeisha (baada ya grace) na kuonya vinavyokaribia kuisha', everyMin: 60, run: JOBS.subscriptions },
+  { name: 'fees.sweep', label: 'Ada za CoopLink', desc: 'Inaweka ada ya msimu mpya na kuhakiki malipo ya simu ambayo webhook haikufika', everyMin: 60, run: JOBS.fees },
+  { name: 'system.monitor', label: 'Ufuatiliaji wa mfumo', desc: 'Inajikagua (uptime, kasi ya database) na kutoa tahadhari kwa Owner', everyMin: 5, run: () => runMonitor() },
+] as const;
+export type JobName = (typeof JOB_CATALOG)[number]['name'];
+
 export function startJobs() {
   if (process.env.DISABLE_JOBS === 'true') return;
   const first = Number(process.env.JOBS_FIRST_RUN_MS ?? 20_000);
   setTimeout(() => { void JOBS.subscriptions().then(() => JOBS.fees()); }, first).unref();
   setInterval(() => { void JOBS.subscriptions().then(() => JOBS.fees()); }, 60 * 60 * 1000).unref();
+  // Ufuatiliaji: mara moja baada ya kuwaka (inagundua muda mfumo haukuwa hewani), kisha kila dakika 5
+  setTimeout(() => { void runMonitor({ startup: true }); }, Math.min(first, 15_000)).unref();
+  setInterval(() => { void runMonitor(); }, 5 * 60 * 1000).unref();
 }
 
 export const latestJobRuns = () =>

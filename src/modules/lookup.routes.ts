@@ -19,5 +19,5 @@ lookupRouter.get('/name', limiter, ah(async (req, res) => {
   const r = await resolvePhoneName(phone);
   const local = r.phone.startsWith('255') ? '0' + r.phone.slice(3) : r.phone;
   if (r.status === 'FOUND') return res.json({ enabled: true, status: r.status, phone: local, name: r.name, network: r.network, ...splitName(r.name) });
-  res.json({ enabled: lookupEnabled(), status: r.status, phone: local });
+  res.json({ enabled: lookupEnabled() && r.status !== 'DISABLED', status: r.status, phone: local });
 }));

@@ -101,6 +101,14 @@ const MARKERS: Record<string, string[]> = {
   '0017_rebrand_dukalangu': [
     "select not exists (select 1 from platform_settings where key = 'business.profile' and upper(trim(value->>'companyName')) in ('NAYA GROUP', 'NAYA'))",
   ],
+  '0021_system_center': [
+    "select to_regclass('public.system_alerts') is not null",
+    "select to_regclass('public.system_uptime') is not null",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'system_errors' and column_name = 'resolved_at')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'system_errors' and column_name = 'resolved_by_id')",
+    "select to_regclass('public.system_alerts_open_key') is not null",
+    "select to_regclass('public.system_alerts_last_at_index') is not null",
+  ],
   '0020_farmer_portal': [
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'amcos' and column_name = 'farmer_portal')",
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'members' and column_name = 'portal_pin_hash')",

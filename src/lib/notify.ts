@@ -5,6 +5,7 @@
 //  Email: hakuna provider aliyesanidiwa bado -> kila email inarekodiwa kama SKIPPED.
 //  Hakuna ujumbe unaorekodiwa kama "umetumwa" bila jibu la mafanikio kutoka kwa provider.
 // =====================================================================
+import { getSetting } from './settings';
 export type DeliveryResult = { status: 'SENT' | 'FAILED' | 'SKIPPED'; providerRef?: string; error?: string };
 
 export const smsConfigured = () => !!(process.env.AT_USERNAME && process.env.AT_API_KEY);
@@ -12,6 +13,7 @@ export const emailConfigured = () => false;
 
 export async function sendSms(to: string, message: string): Promise<DeliveryResult> {
   if (!smsConfigured()) return { status: 'SKIPPED', error: 'SMS provider haijasanidiwa (AT_USERNAME / AT_API_KEY)' };
+  if (!(await getSetting('switches')).sms) return { status: 'SKIPPED', error: 'SMS zimesitishwa kwa swichi ya dharura' };
   const username = process.env.AT_USERNAME!;
   const host = username === 'sandbox' ? 'https://api.sandbox.africastalking.com' : 'https://api.africastalking.com';
   const body = new URLSearchParams({ username, to: `+${to.replace(/^\+/, '')}`, message });
