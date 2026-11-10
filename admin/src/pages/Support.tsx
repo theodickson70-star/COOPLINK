@@ -11,7 +11,7 @@ import { CompanyContact } from '../components/CompanyContact';
 import { useT } from '../lib/prefs';
 import { Alert, Button, Empty, Loading, PageHead, SelectField, TextField } from '../components/ui';
 import {
-  CATEGORY, Composer, PRIORITY, PriorityPill, StatusPill, Thread,
+  CATEGORY, Composer, PRIORITY, PriorityPill, slaText, StatusPill, Thread, TicketSteps, timeAgo,
   type Message, type TicketCategory, type TicketPriority, type TicketStatus,
 } from '../components/Support';
 
@@ -24,6 +24,9 @@ export function Support() {
   const { user } = useAuth();
   const t = useT();
   const { data, loading } = useFetch<{ data: Row[] }>('/support/tickets', { status: view || undefined });
+  const rows = data?.data ?? [];
+  const yourTurn = rows.filter((r) => r.status === 'ANSWERED').length;
+  const teamTurn = rows.filter((r) => r.status === 'OPEN' || r.status === 'IN_PROGRESS').length;
   return (
     <>
       <PageHead title={t('Msaada')} sub={t('Uliza swali, ripoti hitilafu au omba kipengele kipya. Timu ya CoopLink inajibu hapa hapa.')}>
@@ -34,26 +37,48 @@ export function Support() {
         <strong>{t('Muda wa kujibiwa:')}</strong>
         {(Object.keys(PRIORITY) as TicketPriority[]).map((p) => <span key={p}><PriorityPill p={p} /> {t(PRIORITY[p].sla)}</span>)}
       </div>
-      <div className="tabs" role="tablist">
-        {VIEWS.map((v) => <button key={v.k} role="tab" aria-selected={view === v.k} className={view === v.k ? 'active' : ''} onClick={() => setView(v.k)}>{t(v.l)}</button>)}
+      <div className="tk-toolbar">
+        <div className="tabs" role="tablist">
+          {VIEWS.map((v) => <button key={v.k} role="tab" aria-selected={view === v.k} className={view === v.k ? 'active' : ''} onClick={() => setView(v.k)}>{t(v.l)}</button>)}
+        </div>
+        {view === 'ACTIVE' && rows.length > 0 && (
+          <div className="tk-counts">
+            {yourTurn > 0 && <span className="tk-count you">{t('Zinakusubiri wewe: {n}', { n: yourTurn })}</span>}
+            {teamTurn > 0 && <span className="tk-count team">{t('Zinasubiri timu: {n}', { n: teamTurn })}</span>}
+          </div>
+        )}
       </div>
-      <section className="card">
-        {loading && !data ? <Loading /> : !data?.data.length ? (
-          <Empty>{view === 'ACTIVE' ? t('Hakuna tiketi inayoendelea. Ukikwama mahali popote, fungua tiketi mpya.') : t('Hakuna tiketi.')}</Empty>
+      <section className="card tk-list-card">
+        {loading && !data ? <Loading /> : !rows.length ? (
+          <div className="tk-empty">
+            <span aria-hidden="true">💬</span>
+            <strong>{view === 'ACTIVE' ? t('Hakuna tiketi inayoendelea') : t('Hakuna tiketi.')}</strong>
+            {view === 'ACTIVE' && <p>{t('Ukikwama mahali popote, fungua tiketi mpya — timu itakujibu hapa.')}</p>}
+            {view === 'ACTIVE' && <Link className="btn btn-secondary btn-sm" to="/support/new">{t('+ Tiketi mpya')}</Link>}
+          </div>
         ) : (
           <ul className="tk-list">
-            {data.data.map((r) => (
-              <li key={r.id}>
-                <Link to={`/support/${r.id}`} className={`tk-row${r.unread ? ' unread' : ''}`}>
-                  <div className="tk-row-main">
-                    <div className="tk-row-top"><span className="tk-no">{r.number}</span>{r.unread && <span className="tk-new">{t('Jibu jipya')}</span>}</div>
-                    <strong>{r.subject}</strong>
-                    <span className="muted">{t(CATEGORY[r.category].label)}{user?.role === 'AMCOS_ADMIN' ? ` · ${r.createdBy}` : ''} · {dateTime(r.lastPlatformAt && r.lastPlatformAt > r.lastAmcosAt ? r.lastPlatformAt : r.lastAmcosAt)}</span>
-                  </div>
-                  <div className="tk-row-side"><PriorityPill p={r.priority} /><StatusPill s={r.status} /></div>
-                </Link>
-              </li>
-            ))}
+            {rows.map((r) => {
+              const last = r.lastPlatformAt && r.lastPlatformAt > r.lastAmcosAt ? r.lastPlatformAt : r.lastAmcosAt;
+              const whoLast = r.lastPlatformAt && r.lastPlatformAt > r.lastAmcosAt ? t('Timu ya CoopLink') : t('Wewe');
+              return (
+                <li key={r.id}>
+                  <Link to={`/support/${r.id}`} className={`tk-row prio-${r.priority.toLowerCase()}${r.unread ? ' unread' : ''}${r.status === 'CLOSED' ? ' closed' : ''}`}>
+                    <span className="tk-ico" aria-hidden="true">{CATEGORY[r.category].icon}</span>
+                    <div className="tk-row-main">
+                      <div className="tk-row-top">
+                        <span className="tk-no">{r.number}</span>
+                        <span className="tk-cat-label">{t(CATEGORY[r.category].label)}</span>
+                        {r.unread && <span className="tk-new">{t('Jibu jipya')}</span>}
+                      </div>
+                      <strong className="tk-subject">{r.subject}</strong>
+                      <span className="tk-last">{whoLast} · {timeAgo(last)}{user?.role === 'AMCOS_ADMIN' ? ` · ${t('imefunguliwa na {who}', { who: r.createdBy })}` : ''}</span>
+                    </div>
+                    <div className="tk-row-side"><PriorityPill p={r.priority} /><StatusPill s={r.status} /><span className="tk-chev" aria-hidden="true">›</span></div>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -74,21 +99,33 @@ export function SupportNew() {
     <>
       <PageHead title={t('Tiketi mpya ya msaada')} sub={t('Eleza tatizo kwa kifupi na kwa uwazi. Picha ya skrini inasaidia timu kuelewa haraka.')} />
       <section className="card tk-new-card">
+        <h3 className="tk-step-h"><span>1</span>{t('Aina ya tatizo')}</h3>
         <div className="tk-cats" role="radiogroup" aria-label={t('Aina ya tatizo')}>
           {(Object.keys(CATEGORY) as TicketCategory[]).map((c) => (
             <button key={c} type="button" role="radio" aria-checked={category === c} className={`tk-cat${category === c ? ' on' : ''}`} onClick={() => setCategory(c)}>
+              <span className="tk-cat-ico" aria-hidden="true">{CATEGORY[c].icon}</span>
               <strong>{t(CATEGORY[c].label)}</strong><span>{t(CATEGORY[c].hint)}</span>
             </button>
           ))}
         </div>
-        <div className="grid grid-2">
+        <h3 className="tk-step-h"><span>2</span>{t('Kichwa na uzito')}</h3>
+        <div className="grid grid-2 tk-new-grid">
           <TextField label={t('Kichwa cha tatizo *')} id="tk-subject" value={subject} onChange={setSubject} placeholder={t('mf. Malipo ya ada yamekatwa lakini chama bado kimefungwa')} maxLength={140} />
-          <SelectField label={t('Uzito wa tatizo')} value={priority} onChange={(v) => setPriority(v as TicketPriority)}
-            options={(Object.keys(PRIORITY) as TicketPriority[]).map((p) => ({ value: p, label: `${t(PRIORITY[p].label)} — ${t(PRIORITY[p].sla)}` }))}
-            help={priority === 'URGENT' ? t('Dharura ni kazi iliyosimama kabisa (mf. hamwezi kuingia, siku ya soko au malipo).') : undefined} />
+          <div className="field">
+            <label id="tk-prio-l">{t('Uzito wa tatizo')}</label>
+            <div className="tk-prios" role="radiogroup" aria-labelledby="tk-prio-l">
+              {(Object.keys(PRIORITY) as TicketPriority[]).map((p) => (
+                <button key={p} type="button" role="radio" aria-checked={priority === p} className={`tk-prio-opt prio-${p.toLowerCase()}${priority === p ? ' on' : ''}`} onClick={() => setPriority(p)}>
+                  <strong>{t(PRIORITY[p].label)}</strong><span>{t(PRIORITY[p].sla)}</span>
+                </button>
+              ))}
+            </div>
+            {priority === 'URGENT' && <span className="help">{t('Dharura ni kazi iliyosimama kabisa (mf. hamwezi kuingia, siku ya soko au malipo).')}</span>}
+          </div>
         </div>
         <Alert>{error}</Alert>
         {!category && <p className="name-note">{t('Chagua aina ya tatizo hapo juu.')}</p>}
+        <h3 className="tk-step-h"><span>3</span>{t('Eleza tatizo')}</h3>
         <Composer busy={busy} submitLabel={t('Fungua tiketi')} placeholder={t('Eleza kilichotokea: ulikuwa unafanya nini, ulitarajia nini, na nini kilitokea badala yake.')}
           onSend={async ({ body, attachments }) => {
             if (!category || subject.trim().length < 4) { await run(async () => { throw new Error(!category ? t('Chagua aina ya tatizo') : t('Andika kichwa cha tatizo (angalau herufi 4)')); }); return false; }
@@ -106,35 +143,68 @@ export function SupportNew() {
 
 export function SupportDetail() {
   const { id } = useParams();
-  const { data, error, reload } = useFetch<{ ticket: { id: string; number: string; subject: string; category: TicketCategory; priority: TicketPriority; status: TicketStatus; createdAt: string; createdBy: string; firstResponseAt: string | null }; messages: Message[] }>(`/support/tickets/${id}`);
+  const { data, error, reload } = useFetch<{ ticket: { id: string; number: string; subject: string; category: TicketCategory; priority: TicketPriority; status: TicketStatus; createdAt: string; createdBy: string; firstResponseAt: string | null; dueAt?: string }; messages: Message[] }>(`/support/tickets/${id}`);
   const send = useAction();
   const close = useAction();
   const tt = useT();
   if (error) return <Alert>{error}</Alert>;
   if (!data) return <Loading />;
   const t = data.ticket;
+  const sla = t.dueAt ? slaText(t.dueAt, t.firstResponseAt, t.status) : null;
+  const note = t.status === 'CLOSED' ? tt('Tiketi imefungwa. Ukiandika ujumbe mpya, itafunguliwa upya.')
+    : t.status === 'ANSWERED' ? tt('Timu imekujibu. Kama tatizo limetatuliwa, funga tiketi; kama bado, jibu hapa chini.')
+      : t.firstResponseAt ? tt('Timu ya CoopLink inaendelea kulishughulikia. Utaona jibu hapa.')
+        : tt('Timu ya CoopLink itajibu — {sla}.', { sla: tt(PRIORITY[t.priority].sla) });
   return (
     <>
-      <PageHead title={t.subject} sub={<><span className="tk-no">{t.number}</span> · {tt(CATEGORY[t.category].label)} · {tt('imefunguliwa na {who}', { who: t.createdBy })} {dateTime(t.createdAt)}</>}>
+      <PageHead title={<span className="tk-title"><span className="tk-ico" aria-hidden="true">{CATEGORY[t.category].icon}</span>{t.subject}</span>}
+        sub={<><span className="tk-no">{t.number}</span> · {tt(CATEGORY[t.category].label)} · {tt('imefunguliwa na {who}', { who: t.createdBy })} {dateTime(t.createdAt)}</>}>
         <Link className="btn btn-ghost" to="/support">{tt('← Tiketi zote')}</Link>
       </PageHead>
-      <div className="tk-status-bar card">
-        <StatusPill s={t.status} /><PriorityPill p={t.priority} />
-        <span className="muted">{t.status === 'CLOSED' ? tt('Tiketi imefungwa. Ukiandika ujumbe mpya, itafunguliwa upya.') : t.firstResponseAt ? tt('Timu ya CoopLink imeshajibu. Endelea na mazungumzo hapa chini.') : tt('Timu ya CoopLink itajibu — {sla}.', { sla: tt(PRIORITY[t.priority].sla) })}</span>
-        {t.status !== 'CLOSED' && (
-          <Button variant="ghost" size="sm" busy={close.busy} onClick={async () => { if (await close.run(() => api(`/support/tickets/${t.id}/close`, { method: 'POST' }))) reload(); }}>{tt('✓ Tatizo limetatuliwa — funga')}</Button>
-        )}
-      </div>
-      <section className="card tk-card">
-        <Thread messages={data.messages} mine="AMCOS" attachmentBase="/support/attachments" />
-        <Alert>{send.error ?? close.error}</Alert>
-        <Composer busy={send.busy} placeholder={t.status === 'CLOSED' ? tt('Andika ujumbe kufungua tiketi upya…') : tt('Jibu au ongeza maelezo…')}
-          onSend={async ({ body, attachments }) => {
-            const ok = await send.run(() => api(`/support/tickets/${t.id}/messages`, { method: 'POST', body: { body, attachments } }));
-            if (ok) reload();
-            return !!ok;
-          }} />
+      <section className="card tk-progress">
+        <TicketSteps status={t.status} />
+        <div className={`tk-progress-note${t.status === 'ANSWERED' ? ' you' : ''}`}>
+          <span>{note}{sla && !sla.late ? <> <strong>{sla.text}</strong></> : null}</span>
+          {t.status !== 'CLOSED' && (
+            <Button variant={t.status === 'ANSWERED' ? 'primary' : 'ghost'} size="sm" busy={close.busy} onClick={async () => { if (await close.run(() => api(`/support/tickets/${t.id}/close`, { method: 'POST' }))) reload(); }}>{tt('✓ Tatizo limetatuliwa — funga')}</Button>
+          )}
+        </div>
       </section>
+      <div className="tk-layout">
+        <section className="card tk-card">
+          <Thread messages={data.messages} mine="AMCOS" attachmentBase="/support/attachments" />
+          <Alert>{send.error ?? close.error}</Alert>
+          <Composer busy={send.busy} placeholder={t.status === 'CLOSED' ? tt('Andika ujumbe kufungua tiketi upya…') : tt('Jibu au ongeza maelezo…')}
+            onSend={async ({ body, attachments }) => {
+              const ok = await send.run(() => api(`/support/tickets/${t.id}/messages`, { method: 'POST', body: { body, attachments } }));
+              if (ok) reload();
+              return !!ok;
+            }} />
+        </section>
+        <aside className="tk-side">
+          <section className="card card-pad tk-side-card">
+            <h3>{tt('Taarifa za tiketi')}</h3>
+            <dl className="tk-dl">
+              <dt>{tt('Namba')}</dt><dd><span className="tk-no">{t.number}</span></dd>
+              <dt>{tt('Hali')}</dt><dd><StatusPill s={t.status} /></dd>
+              <dt>{tt('Uzito')}</dt><dd><PriorityPill p={t.priority} /></dd>
+              <dt>{tt('Aina')}</dt><dd>{tt(CATEGORY[t.category].label)}</dd>
+              <dt>{tt('Aliyefungua')}</dt><dd>{t.createdBy}</dd>
+              <dt>{tt('Ilifunguliwa')}</dt><dd>{dateTime(t.createdAt)}</dd>
+              <dt>{tt('Jibu la kwanza')}</dt><dd>{t.firstResponseAt ? dateTime(t.firstResponseAt) : sla ? <span className={sla.late ? 'money-neg' : 'muted'}>{sla.text}</span> : '—'}</dd>
+              <dt>{tt('Ujumbe')}</dt><dd>{data.messages.length}</dd>
+            </dl>
+          </section>
+          <section className="card card-pad tk-side-card tk-tips">
+            <h3>{tt('Kupata msaada haraka')}</h3>
+            <ul>
+              <li>{tt('Ambatisha picha ya skrini ya tatizo.')}</li>
+              <li>{tt('Taja ulikuwa ukifanya nini na ukurasa gani.')}</li>
+              <li>{tt('Tiketi moja kwa tatizo moja.')}</li>
+            </ul>
+          </section>
+        </aside>
+      </div>
     </>
   );
 }

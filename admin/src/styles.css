@@ -793,7 +793,7 @@ tr.row-msg.row-warn td { color: var(--warn-ink); }
 .tk-sla strong { color: var(--head); }
 .tk-list { list-style: none; margin: 0; padding: 0; }
 .tk-list li + li { border-top: 1px solid var(--line); }
-.tk-row { display: flex; gap: 16px; align-items: center; justify-content: space-between; padding: 14px 20px; color: inherit; text-decoration: none; }
+.tk-row { position: relative; display: flex; gap: 14px; align-items: center; justify-content: space-between; padding: 14px 18px 14px 22px; color: inherit; text-decoration: none; transition: background .15s; }
 .tk-row:hover { background: var(--tint); }
 .tk-row.unread { background: var(--tint-green); }
 .tk-row.unread strong { color: var(--head); }
@@ -813,9 +813,9 @@ tr.row-msg.row-warn td { color: var(--warn-ink); }
 .tk-status-bar .muted { flex: 1; min-width: 200px; font-size: 13.5px; }
 .tk-card { padding: 20px; display: grid; gap: 16px; }
 .tk-thread { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
-.tk-msg { max-width: min(680px, 92%); padding: 12px 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--field); }
-.tk-msg.mine { justify-self: end; background: var(--tint-green); border-color: var(--line); border-bottom-right-radius: 4px; }
-.tk-msg.theirs { justify-self: start; border-bottom-left-radius: 4px; }
+.tk-msg { min-width: 0; max-width: min(640px, 100%); padding: 11px 15px; border-radius: 16px; border: 1px solid var(--line); background: var(--field); box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.tk-msg.mine { background: var(--tint-green); border-bottom-right-radius: 5px; }
+.tk-msg.theirs { border-bottom-left-radius: 5px; }
 .tk-msg.internal { background: var(--tint-gold); border: 1px dashed #E3A83A; }
 .tk-meta { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; font-size: 12.5px; margin-bottom: 6px; }
 .tk-meta strong { color: var(--head); }
@@ -1057,3 +1057,88 @@ tr.row-msg.row-warn td { color: var(--warn-ink); }
 .co-line a { color: var(--head); font-weight: 600; text-decoration: none; }
 .co-line a:hover { text-decoration: underline; }
 .co-form-h { margin: 20px 0 4px; font-size: 15px; color: var(--head); }
+
+/* ---------- Tiketi: muonekano mpya ---------- */
+.tk-toolbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.tk-toolbar .tabs { margin-bottom: 0; }
+.tk-counts { display: flex; gap: 8px; flex-wrap: wrap; padding-bottom: 8px; }
+.tk-count { font-size: 12.5px; font-weight: 600; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); }
+.tk-count.you { background: var(--tint-gold); color: var(--warn-ink); }
+.tk-count.team { background: var(--tint); color: var(--muted); }
+.tk-list-card { margin-top: 12px; overflow: hidden; }
+.tk-row::before { content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 4px; border-radius: 0 4px 4px 0; background: var(--line-2, var(--line)); }
+.tk-row.prio-urgent::before { background: var(--danger); }
+.tk-row.prio-high::before { background: var(--gold); }
+.tk-row.prio-normal::before { background: var(--green); opacity: .45; }
+.tk-row.closed { opacity: .7; }
+.tk-row.closed::before { background: var(--line); }
+.tk-ico { flex: none; display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--tint); font-size: 19px; }
+.tk-row-main { flex: 1; }
+.tk-row-top { flex-wrap: wrap; }
+.tk-cat-label { font-size: 12px; color: var(--muted); }
+.tk-subject { font-size: 15px; color: var(--head); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tk-last { font-size: 12.5px; color: var(--muted); }
+.tk-chev { font-size: 22px; color: var(--muted); line-height: 1; margin-left: 2px; }
+.tk-row.unread .tk-subject { font-weight: 800; }
+.tk-empty { display: grid; justify-items: center; gap: 6px; padding: 36px 20px; text-align: center; }
+.tk-empty > span { font-size: 34px; }
+.tk-empty strong { color: var(--head); font-size: 16px; }
+.tk-empty p { margin: 0 0 6px; color: var(--muted); font-size: 14px; }
+@media (max-width: 640px) {
+  .tk-row { flex-wrap: wrap; padding: 12px 14px 12px 18px; }
+  .tk-ico { width: 34px; height: 34px; font-size: 16px; }
+  .tk-row-main { width: calc(100% - 50px); }
+  .tk-row-side { width: 100%; justify-content: flex-start; padding-left: 48px; }
+  .tk-subject { white-space: normal; }
+}
+
+/* Tiketi mpya */
+.tk-step-h { display: flex; align-items: center; gap: 8px; margin: 4px 0 -4px; font-size: 15px; color: var(--head); }
+.tk-step-h span { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--green); color: #fff; font-size: 12px; font-weight: 700; }
+.tk-cat { position: relative; padding-left: 52px; min-height: 64px; align-content: center; }
+.tk-cat-ico { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 22px; }
+.tk-new-grid { align-items: start; }
+.tk-prios { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tk-prio-opt { display: grid; gap: 2px; text-align: left; padding: 9px 12px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--field); cursor: pointer; font: inherit; color: inherit; }
+.tk-prio-opt strong { font-size: 14px; color: var(--head); }
+.tk-prio-opt span { font-size: 11.5px; color: var(--muted); }
+.tk-prio-opt.on.prio-urgent { border-color: var(--danger); background: var(--tint-red, var(--tint)); }
+.tk-prio-opt.on.prio-high { border-color: var(--gold); background: var(--tint-gold); }
+.tk-prio-opt.on.prio-normal { border-color: var(--green); background: var(--tint-green); }
+.tk-prio-opt:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+@media (max-width: 520px) { .tk-prios { grid-template-columns: 1fr; } }
+
+/* Mtiririko (stepper) */
+.tk-progress { padding: 16px 18px; margin-bottom: 16px; display: grid; gap: 14px; }
+.tk-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; counter-reset: s; }
+.tk-step { position: relative; display: flex; gap: 10px; align-items: center; min-width: 0; }
+.tk-step:not(:last-child)::after { content: ''; position: absolute; left: 40px; right: 6px; top: 15px; height: 2px; background: var(--line); z-index: 0; }
+.tk-step.done:not(:last-child)::after { background: var(--green); }
+.tk-step-dot { position: relative; z-index: 1; flex: none; display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--line); background: var(--paper); color: var(--muted); font-size: 13px; font-weight: 700; }
+.tk-step.done .tk-step-dot { background: var(--green); border-color: var(--green); color: #fff; }
+.tk-step.now .tk-step-dot { border-color: var(--green); color: var(--green); box-shadow: 0 0 0 4px color-mix(in srgb, var(--green) 18%, transparent); }
+.tk-step-txt { position: relative; z-index: 1; display: grid; min-width: 0; background: var(--paper); padding-right: 8px; }
+.tk-step-txt strong { font-size: 13.5px; color: var(--head); white-space: nowrap; }
+.tk-step-txt small { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tk-step.todo .tk-step-txt strong { color: var(--muted); font-weight: 600; }
+.tk-progress-note { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-radius: 12px; background: var(--tint); font-size: 14px; }
+.tk-progress-note.you { background: var(--tint-gold); }
+@media (max-width: 720px) {
+  .tk-steps { grid-template-columns: 1fr 1fr; row-gap: 12px; }
+  .tk-step::after { display: none; }
+}
+
+/* Mazungumzo */
+.tk-li { display: grid; gap: 10px; }
+.tk-day { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.tk-day::before, .tk-day::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.tk-msg-row { display: flex; gap: 10px; align-items: flex-end; }
+.tk-msg-row.mine { flex-direction: row-reverse; }
+.tk-avatar { flex: none; display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--tint); border: 1px solid var(--line); color: var(--head); font-size: 12.5px; font-weight: 700; }
+.tk-avatar.team { background: #0B2F23; color: var(--gold); border-color: #0B2F23; }
+.tk-team-tag { font-size: 10.5px; font-weight: 700; letter-spacing: .03em; color: var(--green); background: var(--tint-green); padding: 1px 7px; border-radius: 8px; }
+.tk-title { display: inline-flex; align-items: center; gap: 10px; }
+.tk-title .tk-ico { width: 36px; height: 36px; font-size: 18px; }
+.tk-tips ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13.5px; color: var(--muted); }
+.tk-composer { position: sticky; bottom: 0; background: var(--paper); padding-bottom: 4px; }
+.tk-cat .tk-cat-ico { font-size: 24px; color: inherit; line-height: 1; }

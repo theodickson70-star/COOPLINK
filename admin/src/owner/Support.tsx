@@ -10,7 +10,7 @@ import { dateTime, phone, ROLE_LABEL } from '../lib/format';
 import { Alert, Empty, Input, Loading, PageHead, SelectField } from '../components/ui';
 import { Kpi, Tabs } from '../components/owner-ui';
 import {
-  CATEGORY, Composer, PRIORITY, PriorityPill, slaText, STATUS, StatusPill, Thread,
+  CATEGORY, Composer, PRIORITY, PriorityPill, slaText, STATUS, StatusPill, Thread, TicketSteps,
   type Message, type TicketCategory, type TicketPriority, type TicketStatus,
 } from '../components/Support';
 
@@ -54,7 +54,7 @@ export function OwnerSupport() {
                 const sla = slaText(t.dueAt, t.firstResponseAt, t.status);
                 return (
                   <tr key={t.id} className={t.overdue ? 'row-error' : undefined}>
-                    <td><Link to={`/owner/support/${t.id}`}><strong>{t.subject}</strong></Link>
+                    <td><Link to={`/owner/support/${t.id}`}><span aria-hidden="true">{CATEGORY[t.category].icon} </span><strong>{t.subject}</strong></Link>
                       <div className="muted" style={{ fontSize: 12 }}><span className="tk-no">{t.number}</span> · {t.createdBy} ({ROLE_LABEL[t.createdByRole] ?? t.createdByRole}){t.waiting && t.status !== 'OPEN' ? ' · ujumbe mpya' : ''}</div></td>
                     <td>{t.amcosName}</td>
                     <td>{CATEGORY[t.category].label}</td>
@@ -101,6 +101,7 @@ export function OwnerSupportDetail() {
       <PageHead title={t.subject} sub={<><span className="tk-no">{t.number}</span> · {data.amcos.name} · {dateTime(t.createdAt)}</>}>
         <Link className="btn btn-ghost" to="/owner/support">← Foleni</Link>
       </PageHead>
+      <section className="card tk-progress"><TicketSteps status={t.status} /></section>
       <div className="tk-layout">
         <section className="card tk-card">
           <Thread messages={messages} mine="PLATFORM" attachmentBase="/owner/support/attachments" />
