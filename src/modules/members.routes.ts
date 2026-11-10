@@ -10,11 +10,14 @@ import { activeGroups } from '../lib/groups';
 import { hasAmcosPerm } from '../lib/amcos-permissions';
 import { createApproval } from '../lib/approvals';
 import { lookupNameOrNull, resolvePhoneName, splitName } from '../lib/name-lookup';
-import { amcosScope, resolveWriteAmcosId } from '../middleware/tenant';
+import { amcosScope, readAmcosId, resolveWriteAmcosId } from '../middleware/tenant';
 import { nextNumber, pad } from '../lib/counter';
 import { audit } from '../lib/audit';
 import { memberBalance } from '../lib/ledger';
 import { D, fmt2 } from '../lib/money';
+import crypto from 'crypto';
+import { hashPassword } from '../lib/security';
+import { PORTAL_STATUSES, weakPin } from './farmer.routes';
 
 export const membersRouter = Router();
 
@@ -127,6 +130,72 @@ export async function findMemberScoped(req: Request, id: string) {
   if (!row) throw notFound('Mwanachama');
   return row;
 }
+
+// ---------------------------------------------------------------------
+//  PORTAL YA MKULIMA (upande wa ofisi): Mhasibu na Stokipa wanatoa/kufuta PIN; Meneja anaona tu na kuwasha portal.
+// ---------------------------------------------------------------------
+async function portalAmcos(req: Request) {
+  const amcosId = await readAmcosId(req);
+  const a = await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId), columns: { id: true, farmerPortal: true } });
+  if (!a) throw notFound('Chama');
+  return a;
+}
+const portalState = (x: typeof m.$inferSelect) => ({
+  hasPin: !!x.portalPinHash, mustChange: x.portalMustChange, issuedAt: x.portalPinIssuedAt, lastLoginAt: x.portalLastLoginAt,
+  locked: !!(x.portalLockedUntil && x.portalLockedUntil > new Date()), eligible: (PORTAL_STATUSES as readonly string[]).includes(x.status),
+});
+
+membersRouter.get('/portal/summary', requireAmcosPerm('members.portal', 'members.read'), ah(async (req, res) => {
+  const a = await portalAmcos(req);
+  const [r] = await db.select({
+    active: sql<number>`count(*) filter (where ${m.status} in ('ACTIVE', 'SUSPENDED'))::int`,
+    withPin: sql<number>`count(*) filter (where ${m.portalPinHash} is not null and ${m.status} in ('ACTIVE', 'SUSPENDED'))::int`,
+    loggedIn: sql<number>`count(*) filter (where ${m.portalLastLoginAt} is not null and ${m.portalPinHash} is not null and ${m.status} in ('ACTIVE', 'SUSPENDED'))::int`,
+    last7: sql<number>`count(*) filter (where ${m.portalLastLoginAt} > now() - interval '7 days' and ${m.portalPinHash} is not null)::int`,
+  }).from(m).where(eq(m.amcosId, a.id));
+  res.json({ enabled: a.farmerPortal, ...r, canIssue: hasAmcosPerm(req.auth!.role, 'members.portal'), canToggle: ['AMCOS_ADMIN', 'SUPER_ADMIN'].includes(req.auth!.role) });
+}));
+
+membersRouter.get('/:id/portal', requireAmcosPerm('members.portal', 'members.read'), ah(async (req, res) => {
+  const { id } = uuidParam.parse(req.params);
+  const a = await portalAmcos(req);
+  const row = await findMemberScoped(req, id);
+  if (row.amcosId !== a.id) throw notFound('Mwanachama');
+  let issuedBy: string | null = null;
+  if (row.portalPinIssuedById) issuedBy = (await db.query.users.findFirst({ where: eq(schema.users.id, row.portalPinIssuedById), columns: { fullName: true } }))?.fullName ?? null;
+  res.json({ enabled: a.farmerPortal, ...portalState(row), issuedBy, canIssue: hasAmcosPerm(req.auth!.role, 'members.portal') });
+}));
+
+/** PIN mpya ya tarakimu 6 (inaonyeshwa MARA MOJA tu; inahifadhiwa kama hash). Inafuta sessions zote za zamani za mkulima. */
+membersRouter.post('/:id/portal/pin', requireAmcosPerm('members.portal'), ah(async (req, res) => {
+  const { id } = uuidParam.parse(req.params);
+  const a = await portalAmcos(req);
+  if (!a.farmerPortal) throw badRequest('Portal ya wakulima bado haijawashwa na Meneja');
+  const row = await findMemberScoped(req, id);
+  if (row.amcosId !== a.id) throw notFound('Mwanachama');
+  if (!(PORTAL_STATUSES as readonly string[]).includes(row.status)) throw badRequest('PIN inatolewa kwa mkulima aliye hai tu (si anayesubiri uthibitisho, aliyetoka au marehemu)');
+  let pin = '';
+  do { pin = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0'); } while (weakPin(pin));
+  const hash = await hashPassword(pin);
+  await db.transaction(async (tx) => {
+    await tx.update(m).set({ portalPinHash: hash, portalMustChange: true, portalTokenVersion: row.portalTokenVersion + 1, portalFailed: 0, portalLockedUntil: null,
+      portalPinIssuedAt: new Date(), portalPinIssuedById: req.auth!.userId }).where(eq(m.id, id));
+    await audit(tx, req, { action: row.portalPinHash ? 'FARMER_PORTAL_PIN_RESET' : 'FARMER_PORTAL_PIN_ISSUE', entity: 'Member', entityId: id, amcosId: row.amcosId, after: { memberNo: row.memberNo } });
+  });
+  res.status(201).json({ pin, memberNo: row.memberNo });
+}));
+
+membersRouter.delete('/:id/portal/pin', requireAmcosPerm('members.portal'), ah(async (req, res) => {
+  const { id } = uuidParam.parse(req.params);
+  const a = await portalAmcos(req);
+  const row = await findMemberScoped(req, id);
+  if (row.amcosId !== a.id) throw notFound('Mwanachama');
+  await db.transaction(async (tx) => {
+    await tx.update(m).set({ portalPinHash: null, portalTokenVersion: row.portalTokenVersion + 1, portalFailed: 0, portalLockedUntil: null }).where(eq(m.id, id));
+    await audit(tx, req, { action: 'FARMER_PORTAL_PIN_REVOKE', entity: 'Member', entityId: id, amcosId: row.amcosId, after: { memberNo: row.memberNo } });
+  });
+  res.json({ ok: true });
+}));
 
 /** Kutafuta mkulima kwa malipo (Mhasibu): jina, namba na kijiji tu — hakuna taarifa binafsi. */
 membersRouter.get(

@@ -34,6 +34,7 @@ import { kuniRouter } from './modules/kuni.routes';
 import { billingRouter, feeGuard } from './modules/billing.routes';
 import { lookupRouter } from './modules/lookup.routes';
 import { supportRouter } from './modules/support.routes';
+import { farmerRouter } from './modules/farmer.routes';
 import { startupState } from './lib/startup';
 import { superAdminStatus } from './lib/super-admin';
 
@@ -48,6 +49,9 @@ const VERSION: string = (() => {
 
 export function createApp() {
   const app = express();
+  // Kinga ya jumla: hash ya PIN ya mkulima haitoki kwenye API yoyote, hata route ikirudisha safu nzima ya members.
+  const HIDDEN_KEYS = new Set(['portalPinHash', 'portalTokenVersion']);
+  app.set('json replacer', (k: string, v: unknown) => (HIDDEN_KEYS.has(k) ? undefined : v));
   app.set('trust proxy', 1); // Railway / Vercel / Nginx
   app.disable('x-powered-by');
   // img-src: blob: inahitajika kuonyesha picha za wakulima (zinapakuliwa kwa token) na kupunguza picha kwenye kifaa
@@ -74,6 +78,7 @@ export function createApp() {
   const api = express.Router();
   api.use('/public', publicRouter);
   api.use('/auth', authRouter);
+  api.use('/farmer', farmerRouter);             // Portal ya mkulima — ina uthibitisho wake (token ya mkulima tu)
 
   // Kila kitu chini ya hapa kinahitaji kuingia
   api.use(authenticate);

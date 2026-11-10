@@ -965,3 +965,73 @@ tr.row-msg.row-warn td { color: var(--warn-ink); }
 .guide-foot { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
 @keyframes guide-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .guide { animation: none; } }
+
+/* ---------- Portal ya mkulima: upande wa ofisi ---------- */
+.portal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.portal-head h2 { margin: 0; }
+.portal-dl { margin: 12px 0; }
+.portal-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.portal-sum { margin-bottom: 16px; }
+.portal-sum-main { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.portal-sum h3 { margin: 0 0 4px; font-family: var(--font-head); color: var(--head); display: flex; gap: 8px; align-items: center; }
+.portal-sum p { margin: 0; font-size: 14px; }
+.portal-list { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.pin-slip-box { display: grid; gap: 10px; margin: 14px 0; padding: 16px; border: 2px dashed var(--line-2, var(--line)); border-radius: 14px; background: var(--tint); }
+.pin-slip-box div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.pin-slip-box span { color: var(--muted); font-size: 13px; }
+.pin-slip-box strong { color: var(--head); font-size: 16px; }
+.pin-big { font-family: ui-monospace, Menlo, monospace; font-size: 34px !important; letter-spacing: .25em; }
+
+/* ---------- Portal ya mkulima (/mkulima) — simu kwanza ---------- */
+.fp { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; background: var(--bg); }
+.fp-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 16px; background: #0B2F23; color: #F6F0E1; position: sticky; top: 0; z-index: 5; }
+.fp-brand { display: flex; align-items: center; gap: 8px; }
+.fp-top-r { display: flex; align-items: center; gap: 10px; }
+.fp-out { background: transparent; border: 1px solid rgba(246,240,225,.35); color: #F6F0E1; border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 13px; cursor: pointer; }
+.fp-main { flex: 1; width: 100%; max-width: 560px; margin: 0 auto; padding: 18px 16px 28px; }
+.fp-foot { padding: 14px 16px 22px; text-align: center; font-size: 12px; }
+.fp-card { padding: 22px 20px; }
+.fp-login { display: grid; gap: 14px; }
+.fp-login h1 { margin: 0; font-family: var(--font-head); color: var(--head); font-size: 24px; }
+.fp-login p { margin: 0; }
+.fp-big { font-size: 18px; padding: 12px 14px; }
+.fp-pin { letter-spacing: .3em; font-family: ui-monospace, Menlo, monospace; }
+.fp-help { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+.fp-hello small { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+.fp-hello h1 { margin: 2px 0 2px; font-family: var(--font-head); color: var(--head); font-size: 24px; }
+.fp-hello p { margin: 0 0 14px; font-size: 14px; }
+.fp-season { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.fp-season label { font-size: 13px; color: var(--muted); font-weight: 600; }
+.fp-season .select { flex: 1; }
+.fp-balance { display: grid; gap: 2px; padding: 18px 20px; border-radius: 18px; background: #0B2F23; color: #F6F0E1; margin-bottom: 12px; }
+.fp-balance.owes { background: linear-gradient(135deg, #7A1F1F, #4A1212); }
+.fp-balance.credit { background: linear-gradient(135deg, #1F6B45, #0B2F23); }
+.fp-balance span { font-size: 13px; opacity: .85; }
+.fp-balance strong { font-family: var(--font-head); font-size: 32px; line-height: 1.15; }
+.fp-balance small { font-size: 12px; opacity: .7; }
+.fp-kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+.fp-kpis > div { display: grid; gap: 2px; padding: 12px 14px; border-radius: 14px; background: var(--paper); border: 1px solid var(--line); }
+.fp-kpis span { font-size: 12px; color: var(--muted); }
+.fp-kpis strong { font-size: 16px; color: var(--head); }
+.fp-kpis small { font-size: 11.5px; color: var(--muted); }
+.fp-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 4px; border-radius: 12px; background: var(--tint); margin-bottom: 12px; }
+.fp-tabs button { border: 0; background: transparent; padding: 9px 4px; border-radius: 9px; font: inherit; font-size: 13.5px; color: var(--muted); cursor: pointer; }
+.fp-tabs button.on { background: var(--paper); color: var(--head); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.fp-list { padding: 4px 16px; }
+.fp-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; }
+.fp-row:last-child { border-bottom: 0; }
+.fp-row.strong { font-weight: 700; color: var(--head); }
+.fp-row > span:last-child { white-space: nowrap; }
+.fp-cards { display: grid; gap: 10px; }
+.fp-item { padding: 12px 16px; }
+.fp-item header { display: flex; justify-content: space-between; gap: 10px; color: var(--head); }
+.fp-item header time { color: var(--muted); font-size: 13px; }
+.fp-item p { margin: 2px 0 4px; font-size: 13px; }
+.fp-led { display: flex; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.fp-led:last-child { border-bottom: 0; }
+.fp-led > div:first-child { display: grid; gap: 2px; min-width: 0; }
+.fp-led small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.fp-led-r { display: grid; gap: 2px; text-align: right; white-space: nowrap; }
+.fp-empty { text-align: center; color: var(--muted); padding: 24px 0; }
+.fp-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+@media print { .fp-top, .fp-foot { display: none !important; } .fp-main { max-width: none; padding: 0; } }

@@ -13,6 +13,7 @@ export const AMCOS_PERMISSIONS = {
   'members.lookup': 'Kutafuta mkulima (jina na namba tu) kwa ajili ya malipo',
   'members.write': 'Kusajili na kuhariri wakulima',
   'members.approve': 'Kuthibitisha wakulima na kubadilisha hali yao',
+  'members.portal': 'Kutoa na kufuta PIN ya portal ya mkulima',
   'estimates.write': 'Kuandika makisio',
   'estimates.approve': 'Kuidhinisha makisio',
   'ledger.read': 'Kuona madeni na taarifa za fedha za wakulima',
@@ -68,13 +69,13 @@ export const AMCOS_ROLE_PERMISSIONS: Partial<Record<Role, AmcosPermission[]>> = 
   ],
   // Mhasibu: fedha na uhasibu TU (hana wakulima, stoo wala kumbukumbu). Anatafuta mkulima kwa malipo kupitia members.lookup.
   ACCOUNTANT: [
-    'members.lookup',
+    'members.lookup', 'members.portal',
     'finance.read', 'finance.record', 'finance.post', 'finance.accounts',
     'accounting.read', 'accounting.manage', 'sales.read', 'sales.manage', 'payroll.read', 'payroll.manage',
     'approvals.read', 'reports.finance',
   ],
   CLERK: [
-    'members.read', 'members.lookup', 'members.write', 'estimates.write',
+    'members.read', 'members.lookup', 'members.write', 'members.portal', 'estimates.write',
     'stock.read', 'products.manage', 'stock.receive', 'stock.adjust.request', 'issues.request',
     'suppliers.manage', 'purchases.request', 'purchases.receive',
     'approvals.read', 'reports.stock',

@@ -699,3 +699,75 @@ test('Taarifa ya mkulima kwa msimu: salio la kuanzia + mwendo = salio; mauzo yan
   assert.equal(s.statement.at(-1)?.balance ?? s.opening, s.balance);
   assert.equal((await call('GET', `/api/v1/finance/farmers/${farmerA.id}?seasonId=not-a-uuid`, accountant)).status, 400);
 });
+
+test('Portal ya mkulima: Meneja anawasha, Mhasibu anatoa PIN, mkulima anaona taarifa zake tu', async () => {
+  const F = '/api/v1/farmer';
+  const no = farmerA.memberNo as string;
+  // Portal bado imezimwa: PIN haitolewi. Meneja hatoi PIN; Stokipa hawashi portal.
+  assert.equal((await call('POST', `/api/v1/members/${farmerA.id}/portal/pin`, accountant)).status, 400);
+  assert.equal((await call('POST', `/api/v1/members/${farmerA.id}/portal/pin`, manager)).status, 403);
+  assert.equal((await call('PATCH', `/api/v1/amcos/${amcosId}`, storekeeper, { farmerPortal: true })).status, 403);
+  assert.equal((await call('PATCH', `/api/v1/amcos/${amcosId}`, manager, { farmerPortal: true })).status, 200);
+
+  const issued = await call('POST', `/api/v1/members/${farmerA.id}/portal/pin`, accountant);
+  assert.equal(issued.status, 201, JSON.stringify(issued.body));
+  const pin = issued.body.pin as string;
+  assert.match(pin, /^\d{6}$/);
+  // Hash ya PIN haitoki kwenye API ya watumishi
+  const staffView = await call('GET', `/api/v1/members/${farmerA.id}`, storekeeper);
+  assert.equal(JSON.stringify(staffView.body).includes('portalPinHash'), false);
+  const st = (await call('GET', `/api/v1/members/${farmerA.id}/portal`, manager)).body;
+  assert.equal(st.hasPin, true); assert.equal(st.mustChange, true); assert.equal(st.canIssue, false);
+  const sum = (await call('GET', '/api/v1/members/portal/summary', manager)).body;
+  assert.equal(sum.enabled, true); assert.ok(sum.withPin >= 1); assert.equal(sum.canToggle, true);
+
+  // Kuingia
+  assert.equal((await call('POST', `${F}/login`, undefined, { memberNo: no, pin: pin === '000000' ? '111112' : '000000' })).status, 401);
+  const li = await call('POST', `${F}/login`, undefined, { memberNo: ` ${no.toLowerCase()} `, pin });
+  assert.equal(li.status, 200, JSON.stringify(li.body)); assert.equal(li.body.mustChange, true);
+  const t1 = li.body.token as string;
+  assert.equal((await call('GET', `${F}/statement`, t1)).body.error.code, 'PIN_CHANGE_REQUIRED');
+  assert.equal((await call('POST', `${F}/change-pin`, t1, { currentPin: pin, newPin: '1234' })).body.error.code, 'WEAK_PIN');
+  assert.equal((await call('POST', `${F}/change-pin`, t1, { currentPin: '999999', newPin: '4826' })).status, 400);
+  const ch = await call('POST', `${F}/change-pin`, t1, { currentPin: pin, newPin: '4826' });
+  assert.equal(ch.status, 200);
+  const t2 = ch.body.token as string;
+  assert.equal((await call('GET', `${F}/me`, t1)).status, 401, 'Token ya zamani imekufa baada ya kubadili PIN');
+
+  // Taarifa zake tu
+  const me = (await call('GET', `${F}/me`, t2)).body;
+  assert.equal(me.member.memberNo, no); assert.equal(me.member.phone, undefined); assert.equal(me.mustChange, false);
+  const s = (await call('GET', `${F}/statement`, t2)).body;
+  assert.equal(s.member.id, farmerA.id);
+  const office = (await call('GET', `/api/v1/finance/farmers/${farmerA.id}`, accountant)).body;
+  assert.equal(s.balance, office.balance, 'Salio la portal = salio la ofisi');
+  assert.ok(s.issues.every((i: any) => i.status !== 'PENDING_APPROVAL'));
+
+  // Token za aina mbili hazichanganyiki
+  assert.equal((await call('GET', '/api/v1/members', t2)).status, 401);
+  assert.equal((await call('GET', '/api/v1/finance/farmers', t2)).status, 401);
+  assert.equal((await call('GET', `${F}/me`, accountant)).status, 401);
+
+  // Makosa 5 -> amefungwa kwa muda (hata PIN sahihi inakataliwa)
+  let last = 0;
+  for (let i = 0; i < 5; i++) last = (await call('POST', `${F}/login`, undefined, { memberNo: no, pin: '0000' })).status;
+  assert.equal(last, 429);
+  assert.equal((await call('POST', `${F}/login`, undefined, { memberNo: no, pin: '4826' })).status, 429);
+  // PIN mpya kutoka ofisini inaondoa kufungiwa na kuua sessions za zamani
+  const re = await call('POST', `/api/v1/members/${farmerA.id}/portal/pin`, storekeeper);
+  assert.equal(re.status, 201);
+  assert.equal((await call('GET', `${F}/me`, t2)).status, 401);
+  assert.equal((await call('POST', `${F}/login`, undefined, { memberNo: no, pin: re.body.pin })).status, 200);
+
+  // Portal ikizimwa: hakuna anayeingia
+  assert.equal((await call('PATCH', `/api/v1/amcos/${amcosId}`, manager, { farmerPortal: false })).status, 200);
+  assert.equal((await call('POST', `${F}/login`, undefined, { memberNo: no, pin: re.body.pin })).body.error.code, 'PORTAL_CLOSED');
+  await call('PATCH', `/api/v1/amcos/${amcosId}`, manager, { farmerPortal: true });
+  // PIN ikifutwa: hawezi kuingia
+  assert.equal((await call('DELETE', `/api/v1/members/${farmerA.id}/portal/pin`, accountant)).status, 200);
+  assert.equal((await call('POST', `${F}/login`, undefined, { memberNo: no, pin: re.body.pin })).status, 401);
+  // Kumbukumbu: PIN haiandikwi kwenye audit
+  const logs = await db.execute(sql`select after::text as a from audit_logs where entity_id = ${farmerA.id} and action like 'FARMER_PORTAL%'`);
+  assert.ok(logs.rows.length >= 3);
+  assert.ok(logs.rows.every((r: any) => !String(r.a ?? '').includes(re.body.pin)));
+});

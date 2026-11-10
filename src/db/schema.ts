@@ -104,6 +104,7 @@ export const amcos = pgTable('amcos', {
   phone: text(),
   email: text(),
   isActive: boolean().notNull().default(true), // access ya watumiaji wa chama (inafuata status)
+  farmerPortal: boolean().notNull().default(false), // Meneja anawasha portal ya wakulima (bure ndani ya ada ya chama)
   // Biashara ya CoopLink (Owner)
   status: amcosStatusEnum().notNull().default('ACTIVE'),
   statusReason: text(),
@@ -220,6 +221,15 @@ export const members = pgTable('members', {
   nameOverrideReason: text(),
   nameOverrideById: uuid(),           // Meneja aliyeidhinisha (null = linasubiri idhini)
   nameOverrideAt: timestamp({ withTimezone: true }),
+  // Portal ya mkulima: anaingia kwa namba ya uanachama + PIN (bcrypt). PIN inatolewa ofisini na Mhasibu au Stokipa.
+  portalPinHash: text(),
+  portalMustChange: boolean().notNull().default(true),   // PIN ya ofisi lazima ibadilishwe akiingia mara ya kwanza
+  portalTokenVersion: integer().notNull().default(0),    // inaongezeka PIN ikitolewa upya au kufutwa -> sessions za zamani zinakufa
+  portalFailed: integer().notNull().default(0),
+  portalLockedUntil: timestamp({ withTimezone: true }),
+  portalPinIssuedAt: timestamp({ withTimezone: true }),
+  portalPinIssuedById: uuid(),
+  portalLastLoginAt: timestamp({ withTimezone: true }),
   createdById: uuid(),
   createdAt: createdAt(),
   updatedAt: updatedAt(),

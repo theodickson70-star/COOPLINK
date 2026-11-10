@@ -2,7 +2,7 @@ import type { Request } from 'express';
 import type { DbOrTx } from '../db';
 import { schema } from '../db';
 
-const SENSITIVE = new Set(['passwordHash', 'tokenVersion', 'totpSecret', 'confirmPassword', 'confirmCode', 'password']);
+const SENSITIVE = new Set(['passwordHash', 'tokenVersion', 'totpSecret', 'confirmPassword', 'confirmCode', 'password', 'portalPinHash', 'portalTokenVersion', 'pin', 'currentPin', 'newPin']);
 
 function clean(obj: unknown): unknown {
   if (!obj || typeof obj !== 'object') return obj ?? null;

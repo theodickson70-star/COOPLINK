@@ -6,6 +6,7 @@ import { date, dateTime, fullName, LEDGER_LABEL, num, phone, tsh } from '../lib/
 import { useAuth } from '../lib/auth';
 import { Alert, Badge, Button, Loading, Modal, PageHead, SelectField, Stat, TextField } from '../components/ui';
 import { fromMember, MemberForm, type Member } from './Members';
+import { PortalAccess } from '../components/FarmerPortalAccess';
 
 interface Farm { id: string; name: string | null; village: string | null; acres: string; isActive: boolean }
 interface Balance { totalDebit: string; totalCredit: string; balance: string; amountOwed: string }
@@ -81,6 +82,7 @@ export function MemberDetail() {
         </section>
       </div>
 
+      {(may('members.portal') || may('members.read')) && <div style={{ marginBottom: 16 }}><PortalAccess memberId={m.id} memberName={fullName(m)} /></div>}
       {m.status === 'PENDING' && <div style={{ marginBottom: 16 }}><Alert kind="warn">Mkulima huyu anasubiri uthibitisho wa Meneja. Hawezi kupewa pembejeo hadi athibitishwe.{may('approvals.decide') ? ' Fungua ukurasa wa Idhini kumthibitisha.' : ''}</Alert></div>}
       {may('ledger.read') && <section className="card">
         <div className="card-pad" style={{ paddingBottom: 0 }}><h2>Taarifa ya fedha (statement)</h2></div>

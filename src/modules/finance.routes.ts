@@ -564,6 +564,14 @@ financeRouter.get('/farmers/:id', requireAmcosPerm('finance.read'), ah(async (re
   const { id } = uuidParam.parse(req.params);
   const { seasonId } = z.object({ seasonId: z.string().uuid().optional() }).parse(req.query);
   const m = await findMemberScoped(req, id);
+  res.json(await farmerStatement(m, seasonId));
+}));
+
+/**
+ * Taarifa kamili ya mkulima (ledger, mauzo, pembejeo) — inatumika na ofisi (Fedha) na portal ya mkulima.
+ * `approvedOnly`: portal haionyeshi ugawaji unaosubiri idhini (takwimu ambazo bado zinaweza kubadilika).
+ */
+export async function farmerStatement(m: typeof schema.members.$inferSelect, seasonId?: string, opts: { approvedOnly?: boolean } = {}) {
   const allEntries = await db.select().from(MLE).where(eq(MLE.memberId, m.id)).orderBy(asc(MLE.createdAt));
   // Taarifa ya msimu mmoja: salio la kuanzia (kabla ya msimu) + miamala ya msimu + salio la kufunga
   const seasonList = await db.select({ id: schema.seasons.id, name: schema.seasons.name, startDate: schema.seasons.startDate, endDate: schema.seasons.endDate, isCurrent: schema.seasons.isCurrent })
@@ -593,7 +601,7 @@ financeRouter.get('/farmers/:id', requireAmcosPerm('finance.read'), ah(async (re
     .innerJoin(schema.memberGroups, eq(schema.memberGroups.id, schema.memberGroupMembers.groupId))
     .where(and(eq(schema.memberGroupMembers.memberId, m.id), isNull(schema.memberGroupMembers.leftAt))).limit(1);
   const I = schema.inputIssues;
-  const issues = (await db.select().from(I).where(and(eq(I.memberId, m.id), sql`${I.status} in ('ISSUED', 'CANCELLED', 'PENDING_APPROVAL')`)).orderBy(desc(I.issuedAt)))
+  const issues = (await db.select().from(I).where(and(eq(I.memberId, m.id), opts.approvedOnly ? sql`${I.status} in ('ISSUED', 'CANCELLED')` : sql`${I.status} in ('ISSUED', 'CANCELLED', 'PENDING_APPROVAL')`)).orderBy(desc(I.issuedAt)))
     .filter((i) => !season || (i.issuedAt ? dar(i.issuedAt) >= season.startDate && dar(i.issuedAt) <= season.endDate : true));
   const lines = issues.length ? await db.select({ l: schema.inputIssueLines, name: schema.inputItems.name, unit: schema.inputItems.unit })
     .from(schema.inputIssueLines).innerJoin(schema.inputItems, eq(schema.inputItems.id, schema.inputIssueLines.inputItemId))
@@ -607,7 +615,7 @@ financeRouter.get('/farmers/:id', requireAmcosPerm('finance.read'), ah(async (re
     byItem.set(x.l.inputItemId, cur);
   }
   const amcos = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, m.amcosId) }))!;
-  res.json({
+  return {
     member: { id: m.id, memberNo: m.memberNo, firstName: m.firstName, middleName: m.middleName, lastName: m.lastName, village: m.village, status: m.status, group: grp?.name ?? null },
     amcos: { name: amcos.name, code: amcos.code },
     seasons: seasonList, season: season ?? null, opening: fmt2(opening), totals,
@@ -617,5 +625,5 @@ financeRouter.get('/farmers/:id', requireAmcosPerm('finance.read'), ah(async (re
     issues: issues.map((i) => ({ id: i.id, issueNo: i.issueNo, issuedAt: i.issuedAt, status: i.status, totalAmount: i.totalAmount, cancelReason: i.cancelReason,
       lines: lines.filter((x) => x.l.inputIssueId === i.id).map((x) => ({ name: x.name, unit: x.unit, quantity: x.l.quantity, unitPrice: x.l.unitPrice, amount: x.l.amount })) })),
     statement,
-  });
-}));
+  };
+}

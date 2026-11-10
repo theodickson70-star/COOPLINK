@@ -140,7 +140,9 @@ amcosRouter.patch(
   ah(async (req, res) => {
     const { id } = uuidParam.parse(req.params);
     if (!(await canAccessAmcos(req, id))) throw notFound('Chama');
-    const body = amcosBody.partial().extend({ isActive: z.boolean().optional() }).parse(req.body);
+    const body = amcosBody.partial().extend({ isActive: z.boolean().optional(), farmerPortal: z.boolean().optional() }).parse(req.body);
+    // Portal ya wakulima inawashwa/kuzimwa na Meneja wa chama (au Msimamizi wa mfumo) tu
+    if (body.farmerPortal !== undefined && !['AMCOS_ADMIN', 'SUPER_ADMIN'].includes(req.auth!.role)) throw forbidden('Ni Meneja wa chama pekee anayeweza kuwasha au kuzima portal ya wakulima');
     // Code ni sehemu ya namba za wanachama — haibadilishwi. Union na hali ni za juu tu.
     if (body.code) throw badRequest('Code ya chama haiwezi kubadilishwa');
     if (req.auth!.role !== 'SUPER_ADMIN' && (body.unionId !== undefined || body.isActive !== undefined)) {

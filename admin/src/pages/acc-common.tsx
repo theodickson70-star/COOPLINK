@@ -47,8 +47,9 @@ export function Amt({ v, strong, zero = '—' }: { v: string | number | null | u
 }
 
 /** Kichwa cha nyaraka za kuchapisha (vocha, risiti, ripoti, hati ya mshahara). */
-export function DocHead({ title, no, sub }: { title: string; no?: ReactNode; sub?: ReactNode }) {
-  const { amcos } = useAuth();
+export function DocHead({ title, no, sub, org }: { title: string; no?: ReactNode; sub?: ReactNode; org?: { name: string; code: string; district?: string | null } }) {
+  const auth = useAuth();
+  const amcos = org ?? auth.amcos;
   return (
     <div className="doc-head">
       <div>

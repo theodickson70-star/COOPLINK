@@ -101,6 +101,17 @@ const MARKERS: Record<string, string[]> = {
   '0017_rebrand_dukalangu': [
     "select not exists (select 1 from platform_settings where key = 'business.profile' and upper(trim(value->>'companyName')) in ('NAYA GROUP', 'NAYA'))",
   ],
+  '0020_farmer_portal': [
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'amcos' and column_name = 'farmer_portal')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'members' and column_name = 'portal_pin_hash')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'members' and column_name = 'portal_must_change')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'members' and column_name = 'portal_token_version')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'members' and column_name = 'portal_failed')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'members' and column_name = 'portal_locked_until')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'members' and column_name = 'portal_pin_issued_at')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'members' and column_name = 'portal_pin_issued_by_id')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'members' and column_name = 'portal_last_login_at')",
+  ],
   '0019_buyer_due_date': [
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'markets' and column_name = 'buyer_due_date')",
   ],

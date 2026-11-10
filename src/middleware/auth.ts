@@ -50,7 +50,7 @@ async function authenticateImpl(req: Request, _res: Response, next: NextFunction
     } catch {
       throw INVALID();
     }
-    if (payload.typ === '2fa') throw INVALID(); // token ya hatua ya 2FA si token ya kuingia
+    if (payload.typ) throw INVALID(); // token ya 2FA au ya portal ya mkulima si token ya mtumishi
 
     const user = await db.query.users.findFirst({ where: eq(schema.users.id, payload.sub) });
     if (!user || !user.isActive || user.tokenVersion !== payload.tv) throw INVALID();

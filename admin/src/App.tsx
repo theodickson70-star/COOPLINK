@@ -136,6 +136,7 @@ const load_MemberImport_pages = () => import('./pages/MemberImport');
 const MemberImport = lazyPage(load_MemberImport_pages, 'MemberImport');
 PAGE_LOADERS.push(load_MemberImport_pages);
 const load_Legal_pages = () => import('./pages/Legal');
+const FarmerPortal = lazyPage(() => import('./pages/FarmerPortal'), 'FarmerPortal');
 const PrivacyPage = lazyPage(load_Legal_pages, 'PrivacyPage');
 const TermsGate = lazyPage(load_Legal_pages, 'TermsGate');
 const TermsPage = lazyPage(load_Legal_pages, 'TermsPage');
@@ -220,6 +221,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
           <Route path="/terms" element={<TermsPage />} />
+          <Route path="/mkulima" element={<FarmerPortal />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/change-password" element={<NeedsUser><ChangePassword /></NeedsUser>} />
           <Route path="/owner" element={<Protected area="owner"><OwnerLayout /></Protected>}>

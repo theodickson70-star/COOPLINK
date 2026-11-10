@@ -10,7 +10,7 @@ export interface TokenPayload {
   sub: string;  // user id
   tv: number;   // tokenVersion
   sid?: string; // session id (user_sessions) — tokens za zamani hazina
-  typ?: '2fa';  // token ya hatua ya pili ya kuingia (haitumiki kwa API)
+  typ?: '2fa' | 'farmer';  // '2fa' = hatua ya pili ya kuingia; 'farmer' = portal ya mkulima (haitumiki kwa API ya watumishi)
 }
 
 export const signToken = (p: TokenPayload) =>

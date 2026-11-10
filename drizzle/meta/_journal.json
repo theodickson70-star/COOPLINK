@@ -141,6 +141,13 @@
       "when": 1794292057715,
       "tag": "0019_buyer_due_date",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794332499887,
+      "tag": "0020_farmer_portal",
+      "breakpoints": true
     }
   ]
 }

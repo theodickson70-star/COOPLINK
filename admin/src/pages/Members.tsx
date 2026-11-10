@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { PortalSummary } from '../components/FarmerPortalAccess';
 import { useT } from '../lib/prefs';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, type Paged } from '../lib/api';
@@ -34,6 +35,7 @@ export function Members() {
         {may('members.approve') && <Link className="btn btn-secondary" to="/members/import">Pakia daftari (CSV)</Link>}
         {may('members.write') && <Link className="btn btn-primary" to="/members/new">{t('+ Sajili mwanachama')}</Link>}
       </PageHead>
+      <PortalSummary />
       <section className="card">
         <div className="toolbar">
           <Input aria-label="Tafuta" placeholder="Tafuta jina, namba ya uanachama, simu, NIDA au kadi ya mpiga kura…" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
