@@ -22,15 +22,29 @@ function store(key: string, value?: string | null) {
 let token: string | null = store('cl_token');
 let amcosId: string | null = store('cl_amcos');
 
+/**
+ * Akiba ya majibu ya GET (stale-while-revalidate): ukirudi kwenye ukurasa, data ya mwisho inaonekana papo hapo
+ * huku mpya ikipakuliwa nyuma. Inafutwa ukiingia/ukitoka, ukibadili chama, na baada ya kila kuhifadhi (POST/PATCH/DELETE).
+ */
+export const fetchCache = new Map<string, unknown>();
+export const cacheKey = (path: string, query?: Query) => JSON.stringify([token ? token.slice(-12) : '', amcosId, path, query ?? null]);
+export function cacheSet(key: string, v: unknown) {
+  if (fetchCache.size >= 150) fetchCache.delete(fetchCache.keys().next().value as string);
+  fetchCache.delete(key);
+  fetchCache.set(key, v);
+}
+
 export const getToken = () => token;
 export function setToken(t: string | null) {
   token = t;
   store('cl_token', t);
+  fetchCache.clear();
 }
 export const getSelectedAmcos = () => amcosId;
 export function setSelectedAmcos(id: string | null) {
   amcosId = id;
   store('cl_amcos', id);
+  fetchCache.clear();
 }
 
 export type Query = Record<string, string | number | boolean | undefined | null>;
@@ -44,6 +58,9 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (token) headers.authorization = `Bearer ${token}`;
   if (amcosId) headers['x-amcos-id'] = amcosId;
+
+  // Kuhifadhi kitu kunaweza kubadilisha kurasa nyingine — akiba yote inafutwa
+  if ((opts.method ?? 'GET') !== 'GET') fetchCache.clear();
 
   let res: Response;
   try {

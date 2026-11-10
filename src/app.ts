@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import express from 'express';
 import helmet from 'helmet';
+import compression from 'compression';
 import cors from 'cors';
 import morgan from 'morgan';
 import { sql } from 'drizzle-orm';
@@ -51,6 +52,8 @@ export function createApp() {
   app.disable('x-powered-by');
   // img-src: blob: inahitajika kuonyesha picha za wakulima (zinapakuliwa kwa token) na kupunguza picha kwenye kifaa
   app.use(helmet({ contentSecurityPolicy: { directives: { upgradeInsecureRequests: null, imgSrc: ["'self'", 'data:', 'blob:'] } } }));
+  // Kubana majibu (gzip/brotli): JS, CSS na JSON zinapungua ~70–80%, mfumo unafunguka haraka hasa kwa intaneti ya simu
+  app.use(compression({ threshold: 1024 }));
   app.use(cors({ origin: env.CORS_ORIGINS === '*' ? true : env.CORS_ORIGINS.split(',').map((s) => s.trim()) }));
   // rawBody inahitajika kuhakiki saini za webhook (TeePay)
   app.use(express.json({ limit: '3mb', verify: (req, _res, buf) => { (req as { rawBody?: Buffer }).rawBody = buf; } }));
@@ -115,7 +118,7 @@ export function createApp() {
     app.use('/assets', express.static(path.join(adminDir, 'assets'), { maxAge: '1y', immutable: true }));
     app.use('/assets', (_req, res) => res.status(404).end()); // faili la zamani lisirudishe index.html
     // redirect:false — /login isiende /login/ (kuna folda ya picha za login)
-    app.use(express.static(adminDir, { index: false, maxAge: '1h', redirect: false }));
+    app.use(express.static(adminDir, { index: false, maxAge: '7d', redirect: false }));
     // Kurasa kama /members/123 zinarudisha index.html (React Router inashughulikia)
     app.get(/^\/(?!api\/|health$).*/, (_req, res) => {
       res.setHeader('Cache-Control', 'no-cache');

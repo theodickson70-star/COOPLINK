@@ -10,6 +10,14 @@ const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.u
 export default defineConfig({
   plugins: [react()],
   define: { __APP_VERSION__: JSON.stringify(version) },
+  build: {
+    target: 'es2020',
+    cssCodeSplit: true,
+    rollupOptions: {
+      // React na router kwenye faili lao: haibadiliki mara kwa mara, kwa hiyo kivinjari kinaihifadhi kati ya matoleo
+      output: { manualChunks: { vendor: ['react', 'react-dom', 'react-router-dom'] } },
+    },
+  },
   server: {
     port: 5173,
     proxy: { '/api': 'http://localhost:4000' },

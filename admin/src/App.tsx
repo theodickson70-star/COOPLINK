@@ -1,48 +1,154 @@
-import { useEffect, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, type ComponentType, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth, ROLE_GROUPS, homeFor, isPlatform, isStaff, type Role } from './lib/auth';
 import { Layout } from './components/Layout';
 import { LogoMark } from './components/Logo';
-import { Empty } from './components/ui';
+import { Empty, Loading } from './components/ui';
 import { Login, ChangePassword } from './pages/Login';
-import { Workspace } from './pages/Workspace';
-import { Approvals } from './pages/Approvals';
-import { Finance } from './pages/Finance';
-import { Purchases, PurchaseDetail } from './pages/Purchases';
-import { AccountingHome, FinancialReports, Ledger } from './pages/Accounting';
-import { Bank, Voucher } from './pages/Bank';
-import { BatchDetail, MarketDetail, Sales, SettlementStatement } from './pages/Sales';
-import { Payroll, PayrollRunDetail } from './pages/Payroll';
-import { Assets } from './pages/Assets';
-import { Payables, Periods } from './pages/Periods';
-import { FarmerDebtDetail, FarmerDebts } from './pages/FarmerDebts';
-import { GroupDetail, Groups } from './pages/Groups';
-import { Kuni, KuniBatch } from './pages/Kuni';
-import { Billing, BillingReceipt } from './pages/Billing';
-import { Members, MemberNew } from './pages/Members';
-import { MemberDetail } from './pages/MemberDetail';
-import { Estimates } from './pages/Estimates';
-import { Inputs } from './pages/Inputs';
-import { InputIssues, InputIssueNew, InputIssueDetail } from './pages/InputIssues';
-import { Balances, Users, Organizations, Audit } from './pages/Admin';
 import { OwnerLayout, OWNER_NAV } from './owner/OwnerLayout';
-import { OwnerDashboard } from './owner/Dashboard';
-import { OwnerAmcos, OwnerAmcosDetail } from './owner/Amcos';
-import { OwnerSubscriptions } from './owner/Subscriptions';
-import { OwnerFinance } from './owner/Finance';
-import { OwnerStaff } from './owner/Staff';
-import { OwnerSystem } from './owner/System';
-import { OwnerComms } from './owner/Comms';
-import { OwnerSecurity } from './owner/Security';
-import { OwnerBackup } from './owner/Backup';
-import { OwnerBusiness } from './owner/Business';
-import { OwnerSettings } from './owner/Settings';
-import { MemberImport } from './pages/MemberImport';
 import { PrefsProvider, tr } from './lib/prefs';
-import { PrivacyPage, TermsGate, TermsPage } from './pages/Legal';
-import { Support, SupportDetail, SupportNew } from './pages/Support';
-import { OwnerSupport, OwnerSupportDetail } from './owner/Support';
+import { PAGE_LOADERS } from './lib/prefetch';
 import type { AmcosPermission, Permission } from './lib/auth';
+
+
+// ---------------------------------------------------------------------
+//  Kurasa zinapakuliwa zinapohitajika (code splitting): ukurasa wa kwanza unafunguka haraka.
+//  Baada ya kuingia, kurasa nyingine zinapakuliwa kimya kimya mtandao ukiwa huru (prefetch),
+//  kwa hiyo kubadili ukurasa kunakuwa papo hapo.
+// ---------------------------------------------------------------------
+function lazyPage<M extends Record<string, unknown>>(load: () => Promise<M>, name: keyof M & string) {
+  return lazy(() => load().then((m) => ({ default: m[name] as ComponentType<Record<string, unknown>> })));
+}
+const load_Workspace_pages = () => import('./pages/Workspace');
+const Workspace = lazyPage(load_Workspace_pages, 'Workspace');
+PAGE_LOADERS.push(load_Workspace_pages);
+const load_Approvals_pages = () => import('./pages/Approvals');
+const Approvals = lazyPage(load_Approvals_pages, 'Approvals');
+PAGE_LOADERS.push(load_Approvals_pages);
+const load_Finance_pages = () => import('./pages/Finance');
+const Finance = lazyPage(load_Finance_pages, 'Finance');
+PAGE_LOADERS.push(load_Finance_pages);
+const load_Purchases_pages = () => import('./pages/Purchases');
+const Purchases = lazyPage(load_Purchases_pages, 'Purchases');
+const PurchaseDetail = lazyPage(load_Purchases_pages, 'PurchaseDetail');
+PAGE_LOADERS.push(load_Purchases_pages);
+const load_Accounting_pages = () => import('./pages/Accounting');
+const AccountingHome = lazyPage(load_Accounting_pages, 'AccountingHome');
+const FinancialReports = lazyPage(load_Accounting_pages, 'FinancialReports');
+const Ledger = lazyPage(load_Accounting_pages, 'Ledger');
+PAGE_LOADERS.push(load_Accounting_pages);
+const load_Bank_pages = () => import('./pages/Bank');
+const Bank = lazyPage(load_Bank_pages, 'Bank');
+const Voucher = lazyPage(load_Bank_pages, 'Voucher');
+PAGE_LOADERS.push(load_Bank_pages);
+const load_Sales_pages = () => import('./pages/Sales');
+const BatchDetail = lazyPage(load_Sales_pages, 'BatchDetail');
+const MarketDetail = lazyPage(load_Sales_pages, 'MarketDetail');
+const Sales = lazyPage(load_Sales_pages, 'Sales');
+const SettlementStatement = lazyPage(load_Sales_pages, 'SettlementStatement');
+PAGE_LOADERS.push(load_Sales_pages);
+const load_Payroll_pages = () => import('./pages/Payroll');
+const Payroll = lazyPage(load_Payroll_pages, 'Payroll');
+const PayrollRunDetail = lazyPage(load_Payroll_pages, 'PayrollRunDetail');
+PAGE_LOADERS.push(load_Payroll_pages);
+const load_Assets_pages = () => import('./pages/Assets');
+const Assets = lazyPage(load_Assets_pages, 'Assets');
+PAGE_LOADERS.push(load_Assets_pages);
+const load_Periods_pages = () => import('./pages/Periods');
+const Payables = lazyPage(load_Periods_pages, 'Payables');
+const Periods = lazyPage(load_Periods_pages, 'Periods');
+PAGE_LOADERS.push(load_Periods_pages);
+const load_FarmerDebts_pages = () => import('./pages/FarmerDebts');
+const FarmerDebtDetail = lazyPage(load_FarmerDebts_pages, 'FarmerDebtDetail');
+const FarmerDebts = lazyPage(load_FarmerDebts_pages, 'FarmerDebts');
+PAGE_LOADERS.push(load_FarmerDebts_pages);
+const load_Groups_pages = () => import('./pages/Groups');
+const GroupDetail = lazyPage(load_Groups_pages, 'GroupDetail');
+const Groups = lazyPage(load_Groups_pages, 'Groups');
+PAGE_LOADERS.push(load_Groups_pages);
+const load_Kuni_pages = () => import('./pages/Kuni');
+const Kuni = lazyPage(load_Kuni_pages, 'Kuni');
+const KuniBatch = lazyPage(load_Kuni_pages, 'KuniBatch');
+PAGE_LOADERS.push(load_Kuni_pages);
+const load_Billing_pages = () => import('./pages/Billing');
+const Billing = lazyPage(load_Billing_pages, 'Billing');
+const BillingReceipt = lazyPage(load_Billing_pages, 'BillingReceipt');
+PAGE_LOADERS.push(load_Billing_pages);
+const load_Members_pages = () => import('./pages/Members');
+const Members = lazyPage(load_Members_pages, 'Members');
+const MemberNew = lazyPage(load_Members_pages, 'MemberNew');
+PAGE_LOADERS.push(load_Members_pages);
+const load_MemberDetail_pages = () => import('./pages/MemberDetail');
+const MemberDetail = lazyPage(load_MemberDetail_pages, 'MemberDetail');
+PAGE_LOADERS.push(load_MemberDetail_pages);
+const load_Estimates_pages = () => import('./pages/Estimates');
+const Estimates = lazyPage(load_Estimates_pages, 'Estimates');
+PAGE_LOADERS.push(load_Estimates_pages);
+const load_Inputs_pages = () => import('./pages/Inputs');
+const Inputs = lazyPage(load_Inputs_pages, 'Inputs');
+PAGE_LOADERS.push(load_Inputs_pages);
+const load_InputIssues_pages = () => import('./pages/InputIssues');
+const InputIssues = lazyPage(load_InputIssues_pages, 'InputIssues');
+const InputIssueNew = lazyPage(load_InputIssues_pages, 'InputIssueNew');
+const InputIssueDetail = lazyPage(load_InputIssues_pages, 'InputIssueDetail');
+PAGE_LOADERS.push(load_InputIssues_pages);
+const load_Admin_pages = () => import('./pages/Admin');
+const Balances = lazyPage(load_Admin_pages, 'Balances');
+const Users = lazyPage(load_Admin_pages, 'Users');
+const Organizations = lazyPage(load_Admin_pages, 'Organizations');
+const Audit = lazyPage(load_Admin_pages, 'Audit');
+PAGE_LOADERS.push(load_Admin_pages);
+const load_Dashboard_owner = () => import('./owner/Dashboard');
+const OwnerDashboard = lazyPage(load_Dashboard_owner, 'OwnerDashboard');
+PAGE_LOADERS.push(load_Dashboard_owner);
+const load_Amcos_owner = () => import('./owner/Amcos');
+const OwnerAmcos = lazyPage(load_Amcos_owner, 'OwnerAmcos');
+const OwnerAmcosDetail = lazyPage(load_Amcos_owner, 'OwnerAmcosDetail');
+PAGE_LOADERS.push(load_Amcos_owner);
+const load_Subscriptions_owner = () => import('./owner/Subscriptions');
+const OwnerSubscriptions = lazyPage(load_Subscriptions_owner, 'OwnerSubscriptions');
+PAGE_LOADERS.push(load_Subscriptions_owner);
+const load_Finance_owner = () => import('./owner/Finance');
+const OwnerFinance = lazyPage(load_Finance_owner, 'OwnerFinance');
+PAGE_LOADERS.push(load_Finance_owner);
+const load_Staff_owner = () => import('./owner/Staff');
+const OwnerStaff = lazyPage(load_Staff_owner, 'OwnerStaff');
+PAGE_LOADERS.push(load_Staff_owner);
+const load_System_owner = () => import('./owner/System');
+const OwnerSystem = lazyPage(load_System_owner, 'OwnerSystem');
+PAGE_LOADERS.push(load_System_owner);
+const load_Comms_owner = () => import('./owner/Comms');
+const OwnerComms = lazyPage(load_Comms_owner, 'OwnerComms');
+PAGE_LOADERS.push(load_Comms_owner);
+const load_Security_owner = () => import('./owner/Security');
+const OwnerSecurity = lazyPage(load_Security_owner, 'OwnerSecurity');
+PAGE_LOADERS.push(load_Security_owner);
+const load_Backup_owner = () => import('./owner/Backup');
+const OwnerBackup = lazyPage(load_Backup_owner, 'OwnerBackup');
+PAGE_LOADERS.push(load_Backup_owner);
+const load_Business_owner = () => import('./owner/Business');
+const OwnerBusiness = lazyPage(load_Business_owner, 'OwnerBusiness');
+PAGE_LOADERS.push(load_Business_owner);
+const load_Settings_owner = () => import('./owner/Settings');
+const OwnerSettings = lazyPage(load_Settings_owner, 'OwnerSettings');
+PAGE_LOADERS.push(load_Settings_owner);
+const load_MemberImport_pages = () => import('./pages/MemberImport');
+const MemberImport = lazyPage(load_MemberImport_pages, 'MemberImport');
+PAGE_LOADERS.push(load_MemberImport_pages);
+const load_Legal_pages = () => import('./pages/Legal');
+const PrivacyPage = lazyPage(load_Legal_pages, 'PrivacyPage');
+const TermsGate = lazyPage(load_Legal_pages, 'TermsGate');
+const TermsPage = lazyPage(load_Legal_pages, 'TermsPage');
+PAGE_LOADERS.push(load_Legal_pages);
+const load_Support_pages = () => import('./pages/Support');
+const Support = lazyPage(load_Support_pages, 'Support');
+const SupportDetail = lazyPage(load_Support_pages, 'SupportDetail');
+const SupportNew = lazyPage(load_Support_pages, 'SupportNew');
+PAGE_LOADERS.push(load_Support_pages);
+const load_Support_owner = () => import('./owner/Support');
+const OwnerSupport = lazyPage(load_Support_owner, 'OwnerSupport');
+const OwnerSupportDetail = lazyPage(load_Support_owner, 'OwnerSupportDetail');
+PAGE_LOADERS.push(load_Support_owner);
 
 function Splash() {
   return (
@@ -65,7 +171,7 @@ function Protected({ children, roles, area = 'amcos' }: { children: ReactNode; r
   if (!user) return <Navigate to="/login" replace />;
   if (user.mustChangePassword) return <Navigate to="/change-password" replace />;
   // Masharti ya Huduma na Sera ya Faragha: kila mtumiaji anakubali toleo la sasa kabla ya kuendelea
-  if (user.termsRequired) return <TermsGate />;
+  if (user.termsRequired) return <Suspense fallback={<Splash />}><TermsGate /></Suspense>;
   // Wafanyakazi wa jukwaa hawaingii upande wa vyama; watumiaji wa vyama hawaingii Owner Panel.
   if (area === 'amcos' && isStaff(user.role)) return <Navigate to="/owner" replace />;
   if (area === 'owner' && !isPlatform(user.role)) return <Navigate to="/" replace />;
@@ -110,6 +216,7 @@ export default function App() {
     <PrefsProvider>
     <AuthProvider>
       <BrowserRouter>
+        <Suspense fallback={<Loading />}>
         <Routes>
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
           <Route path="/terms" element={<TermsPage />} />
@@ -180,6 +287,7 @@ export default function App() {
             <Route path="*" element={<Empty>Ukurasa haupo.</Empty>} />
           </Route>
         </Routes>
+        </Suspense>
       </BrowserRouter>
     </AuthProvider>
     </PrefsProvider>

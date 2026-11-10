@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, type Query } from './api';
+import { api, cacheKey, cacheSet, fetchCache, type Query } from './api';
 
-/** Pakua data kutoka API; inapakia upya `deps` zikibadilika au reload() ikiitwa. */
+/**
+ * Pakua data kutoka API; inapakia upya `deps` zikibadilika au reload() ikiitwa.
+ * Data iliyowahi kupakuliwa inaonyeshwa papo hapo (akiba), kisha inasasishwa kimya kimya.
+ */
 export function useFetch<T>(path: string | null, query?: Query) {
-  const [data, setData] = useState<T | null>(null);
+  const ck = path ? cacheKey(path, query) : '';
+  const cached = path ? (fetchCache.get(ck) as T | undefined) : undefined;
+  const [data, setData] = useState<T | null>(cached ?? null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(!!path);
+  const [loading, setLoading] = useState(!!path && cached === undefined);
   const [tick, setTick] = useState(0);
   const key = JSON.stringify([path, query, tick]);
   const seq = useRef(0);
@@ -13,9 +18,11 @@ export function useFetch<T>(path: string | null, query?: Query) {
   useEffect(() => {
     if (!path) return;
     const id = ++seq.current;
-    setLoading(true);
+    const hit = fetchCache.get(ck) as T | undefined;
+    if (hit !== undefined) { setData(hit); setLoading(false); } else setLoading(true);
     api<T>(path, { query })
       .then((d) => {
+        cacheSet(ck, d);
         if (id === seq.current) {
           setData(d);
           setError(null);

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, Navigate, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth, ROLE_GROUPS, type AmcosPermission, type Role } from '../lib/auth';
 import { useFetch } from '../lib/hooks';
@@ -6,10 +6,11 @@ import { NavIndicator, useNavIndicator } from './NavIndicator';
 import { api, getSelectedAmcos, setSelectedAmcos, type Paged } from '../lib/api';
 import { ROLE_LABEL } from '../lib/format';
 import { LogoMark, Wordmark } from './Logo';
-import { Button } from './ui';
+import { Button, Loading } from './ui';
 import { AnnouncementBar, MaintenanceOverlay, SystemBanner } from './Notices';
 import { PrefSwitches, useT } from '../lib/prefs';
-import { LegalLinks } from '../pages/Legal';
+import { LegalLinks } from './LegalLinks';
+import { prefetchPages } from '../lib/prefetch';
 import type { BillingData } from '../pages/Billing';
 import { date, tsh } from '../lib/format';
 
@@ -98,6 +99,7 @@ const NAV: { section?: string; items: NavItem[] }[] = [
 /** Kwa Super/Union admin: chagua chama unachofanyia kazi. */
 function AmcosSwitcher() {
   const t = useT();
+  useEffect(() => { prefetchPages(); }, []);
   const [list, setList] = useState<{ id: string; name: string; code: string }[]>([]);
   const [value, setValue] = useState(getSelectedAmcos() ?? '');
   useEffect(() => {
@@ -212,7 +214,7 @@ export function Layout() {
               <p>{lockMsg ?? fees.error}</p>
               <Button onClick={logout}>{t('Toka')}</Button>
             </section>
-          ) : <Outlet />}
+          ) : <Suspense fallback={<Loading />}><Outlet /></Suspense>}
         </main>
       </div>
       <MaintenanceOverlay />

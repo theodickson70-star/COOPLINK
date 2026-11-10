@@ -318,16 +318,6 @@ export function PrivacyPage() {
   return <LegalShell which="privacy"><DocBody doc={privacy(info, en)} info={info} en={en} /></LegalShell>;
 }
 
-/** Viungo vidogo vya chini (kuingia, menyu) */
-export function LegalLinks() {
-  const en = usePrefs().lang === 'en';
-  return (
-    <span className="legal-links">
-      <Link to="/terms">{en ? 'Terms of Service' : 'Masharti ya Huduma'}</Link> · <Link to="/privacy">{en ? 'Privacy Policy' : 'Sera ya Faragha'}</Link>
-    </span>
-  );
-}
-
 /** Dirisha la kukubali: linaonekana mtumiaji asipokubali toleo la sasa. */
 export function TermsGate() {
   const { user, refresh, logout } = useAuth();

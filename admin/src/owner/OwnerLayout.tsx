@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth, type Permission } from '../lib/auth';
 import { useFetch } from '../lib/hooks';
 import { PrefSwitches, useT } from '../lib/prefs';
-import { LegalLinks } from '../pages/Legal';
+import { LegalLinks } from '../components/LegalLinks';
+import { prefetchPages } from '../lib/prefetch';
 import { OWNER_ROLE_LABEL, ROLE_LABEL } from '../lib/format';
 import { LogoMark, Wordmark } from '../components/Logo';
-import { Button } from '../components/ui';
+import { Button, Loading } from '../components/ui';
 import { SystemBanner } from '../components/Notices';
 import { NavIndicator, useNavIndicator } from '../components/NavIndicator';
 
@@ -46,6 +47,7 @@ export const OWNER_NAV: { to: string; label: string; sub: string; icon: ReactNod
 export function OwnerLayout() {
   const { user, logout, has } = useAuth();
   const t = useT();
+  useEffect(() => { prefetchPages(); }, []);
   const [open, setOpen] = useState(false);
   const navRef = useRef<HTMLElement>(null);
   const indicator = useNavIndicator(navRef);
@@ -112,7 +114,7 @@ export function OwnerLayout() {
         </header>
         <SystemBanner />
         <main className="content owner-content">
-          <Outlet />
+          <Suspense fallback={<Loading />}><Outlet /></Suspense>
         </main>
       </div>
     </div>

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { homeFor, useAuth, type User } from '../lib/auth';
 import { api } from '../lib/api';
 import { playTone, unlockAudio } from '../lib/tone';
-import { LegalLinks } from './Legal';
+import { LegalLinks } from '../components/LegalLinks';
 import { LogoMark, Wordmark } from '../components/Logo';
 import { Alert, Button, TextField } from '../components/ui';
 import { PrefSwitches, useT } from '../lib/prefs';
@@ -40,9 +40,13 @@ function AuthHero() {
   const [idx, setIdx] = useState(0);
   const reduced = useReducedMotion();
 
+  // Picha zinapakuliwa moja moja: ya sasa na inayofuata tu (si zote 9 kwa mara moja) — ukurasa unafunguka haraka
+  const [seen, setSeen] = useState<Set<number>>(() => new Set([0]));
   useEffect(() => {
-    SLIDES.forEach((s) => { const img = new Image(); img.src = s.src; }); // pakia mapema
-  }, []);
+    const n = (idx + 1) % SLIDES.length;
+    const img = new Image(); img.src = SLIDES[n].src;
+    setSeen((x) => (x.has(idx) && x.has(n) ? x : new Set([...x, idx, n])));
+  }, [idx]);
   useEffect(() => {
     if (reduced) return;
     const t = setInterval(() => setIdx((i) => (i + 1) % SLIDES.length), SLIDE_MS);
@@ -55,7 +59,7 @@ function AuthHero() {
       <div className="hero-slides" aria-hidden="true">
         {SLIDES.map((sl, i) => (
           <div key={sl.src} className={`hero-slide ${i === idx ? 'on' : ''}`}
-            style={{ backgroundImage: `url(${sl.src})`, backgroundPosition: sl.pos }} />
+            style={{ backgroundImage: seen.has(i) ? `url(${sl.src})` : undefined, backgroundPosition: sl.pos }} />
         ))}
       </div>
       <div className="hero-scrim" aria-hidden="true" />
