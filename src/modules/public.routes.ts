@@ -1,4 +1,5 @@
 // Njia zisizohitaji kuingia, na matangazo kwa watumiaji wa vyama
+import { LEGAL_EFFECTIVE, LEGAL_EFFECTIVE_EN, LEGAL_VERSION } from '../lib/legal';
 import { Router } from 'express';
 import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { db, schema } from '../db';
@@ -13,7 +14,9 @@ export const publicRouter = Router();
 // Hali ya mfumo kwa ukurasa wa kuingia (maintenance + tangazo) — hakuna siri
 publicRouter.get('/status', ah(async (_req, res) => {
   const [m, b, p] = await Promise.all([getSetting('maintenance'), getSetting('banner'), getSetting('business.profile')]);
-  res.json({ maintenance: m, banner: b.enabled ? b : null, brand: { productName: p.productName, companyName: p.companyName, slogan: p.slogan, poweredBy: p.poweredBy || 'DUKALANGU SOLUTION' } });
+  res.json({ maintenance: m, banner: b.enabled ? b : null, brand: { productName: p.productName, companyName: p.companyName, slogan: p.slogan, poweredBy: p.poweredBy || 'DUKALANGU SOLUTION' },
+    // kwa kurasa za Masharti na Faragha: toleo na mawasiliano ya kampuni
+    legal: { version: LEGAL_VERSION, effective: LEGAL_EFFECTIVE, effectiveEn: LEGAL_EFFECTIVE_EN, companyName: p.companyName, phone: p.phone, email: p.email, address: p.address, tin: p.tin, website: p.website } });
 }));
 
 export const announcementsRouter = Router();

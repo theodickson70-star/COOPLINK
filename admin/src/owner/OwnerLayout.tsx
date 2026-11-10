@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth, type Permission } from '../lib/auth';
 import { useFetch } from '../lib/hooks';
 import { PrefSwitches, useT } from '../lib/prefs';
+import { LegalLinks } from '../pages/Legal';
 import { OWNER_ROLE_LABEL, ROLE_LABEL } from '../lib/format';
 import { LogoMark, Wordmark } from '../components/Logo';
 import { Button } from '../components/ui';
@@ -91,7 +92,7 @@ export function OwnerLayout() {
         </nav>
         <div className="sidebar-foot">
           Powered by <strong>DUKALANGU SOLUTION</strong><br />
-          <em>Connecting Cooperatives. Empowering Farmers.</em>
+          <em>Connecting Cooperatives. Empowering Farmers.</em><br /><LegalLinks />
         </div>
       </aside>
 

@@ -142,3 +142,20 @@ test('Tiketi za msaada: kufungua, kuonekana kwa wanaostahili, majibu, maelezo ya
   assert.equal((await call('POST', '/api/v1/support/tickets', clerk, { category: 'BUG', subject: 'x', body: 'y' })).status, 400);
   assert.equal((await call('POST', '/api/v1/support/tickets', clerk, { category: 'BUG', subject: 'Picha mbaya', body: 'Angalia picha', attachments: [{ mimeType: 'application/pdf', data: PNG }] })).status, 400);
 });
+
+test('Masharti ya Huduma na Sera ya Faragha: kukubali toleo la sasa kunarekodiwa', async () => {
+  const me = (await call('GET', '/api/v1/auth/me', clerk)).body.user;
+  assert.equal(me.termsRequired, true, 'mtumiaji mpya anatakiwa kukubali');
+  assert.ok(me.legalVersion);
+  const pub = (await call('GET', '/api/v1/public/status')).body;
+  assert.equal(pub.legal.version, me.legalVersion);
+  assert.equal((await call('POST', '/api/v1/auth/accept-terms', clerk, { version: '1999-01-01', accept: true })).status, 400, 'toleo la zamani linakataliwa');
+  assert.equal((await call('POST', '/api/v1/auth/accept-terms', clerk, { version: me.legalVersion, accept: false })).status, 400, 'lazima akubali');
+  const ok = await call('POST', '/api/v1/auth/accept-terms', clerk, { version: me.legalVersion, accept: true });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.user.termsRequired, false);
+  assert.equal(ok.body.user.termsVersion, me.legalVersion);
+  const [a] = (await db.execute<{ n: number }>(sql`select count(*)::int as n from audit_logs where action = 'TERMS_ACCEPT' and entity_id = ${me.id}`)).rows;
+  assert.equal(a.n, 1);
+  assert.equal((await call('GET', '/api/v1/auth/me', clerk)).body.user.termsRequired, false);
+});

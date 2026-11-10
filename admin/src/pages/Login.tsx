@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { homeFor, useAuth, type User } from '../lib/auth';
 import { api } from '../lib/api';
 import { playTone, unlockAudio } from '../lib/tone';
+import { LegalLinks } from './Legal';
 import { LogoMark, Wordmark } from '../components/Logo';
 import { Alert, Button, TextField } from '../components/ui';
 import { PrefSwitches, useT } from '../lib/prefs';
@@ -162,7 +163,7 @@ export function Login() {
             </>
           )}
           <p className="muted" style={{ fontSize: 12, margin: '8px 0 0', textAlign: 'center' }}>
-            CoopLink · Powered by <strong>{status?.brand.poweredBy ?? 'DUKALANGU SOLUTION'}</strong>
+            CoopLink · Powered by <strong>{status?.brand.poweredBy ?? 'DUKALANGU SOLUTION'}</strong><br /><LegalLinks />
           </p>
         </form>
       </section>

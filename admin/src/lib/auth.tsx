@@ -31,6 +31,10 @@ export interface User {
   amcosId: string | null;
   jobTitle: string | null;
   mustChangePassword: boolean;
+  /** Masharti/Faragha: toleo alilokubali, na kama anatakiwa kukubali toleo la sasa */
+  termsVersion?: string | null;
+  termsRequired?: boolean;
+  legalVersion?: string;
   totpEnabled: boolean;
   permissions: Permission[];
   amcosPermissions: AmcosPermission[];

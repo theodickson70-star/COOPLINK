@@ -14,6 +14,7 @@ import { effectivePermissions, isPlatformRole } from '../lib/permissions';
 import { getSetting } from '../lib/settings';
 import { decryptSecret, encryptSecret, newTotpSecret, otpauthUri, verifyTotp } from '../lib/totp';
 import { feeLock, feePayerRole, PAYER_LABEL } from '../lib/fees';
+import { LEGAL_VERSION } from '../lib/legal';
 import { verifiedName } from '../lib/name-lookup';
 import { sendSms } from '../lib/notify';
 
@@ -34,7 +35,7 @@ type User = typeof schema.users.$inferSelect;
 
 function publicUser(u: User) {
   const { passwordHash, tokenVersion, totpSecret, permissions, ...rest } = u;
-  return { ...rest, permissions: effectivePermissions(u.role, permissions), amcosPermissions: amcosPermissions(u.role) };
+  return { ...rest, permissions: effectivePermissions(u.role, permissions), amcosPermissions: amcosPermissions(u.role), termsRequired: u.termsVersion !== LEGAL_VERSION, legalVersion: LEGAL_VERSION };
 }
 
 const ua = (req: Request) => req.headers['user-agent']?.slice(0, 300) ?? null;
@@ -166,6 +167,22 @@ authRouter.patch(
     const [u] = await db.transaction(async (tx) => {
       const r = await tx.update(schema.users).set(body).where(eq(schema.users.id, req.auth!.userId)).returning();
       await audit(tx, req, { action: 'PROFILE_UPDATE', entity: 'User', entityId: req.auth!.userId, before: { fullName: before?.fullName, email: before?.email }, after: body });
+      return r;
+    });
+    res.json({ user: publicUser(u) });
+  }),
+);
+
+/** Mtumiaji anakubali Masharti ya Huduma na Sera ya Faragha (toleo la sasa). Inarekodiwa pamoja na IP na kifaa. */
+authRouter.post(
+  '/accept-terms',
+  authenticate,
+  ah(async (req, res) => {
+    const body = z.object({ version: z.string(), accept: z.literal(true) }).parse(req.body);
+    if (body.version !== LEGAL_VERSION) throw badRequest('Masharti yamebadilika. Pakia ukurasa upya usome toleo jipya.');
+    const [u] = await db.transaction(async (tx) => {
+      const r = await tx.update(schema.users).set({ termsVersion: LEGAL_VERSION, termsAcceptedAt: new Date() }).where(eq(schema.users.id, req.auth!.userId)).returning();
+      await audit(tx, req, { action: 'TERMS_ACCEPT', entity: 'User', entityId: req.auth!.userId, after: { version: LEGAL_VERSION, ip: req.ip ?? null, userAgent: ua(req) } });
       return r;
     });
     res.json({ user: publicUser(u) });

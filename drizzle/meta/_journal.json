@@ -127,6 +127,13 @@
       "when": 1794285663639,
       "tag": "0017_rebrand_dukalangu",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1794287864218,
+      "tag": "0018_terms_acceptance",
+      "breakpoints": true
     }
   ]
 }

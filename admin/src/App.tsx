@@ -39,6 +39,7 @@ import { OwnerBusiness } from './owner/Business';
 import { OwnerSettings } from './owner/Settings';
 import { MemberImport } from './pages/MemberImport';
 import { PrefsProvider, tr } from './lib/prefs';
+import { PrivacyPage, TermsGate, TermsPage } from './pages/Legal';
 import { Support, SupportDetail, SupportNew } from './pages/Support';
 import { OwnerSupport, OwnerSupportDetail } from './owner/Support';
 import type { AmcosPermission, Permission } from './lib/auth';
@@ -63,6 +64,8 @@ function Protected({ children, roles, area = 'amcos' }: { children: ReactNode; r
   if (loading) return <Splash />;
   if (!user) return <Navigate to="/login" replace />;
   if (user.mustChangePassword) return <Navigate to="/change-password" replace />;
+  // Masharti ya Huduma na Sera ya Faragha: kila mtumiaji anakubali toleo la sasa kabla ya kuendelea
+  if (user.termsRequired) return <TermsGate />;
   // Wafanyakazi wa jukwaa hawaingii upande wa vyama; watumiaji wa vyama hawaingii Owner Panel.
   if (area === 'amcos' && isStaff(user.role)) return <Navigate to="/owner" replace />;
   if (area === 'owner' && !isPlatform(user.role)) return <Navigate to="/" replace />;
@@ -109,6 +112,8 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/change-password" element={<NeedsUser><ChangePassword /></NeedsUser>} />
           <Route path="/owner" element={<Protected area="owner"><OwnerLayout /></Protected>}>
             <Route index element={<OwnerHome />} />

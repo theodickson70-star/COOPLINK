@@ -132,6 +132,9 @@ export const users = pgTable('users', {
   tokenVersion: integer().notNull().default(0), // ikiongezwa, tokens zote za zamani zinakufa
   mustChangePassword: boolean().notNull().default(true),
   lastLoginAt: timestamp({ withTimezone: true }),
+  /** Toleo la Masharti ya Huduma na Sera ya Faragha alilokubali mtumiaji, na lini */
+  termsVersion: text(),
+  termsAcceptedAt: timestamp({ withTimezone: true }),
   jobTitle: text(),                 // wafanyakazi wa jukwaa
   permissions: text().array(),      // null = ruhusa za kawaida za role
   totpSecret: text(),               // 2FA (imesimbwa kwa AES-256-GCM)

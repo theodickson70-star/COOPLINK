@@ -9,6 +9,7 @@ import { LogoMark, Wordmark } from './Logo';
 import { Button } from './ui';
 import { AnnouncementBar, MaintenanceOverlay, SystemBanner } from './Notices';
 import { PrefSwitches, useT } from '../lib/prefs';
+import { LegalLinks } from '../pages/Legal';
 import type { BillingData } from '../pages/Billing';
 import { date, tsh } from '../lib/format';
 
@@ -174,7 +175,7 @@ export function Layout() {
             );
           }); })()}
         </nav>
-        <div className="sidebar-foot">CoopLink<br />{t('Uwazi · Haki · Maendeleo')}</div>
+        <div className="sidebar-foot">CoopLink<br />{t('Uwazi · Haki · Maendeleo')}<br /><LegalLinks /></div>
       </aside>
       {open && <button type="button" className="nav-scrim"  aria-label={t('Funga menyu')} onClick={() => setOpen(false)} />}
 
