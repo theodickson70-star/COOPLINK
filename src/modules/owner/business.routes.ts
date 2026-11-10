@@ -19,8 +19,13 @@ businessRouter.get('/profile', requirePermission('business.read'), ah(async (_re
 
 businessRouter.put('/profile', requirePermission('business.manage'), ah(async (req, res) => {
   const s = z.string().trim().max(200);
+  // Email: nafasi zinaondolewa (mf. "sales manageme nt@gmail.com" -> bila nafasi), kisha inakaguliwa
+  const email = z.string().transform((v) => v.replace(/\s+/g, '').toLowerCase()).pipe(z.union([z.literal(''), z.string().email('Email si sahihi').max(120)]));
+  // Simu: namba moja au zaidi zikitenganishwa kwa "/" au ","
+  const phones = s.refine((v) => v === '' || v.split(/[\/,]/).every((x) => /^\+?[\d\s-]{9,16}$/.test(x.trim())), 'Simu si sahihi — tenganisha namba kwa "/" (mf. 0712 345 678 / 0754 123 456)');
   const b = z.object({
-    companyName: s.min(2), productName: s.min(2), slogan: s, ownerName: s, phone: s, email: s, address: s, tin: s, website: s, poweredBy: s.default('DUKALANGU SOLUTION'),
+    companyName: s.min(2), productName: s.min(2), slogan: s, ownerName: s, phone: phones, email, address: s, tin: s, website: s, poweredBy: s.default('DUKALANGU SOLUTION'),
+    supportPhone: phones.default(''), supportEmail: email.default(''),
   }).parse(req.body);
   const before = await getSetting('business.profile', { fresh: true });
   await db.transaction(async (tx) => {

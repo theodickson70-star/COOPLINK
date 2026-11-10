@@ -25,6 +25,8 @@ export interface Banner { enabled: boolean; message: string; tone: 'info' | 'war
 export interface BusinessProfile {
   companyName: string; productName: string; slogan: string; ownerName: string; poweredBy: string;
   phone: string; email: string; address: string; tin: string; website: string;
+  /** Msaada wa kiufundi (tofauti na simu/email ya mauzo). Zinawekwa na Owner kwenye Business Center — hazikai kwenye code. */
+  supportPhone: string; supportEmail: string;
 }
 
 export const DEFAULTS = {
@@ -34,7 +36,7 @@ export const DEFAULTS = {
   banner: { enabled: false, message: '', tone: 'info' } as Banner,
   'business.profile': {
     companyName: 'DUKALANGU SOLUTION', productName: 'CoopLink', slogan: 'Connecting Cooperatives. Empowering Farmers.',
-    ownerName: '', phone: '', email: '', address: '', tin: '', website: '', poweredBy: 'DUKALANGU SOLUTION',
+    ownerName: '', phone: '', email: '', address: '', tin: '', website: '', poweredBy: 'DUKALANGU SOLUTION', supportPhone: '', supportEmail: '',
   } as BusinessProfile,
 };
 type Key = keyof typeof DEFAULTS;

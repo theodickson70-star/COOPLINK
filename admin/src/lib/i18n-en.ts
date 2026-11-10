@@ -830,6 +830,10 @@ export const EN: Record<string, string> = {
   'Zima': 'Disable',
   'Washa': 'Enable',
   'Marekebisho mengine (salio la zamani, kusahihisha)': 'Other adjustments (old balance, corrections)',
+  'Msaada wa kiufundi': 'Technical support',
+  'Mauzo na ada': 'Sales & fees',
+  'Mfumo haufanyi kazi, kuingia, hitilafu au swali la matumizi': 'System not working, sign-in problems, errors or usage questions',
+  'Ada ya CoopLink, mkataba, kujiunga kwa chama kipya': 'CoopLink fees, contracts, onboarding a new society',
 };
 
 /** Maandishi yenye sehemu inayobadilika (mf. "Ada ya msimu 2026/2027") */

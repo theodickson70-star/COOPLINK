@@ -312,3 +312,21 @@ test('Orodha: hesabu za subqueries ni sahihi (AMCOS, mipango, matangazo)', async
   assert.equal(total, d);
   assert.ok(d > 0);
 });
+
+test('Wasifu wa kampuni: mawasiliano ya mauzo na msaada wa kiufundi yanaonekana kwenye /public/status', async () => {
+  const before = (await call('GET', '/api/v1/owner/business/profile', owner)).body.profile;
+  const bad = await call('PUT', '/api/v1/owner/business/profile', owner, { ...before, supportPhone: 'piga simu' });
+  assert.equal(bad.status, 400);
+  const ok = await call('PUT', '/api/v1/owner/business/profile', owner, {
+    ...before, address: 'S.L.P 1, Mji wa Majaribio', phone: '0700 000 001 / 0700 000 002', email: 'mauzo majaribio@example.com',
+    supportPhone: '0700 000 003', supportEmail: 'Msaada@Example.com',
+  });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  assert.equal(ok.body.profile.email, 'maujomajaribio@example.com'.replace('maujo', 'mauzo'), 'Nafasi kwenye email zinaondolewa');
+  assert.equal(ok.body.profile.supportEmail, 'msaada@example.com');
+  const st = (await call('GET', '/api/v1/public/status')).body;
+  assert.equal(st.contact.supportPhone, '0700 000 003');
+  assert.equal(st.contact.phone, '0700 000 001 / 0700 000 002');
+  assert.equal(st.legal.supportEmail, 'msaada@example.com');
+  await call('PUT', '/api/v1/owner/business/profile', owner, before); // rudisha
+});

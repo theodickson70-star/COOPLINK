@@ -6,7 +6,7 @@ import { Alert, Button, Empty, Loading, Modal, PageHead, SelectField, TextField 
 import { BarChart, LineChart } from '../components/charts';
 import { Kpi, money, nfmt, Section, Tabs } from '../components/owner-ui';
 
-interface Profile { companyName: string; productName: string; slogan: string; ownerName: string; poweredBy: string; phone: string; email: string; address: string; tin: string; website: string }
+interface Profile { companyName: string; productName: string; slogan: string; ownerName: string; poweredBy: string; phone: string; email: string; address: string; tin: string; website: string; supportPhone: string; supportEmail: string }
 interface Target { id: string; period: string; metric: string; targetValue: string; notes: string | null; actual: number; progress: number | null }
 interface Analytics {
   series: Record<string, string | number | null>[];
@@ -126,7 +126,13 @@ function ProfileView() {
       <Alert kind="ok">{ok ? 'Wasifu umehifadhiwa.' : null}</Alert>
       <div className="form-grid">
         {F('companyName', 'Jina la kampuni')}{F('productName', 'Jina la bidhaa')}{F('slogan', 'Kauli mbiu')}{F('ownerName', 'Mmiliki')}
-        {F('phone', 'Simu ya kampuni')}{F('email', 'Email')}{F('address', 'Anwani')}{F('tin', 'TIN')}{F('website', 'Tovuti')}{F('poweredBy', 'Powered by (chini ya ukurasa wa kuingia)')}
+        {F('address', 'Anwani (mf. S.L.P 45, Urambo – Tabora)')}{F('tin', 'TIN')}{F('website', 'Tovuti')}{F('poweredBy', 'Powered by (chini ya ukurasa wa kuingia)')}
+      </div>
+      <h3 className="co-form-h">Mawasiliano yanayoonekana kwenye mfumo</h3>
+      <p className="muted" style={{ fontSize: 13, margin: '0 0 10px' }}>Yanaonekana kwenye ukurasa wa kuingia, ukurasa wa Msaada, chini ya menyu, kwenye risiti na kwenye Masharti/Faragha. Namba zaidi ya moja zitenganishwe kwa "/".</p>
+      <div className="form-grid">
+        {F('phone', 'Simu ya mauzo')}{F('email', 'Email ya mauzo')}
+        {F('supportPhone', 'Simu ya msaada wa kiufundi')}{F('supportEmail', 'Email ya msaada wa kiufundi')}
       </div>
       {!ro && <div className="actions no-print" style={{ marginTop: 12 }}><Button busy={act.busy} onClick={async () => { if (await act.run(() => api('/owner/business/profile', { method: 'PUT', body: p }))) { setOk(true); reload(); } }}>Hifadhi wasifu</Button></div>}
     </Section>

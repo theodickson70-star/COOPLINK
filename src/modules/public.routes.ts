@@ -16,7 +16,9 @@ publicRouter.get('/status', ah(async (_req, res) => {
   const [m, b, p] = await Promise.all([getSetting('maintenance'), getSetting('banner'), getSetting('business.profile')]);
   res.json({ maintenance: m, banner: b.enabled ? b : null, brand: { productName: p.productName, companyName: p.companyName, slogan: p.slogan, poweredBy: p.poweredBy || 'DUKALANGU SOLUTION' },
     // kwa kurasa za Masharti na Faragha: toleo na mawasiliano ya kampuni
-    legal: { version: LEGAL_VERSION, effective: LEGAL_EFFECTIVE, effectiveEn: LEGAL_EFFECTIVE_EN, companyName: p.companyName, phone: p.phone, email: p.email, address: p.address, tin: p.tin, website: p.website } });
+    legal: { version: LEGAL_VERSION, effective: LEGAL_EFFECTIVE, effectiveEn: LEGAL_EFFECTIVE_EN, companyName: p.companyName, phone: p.phone, email: p.email, address: p.address, tin: p.tin, website: p.website, supportPhone: p.supportPhone, supportEmail: p.supportEmail },
+    // mawasiliano ya kampuni yanayoonyeshwa kwenye mfumo (kuingia, msaada, risiti)
+    contact: { companyName: p.companyName, address: p.address, phone: p.phone, email: p.email, website: p.website, supportPhone: p.supportPhone, supportEmail: p.supportEmail } });
 }));
 
 export const announcementsRouter = Router();

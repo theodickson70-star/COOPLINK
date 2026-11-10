@@ -190,7 +190,7 @@ interface Receipt {
   fee: { kind: string; label: string; amount: string; paidToDate: string; balance: string; dueDate: string };
   amcos: { name: string; code: string };
   message: string;
-  business: { companyName: string; productName: string; phone: string; email: string; address: string; tin: string; website: string };
+  business: { companyName: string; productName: string; phone: string; email: string; address: string; tin: string; website: string; supportPhone?: string; supportEmail?: string };
 }
 
 export function BillingReceipt({ base = '/billing' }: { base?: string }) {
@@ -212,7 +212,9 @@ export function BillingReceipt({ base = '/billing' }: { base?: string }) {
             <LogoMark size={44} onDark={false} />
             <div>
               <div className="doc-org">{b.productName} · {b.companyName}</div>
-              <div className="doc-org-sub">{[b.address, b.phone, b.email].filter(Boolean).join(' · ')}{b.tin ? ` · TIN ${b.tin}` : ''}</div>
+              <div className="doc-org-sub">{[b.address, b.tin ? `TIN ${b.tin}` : ''].filter(Boolean).join(' · ')}</div>
+              {(b.phone || b.email) && <div className="doc-org-sub">{t('Mauzo')}: {[b.phone, b.email].filter(Boolean).join(' · ')}</div>}
+              {(b.supportPhone || b.supportEmail) && <div className="doc-org-sub">{t('Msaada wa kiufundi')}: {[b.supportPhone, b.supportEmail].filter(Boolean).join(' · ')}</div>}
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>

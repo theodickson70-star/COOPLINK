@@ -11,7 +11,7 @@ import { PrefSwitches, usePrefs } from '../lib/prefs';
 import { Alert, Button } from '../components/ui';
 import { LogoMark, Wordmark } from '../components/Logo';
 
-interface LegalInfo { version: string; effective: string; effectiveEn?: string; companyName: string; phone: string; email: string; address: string; tin: string; website: string }
+interface LegalInfo { version: string; effective: string; effectiveEn?: string; companyName: string; phone: string; email: string; address: string; tin: string; website: string; supportPhone?: string; supportEmail?: string }
 type Block = string | { list: string[] };
 interface Sec { h: string; b: Block[] }
 interface Doc { title: string; intro: string; sections: Sec[] }
@@ -30,6 +30,7 @@ function contact(i: LegalInfo | null, en: boolean): string[] {
     i?.address ? `${en ? 'Address' : 'Anwani'}: ${i.address}` : '',
     i?.phone ? `${en ? 'Phone' : 'Simu'}: ${i.phone}` : '',
     i?.email ? `Email: ${i.email}` : '',
+    i?.supportPhone || i?.supportEmail ? `${en ? 'Technical support' : 'Msaada wa kiufundi'}: ${[i.supportPhone, i.supportEmail].filter(Boolean).join(' · ')}` : '',
     i?.website ? `${en ? 'Website' : 'Tovuti'}: ${i.website}` : '',
     en ? 'In the system: the "Support" page (support ticket).' : 'Ndani ya mfumo: ukurasa wa "Msaada" (tiketi ya msaada).',
   ];

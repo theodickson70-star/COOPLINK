@@ -7,6 +7,7 @@ import { api } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
 import { dateTime } from '../lib/format';
+import { CompanyContact } from '../components/CompanyContact';
 import { useT } from '../lib/prefs';
 import { Alert, Button, Empty, Loading, PageHead, SelectField, TextField } from '../components/ui';
 import {
@@ -28,6 +29,7 @@ export function Support() {
       <PageHead title={t('Msaada')} sub={t('Uliza swali, ripoti hitilafu au omba kipengele kipya. Timu ya CoopLink inajibu hapa hapa.')}>
         <Link className="btn btn-primary" to="/support/new">{t('+ Tiketi mpya')}</Link>
       </PageHead>
+      <CompanyContact variant="card" />
       <div className="tk-sla card">
         <strong>{t('Muda wa kujibiwa:')}</strong>
         {(Object.keys(PRIORITY) as TicketPriority[]).map((p) => <span key={p}><PriorityPill p={p} /> {t(PRIORITY[p].sla)}</span>)}
