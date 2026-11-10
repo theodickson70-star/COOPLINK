@@ -30,7 +30,7 @@ export const roleEnum = pgEnum('role', [
   'ACCOUNTANT',   // Mhasibu
   'CLERK',        // Karani
   'AMCOS_VIEWER', // Mjumbe wa bodi / mkaguzi (kusoma tu)
-  // Wafanyakazi wa NAYA GROUP / CoopLink (jukwaa) — HAWANA access ya data za vyama
+  // Wafanyakazi wa DUKALANGU SOLUTION / CoopLink (jukwaa) — HAWANA access ya data za vyama
   'FINANCE_MANAGER',
   'TECH_SUPPORT',
   'CUSTOMER_SUPPORT',
@@ -712,7 +712,7 @@ export const purchaseRequestLines = pgTable('purchase_request_lines', {
 
 
 // =====================================================================
-//  OWNER CONTROL PANEL — biashara ya CoopLink (NAYA GROUP)
+//  OWNER CONTROL PANEL — biashara ya CoopLink (DUKALANGU SOLUTION)
 //  Fedha za kampuni HAZICHANGANYWI na fedha za vyama wala za wakulima.
 // =====================================================================
 export const billingCycleEnum = pgEnum('billing_cycle', ['TRIAL', 'MONTHLY', 'ANNUAL']);
@@ -1328,7 +1328,7 @@ export const inputIssueLinesRelations = relations(inputIssueLines, ({ one }) => 
 }));
 
 // ---------------------------------------------------------------------
-//  TIKETI ZA MSAADA — watumishi wa chama wanaomba msaada; timu ya NAYA inajibu.
+//  TIKETI ZA MSAADA — watumishi wa chama wanaomba msaada; timu ya DUKALANGU inajibu.
 //  Muda wa jibu la kwanza (SLA, Mkataba Kifungu 9.4): Dharura saa 2, Kubwa saa 8, Kawaida siku 2.
 // ---------------------------------------------------------------------
 export const ticketCategoryEnum = pgEnum('ticket_category', ['PAYMENT', 'BUG', 'TRAINING', 'FEATURE', 'OTHER']);
@@ -1345,7 +1345,7 @@ export const supportTickets = pgTable('support_tickets', {
   status: ticketStatusEnum().notNull().default('OPEN'),
   subject: text().notNull(),
   context: jsonb(),                                  // ukurasa, toleo la mfumo, kivinjari
-  assignedToId: uuid().references(() => users.id),   // mfanyakazi wa NAYA
+  assignedToId: uuid().references(() => users.id),   // mfanyakazi wa DUKALANGU
   dueAt: timestamp({ withTimezone: true }).notNull(), // mwisho wa jibu la kwanza
   firstResponseAt: timestamp({ withTimezone: true }),
   lastAmcosAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -1362,7 +1362,7 @@ export const supportMessages = pgTable('support_messages', {
   ticketId: uuid().notNull().references(() => supportTickets.id),
   authorId: uuid().notNull().references(() => users.id),
   side: text().notNull(),                            // AMCOS | PLATFORM
-  internal: boolean().notNull().default(false),      // maelezo ya ndani ya timu ya NAYA (chama hakioni)
+  internal: boolean().notNull().default(false),      // maelezo ya ndani ya timu ya DUKALANGU (chama hakioni)
   body: text().notNull(),
   createdAt: createdAt(),
 }, (t) => [index().on(t.ticketId, t.createdAt)]);

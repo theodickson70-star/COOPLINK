@@ -22,7 +22,7 @@ export function OwnerStaff() {
 
   return (
     <>
-      <PageHead title="Staff Management" sub="Wafanyakazi wa NAYA GROUP / CoopLink. Hawana access ya data za vyama.">
+      <PageHead title="Staff Management" sub="Wafanyakazi wa DUKALANGU SOLUTION / CoopLink. Hawana access ya data za vyama.">
         <Button onClick={() => setCreating(true)}>+ Mfanyakazi mpya</Button>
       </PageHead>
       <Alert>{error}</Alert>

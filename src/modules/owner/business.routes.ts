@@ -1,4 +1,4 @@
-// NAYA GROUP BUSINESS CENTER — wasifu wa biashara, malengo na uchambuzi wa ukuaji
+// DUKALANGU SOLUTION BUSINESS CENTER — wasifu wa biashara, malengo na uchambuzi wa ukuaji
 import { Router } from 'express';
 import { z } from 'zod';
 import { eq, sql } from 'drizzle-orm';

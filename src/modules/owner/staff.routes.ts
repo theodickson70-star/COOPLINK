@@ -1,4 +1,4 @@
-// STAFF MANAGEMENT — wafanyakazi wa NAYA GROUP / CoopLink. Owner pekee (staff.manage).
+// STAFF MANAGEMENT — wafanyakazi wa DUKALANGU SOLUTION / CoopLink. Owner pekee (staff.manage).
 import { Router } from 'express';
 import { z } from 'zod';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';

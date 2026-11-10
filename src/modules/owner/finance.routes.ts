@@ -1,5 +1,5 @@
 // =====================================================================
-//  FINANCE & REVENUE — mapato ya KAMPUNI (CoopLink / NAYA GROUP) pekee.
+//  FINANCE & REVENUE — mapato ya KAMPUNI (CoopLink / DUKALANGU SOLUTION) pekee.
 //  Hakuna kinachosomwa wala kuandikwa kwenye ledger ya wanachama wa vyama.
 //  Malipo yote yanaanza PENDING; yanakuwa VERIFIED tu kwa uthibitisho wa mtu (na nenosiri).
 // =====================================================================

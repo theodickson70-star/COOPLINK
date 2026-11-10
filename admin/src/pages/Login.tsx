@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { homeFor, useAuth, type User } from '../lib/auth';
 import { api } from '../lib/api';
-import { playTone, setSoundEnabled, soundEnabled } from '../lib/tone';
+import { playTone, unlockAudio } from '../lib/tone';
 import { LogoMark, Wordmark } from '../components/Logo';
 import { Alert, Button, TextField } from '../components/ui';
 import { PrefSwitches, useT } from '../lib/prefs';
@@ -89,7 +89,6 @@ export function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [sound, setSound] = useState(soundEnabled());
   const [showPw, setShowPw] = useState(false);
   const [challenge, setChallenge] = useState<string | null>(null);
   const [code, setCode] = useState('');
@@ -106,6 +105,7 @@ export function Login() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    unlockAudio();
     setBusy(true);
     setError(null);
     try {
@@ -148,10 +148,6 @@ export function Login() {
                 <input type="checkbox" checked={showPw} onChange={(e) => setShowPw(e.target.checked)} /> {t('Onyesha nenosiri')}
               </label>
               <Button type="submit" variant="primary" busy={busy} style={{ minHeight: 48 }}>{t('Ingia')}</Button>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--muted)' }}>
-                <input type="checkbox" checked={sound} onChange={(e) => { setSound(e.target.checked); setSoundEnabled(e.target.checked); }} />
-                {t('Cheza tone ya CoopLink nikiingia')}
-              </label>
             </>
           ) : (
             <>
@@ -166,7 +162,7 @@ export function Login() {
             </>
           )}
           <p className="muted" style={{ fontSize: 12, margin: '8px 0 0', textAlign: 'center' }}>
-            CoopLink v{__APP_VERSION__} · Powered by <strong>{status?.brand.poweredBy ?? 'DUKALANGU SOLUTION'}</strong>
+            CoopLink · Powered by <strong>{status?.brand.poweredBy ?? 'DUKALANGU SOLUTION'}</strong>
           </p>
         </form>
       </section>

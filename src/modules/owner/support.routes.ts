@@ -1,5 +1,5 @@
 // =====================================================================
-//  TIKETI ZA MSAADA (upande wa timu ya NAYA) — /api/v1/owner/support
+//  TIKETI ZA MSAADA (upande wa timu ya DUKALANGU) — /api/v1/owner/support
 //  Foleni ya vyama vyote, kugawa kazi, kujibu, maelezo ya ndani, na muda wa jibu (SLA).
 // =====================================================================
 import { Router, type Request } from 'express';
@@ -68,7 +68,7 @@ ownerSupportRouter.get('/tickets', requirePermission('support.read'), ah(async (
   res.json({ data: rows.map((r) => ({ ...r, number: ticketNo(r.ticketNo) })) });
 }));
 
-/** Wafanyakazi wa NAYA wanaoweza kupewa tiketi */
+/** Wafanyakazi wa DUKALANGU wanaoweza kupewa tiketi */
 async function assignees() {
   const rows = await db.select({ id: U.id, fullName: U.fullName, role: U.role, permissions: U.permissions })
     .from(U).where(and(inArray(U.role, PLATFORM_ROLES), eq(U.isActive, true))).orderBy(asc(U.fullName));

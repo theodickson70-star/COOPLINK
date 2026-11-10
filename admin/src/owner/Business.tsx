@@ -18,7 +18,7 @@ export function OwnerBusiness() {
   const [tab, setTab] = useState<'analytics' | 'targets' | 'profile'>('analytics');
   return (
     <>
-      <PageHead title="NAYA Group Business Center" sub="Ukuaji wa CoopLink, malengo ya biashara na wasifu wa kampuni">
+      <PageHead title="DUKALANGU SOLUTION — Business Center" sub="Ukuaji wa CoopLink, malengo ya biashara na wasifu wa kampuni">
         <Button variant="secondary" className="no-print" onClick={() => window.print()}>Chapisha / PDF</Button>
       </PageHead>
       <div className="no-print"><Tabs value={tab} onChange={setTab} items={[['analytics', 'Uchambuzi wa ukuaji'], ['targets', 'Malengo'], ['profile', 'Wasifu wa kampuni']]} /></div>
@@ -121,7 +121,7 @@ function ProfileView() {
   const ro = !has('business.manage');
   const F = (k: keyof Profile, label: string) => <TextField label={label} value={p[k] ?? ''} disabled={ro} onChange={(v) => { setOk(false); setP({ ...p, [k]: v }); }} />;
   return (
-    <Section title="Wasifu wa NAYA GROUP">
+    <Section title="Wasifu wa kampuni">
       <Alert>{act.error}</Alert>
       <Alert kind="ok">{ok ? 'Wasifu umehifadhiwa.' : null}</Alert>
       <div className="form-grid">

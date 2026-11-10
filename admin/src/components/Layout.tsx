@@ -174,7 +174,7 @@ export function Layout() {
             );
           }); })()}
         </nav>
-        <div className="sidebar-foot">CoopLink v{__APP_VERSION__}<br />{t('Uwazi · Haki · Maendeleo')}</div>
+        <div className="sidebar-foot">CoopLink<br />{t('Uwazi · Haki · Maendeleo')}</div>
       </aside>
       {open && <button type="button" className="nav-scrim"  aria-label={t('Funga menyu')} onClick={() => setOpen(false)} />}
 

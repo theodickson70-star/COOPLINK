@@ -33,8 +33,8 @@ export const OWNER_NAV: { to: string; label: string; sub: string; icon: ReactNod
   { to: '/owner/support', label: 'Support Tickets', sub: 'Msaada kwa vyama', icon: I.support, perm: 'support.read', group: 'Wateja' },
   { to: '/owner/subscriptions', label: 'Subscriptions & Pricing', sub: 'Mipango na bei', icon: I.subs, perm: 'subscriptions.read', group: 'Wateja' },
   { to: '/owner/finance', label: 'Finance & Revenue', sub: 'Fedha za kampuni', icon: I.finance, perm: 'finance.read', group: 'Fedha na Biashara' },
-  { to: '/owner/business', label: 'NAYA Group Business', sub: 'Malengo na ukuaji', icon: I.business, perm: 'business.read', group: 'Fedha na Biashara' },
-  { to: '/owner/staff', label: 'Staff Management', sub: 'Wafanyakazi wa NAYA', icon: I.staff, perm: 'staff.manage', group: 'Timu na Mawasiliano' },
+  { to: '/owner/business', label: 'Business Center', sub: 'Malengo na ukuaji', icon: I.business, perm: 'business.read', group: 'Fedha na Biashara' },
+  { to: '/owner/staff', label: 'Staff Management', sub: 'Wafanyakazi wa DUKALANGU', icon: I.staff, perm: 'staff.manage', group: 'Timu na Mawasiliano' },
   { to: '/owner/comms', label: 'Marketing & Communication', sub: 'Matangazo na SMS', icon: I.comms, perm: 'comms.read', group: 'Timu na Mawasiliano' },
   { to: '/owner/system', label: 'System Control Center', sub: 'Hali ya mfumo', icon: I.system, perm: 'system.read', group: 'Mfumo na Usalama' },
   { to: '/owner/security', label: 'Security & Audit', sub: 'Usalama na kumbukumbu', icon: I.security, perm: 'security.read', group: 'Mfumo na Usalama' },
@@ -91,8 +91,7 @@ export function OwnerLayout() {
         </nav>
         <div className="sidebar-foot">
           Powered by <strong>DUKALANGU SOLUTION</strong><br />
-          <em>Connecting Cooperatives. Empowering Farmers.</em><br />
-          CoopLink v{__APP_VERSION__}
+          <em>Connecting Cooperatives. Empowering Farmers.</em>
         </div>
       </aside>
 

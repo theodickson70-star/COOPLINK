@@ -106,7 +106,7 @@ export const requireAmcosPerm =
     next();
   };
 
-/** Watumiaji wa jukwaa tu (Owner na wafanyakazi wa NAYA). */
+/** Watumiaji wa jukwaa tu (Owner na wafanyakazi wa DUKALANGU). */
 export function requirePlatform(req: Request, _res: Response, next: NextFunction) {
   if (!req.auth) return next(unauthorized());
   if (!isPlatformRole(req.auth.role)) return next(forbidden('Eneo hili ni la wasimamizi wa CoopLink tu'));

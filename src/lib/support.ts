@@ -1,5 +1,5 @@
 // =====================================================================
-//  TIKETI ZA MSAADA — sheria za pamoja (chama na timu ya NAYA)
+//  TIKETI ZA MSAADA — sheria za pamoja (chama na timu ya DUKALANGU)
 //  Muda wa jibu la kwanza (Mkataba Kifungu 9.4): Dharura saa 2, Kubwa saa 8, Kawaida siku 2 za kazi (saa 48).
 // =====================================================================
 import { z } from 'zod';

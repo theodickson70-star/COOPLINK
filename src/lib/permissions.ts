@@ -1,7 +1,7 @@
 // =====================================================================
 //  RBAC ya jukwaa (Owner Control Panel)
 //  - SUPER_ADMIN = OWNER SUPER ADMIN: ruhusa zote.
-//  - Wafanyakazi wa NAYA/CoopLink: ruhusa za role yao, au orodha maalum (users.permissions).
+//  - Wafanyakazi wa DUKALANGU/CoopLink: ruhusa za role yao, au orodha maalum (users.permissions).
 //  - `staff.manage` ni ya OWNER pekee na haitolewi kwa mfanyakazi yeyote.
 //  - Wafanyakazi wa jukwaa HAWANA access ya data za vyama (inazuiwa kwenye app.ts).
 // =====================================================================
@@ -27,7 +27,7 @@ export const PERMISSIONS = {
   'security.manage': 'Kufuta sessions za watumiaji',
   'backup.read': 'Kuona backup na database',
   'backup.manage': 'Kuchukua export / kuomba restore',
-  'business.read': 'Kuona NAYA Group Business',
+  'business.read': 'Kuona Business Center',
   'business.manage': 'Kuhariri malengo na wasifu wa biashara',
   'support.read': 'Kuona tiketi za msaada za vyama',
   'support.manage': 'Kujibu, kugawa na kufunga tiketi za msaada',

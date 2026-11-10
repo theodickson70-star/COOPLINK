@@ -33,7 +33,7 @@ export const DEFAULTS = {
   maintenance: { enabled: false, message: 'Mfumo uko kwenye matengenezo. Tafadhali jaribu tena baadaye.' } as Maintenance,
   banner: { enabled: false, message: '', tone: 'info' } as Banner,
   'business.profile': {
-    companyName: 'NAYA GROUP', productName: 'CoopLink', slogan: 'Connecting Cooperatives. Empowering Farmers.',
+    companyName: 'DUKALANGU SOLUTION', productName: 'CoopLink', slogan: 'Connecting Cooperatives. Empowering Farmers.',
     ownerName: '', phone: '', email: '', address: '', tin: '', website: '', poweredBy: 'DUKALANGU SOLUTION',
   } as BusinessProfile,
 };

@@ -1,5 +1,5 @@
 // =====================================================================
-//  SUPPORT TICKETS (Owner / timu ya NAYA): foleni ya vyama vyote, kugawa, kujibu, SLA
+//  SUPPORT TICKETS (Owner / timu ya DUKALANGU): foleni ya vyama vyote, kugawa, kujibu, SLA
 // =====================================================================
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';

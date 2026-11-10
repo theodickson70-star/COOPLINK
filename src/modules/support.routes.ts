@@ -1,6 +1,6 @@
 // =====================================================================
 //  MSAADA (upande wa chama) — /api/v1/support
-//  Kila mtumishi wa chama anafungua tiketi na kufuatilia majibu ya timu ya NAYA.
+//  Kila mtumishi wa chama anafungua tiketi na kufuatilia majibu ya timu ya DUKALANGU.
 //  Meneja anaona tiketi zote za chama; mtumishi mwingine anaona zake tu.
 //  Iko KABLA ya mlinzi wa ada: chama kikifungwa, Mhasibu bado anaweza kuomba msaada (mf. malipo yamekwama).
 // =====================================================================
@@ -86,7 +86,7 @@ supportRouter.get('/tickets/:id', ah(async (req, res) => {
   const msgs = await db.select({ id: M.id, side: M.side, body: M.body, createdAt: M.createdAt, author: U.fullName, authorId: M.authorId })
     .from(M).innerJoin(U, eq(U.id, M.authorId)).where(and(eq(M.ticketId, id), eq(M.internal, false))).orderBy(asc(M.createdAt));
   const att = await attachmentsOf(db, msgs.map((m) => m.id));
-  // timu ya NAYA inaonekana kama "Timu ya CoopLink" pamoja na jina la kwanza tu
+  // timu ya DUKALANGU inaonekana kama "Timu ya CoopLink" pamoja na jina la kwanza tu
   const messages = msgs.map((m) => ({ ...m, author: m.side === 'PLATFORM' ? `${m.author.split(' ')[0]} · Timu ya CoopLink` : m.author, attachments: att.get(m.id) ?? [] }));
   const [by] = await db.select({ fullName: U.fullName }).from(U).where(eq(U.id, t.createdById));
   await db.update(T).set({ amcosSeenAt: new Date() }).where(eq(T.id, id));

@@ -1,5 +1,5 @@
 // =====================================================================
-//  TIKETI ZA MSAADA — vipande vya pamoja (chama na timu ya NAYA)
+//  TIKETI ZA MSAADA — vipande vya pamoja (chama na timu ya DUKALANGU)
 // =====================================================================
 import { useEffect, useRef, useState } from 'react';
 import { apiBlobUrl } from '../lib/api';

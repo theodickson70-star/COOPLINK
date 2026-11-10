@@ -1,4 +1,4 @@
-// Tiketi za msaada: chama kinafungua, timu ya NAYA inajibu; usiri wa maelezo ya ndani; muda wa jibu (SLA).
+// Tiketi za msaada: chama kinafungua, timu ya DUKALANGU inajibu; usiri wa maelezo ya ndani; muda wa jibu (SLA).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';

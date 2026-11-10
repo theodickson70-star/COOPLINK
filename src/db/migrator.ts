@@ -97,6 +97,10 @@ const MARKERS: Record<string, string[]> = {
     "select to_regclass('public.support_messages') is not null",
     "select to_regclass('public.support_attachments') is not null",
   ],
+  // data tu: imekamilika ikiwa hakuna wasifu wenye jina la zamani
+  '0017_rebrand_dukalangu': [
+    "select not exists (select 1 from platform_settings where key = 'business.profile' and upper(trim(value->>'companyName')) in ('NAYA GROUP', 'NAYA'))",
+  ],
 };
 
 interface JournalEntry { tag: string; when: number }

@@ -115,9 +115,9 @@ Kila AMCOS ina watumishi **watatu tu**, mmoja kwa kila cheo (database inazuia wa
 
 SUPER_ADMIN (Owner) akiingia anapelekwa `/owner`. Sehemu 11: Owner Dashboard, AMCOS Management, Subscriptions & Pricing,
 Finance & Revenue, Staff Management, System Control Center, Marketing & Communication, Security & Audit, Backup & Database,
-NAYA Group Business na Owner Settings. Kitufe "Mwonekano wa Vyama" kinarudisha upande wa vyama.
+Business Center na Owner Settings. Kitufe "Mwonekano wa Vyama" kinarudisha upande wa vyama.
 
-- **Wafanyakazi wa NAYA GROUP** (Finance Manager, Tech Support, Customer Support, Marketing Manager) wanaundwa kwenye Staff Management.
+- **Wafanyakazi wa DUKALANGU SOLUTION** (Finance Manager, Tech Support, Customer Support, Marketing Manager) wanaundwa kwenye Staff Management.
   Ruhusa zinakaguliwa kwenye backend (`src/lib/permissions.ts`). Hawaoni data za wanachama wala fedha za vyama.
 - **Hatua nyeti** (kuthibitisha/kurudisha malipo, kusitisha chama, kuongeza muda, maintenance, export, restore) zinaomba nenosiri tena, na msimbo wa 2FA kama umewashwa.
 - **Malipo ya CoopLink** yanaanza "Inasubiri" na hayawi "Imethibitishwa" bila Owner/Finance kuthibitisha. Mapato ya CoopLink hayachanganywi na fedha za vyama.
