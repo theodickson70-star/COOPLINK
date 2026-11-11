@@ -17,6 +17,7 @@ import { audit } from '../lib/audit';
 import { nextNumber, pad } from '../lib/counter';
 import * as ledger from '../lib/ledger';
 import { D, fmt2, tshText } from '../lib/money';
+import { estimateCheck } from './estimates.routes';
 import { findMemberScoped } from './members.routes';
 import { lockItems, stockBalance } from '../lib/stock';
 import { createApproval } from '../lib/approvals';
@@ -501,11 +502,20 @@ inputIssuesRouter.post(
       }).returning();
 
       await tx.insert(schema.inputIssueLines).values(lines.map((l) => ({ inputIssueId: issue.id, ...l })));
+      // Makisio: ugawaji unaozidi pembejeo zilizokisiwa unaruhusiwa, lakini Meneja anaonyeshwa wazi kwenye idhini
+      const chk = await estimateCheck(tx, amcosId, season.id, member.id, issue.id);
+      const over = lines.map((l) => {
+        const c = chk.items.get(l.inputItemId);
+        const est = D(c?.estimated ?? 0), before = D(c?.issued ?? 0), after = before.plus(l.quantity);
+        return { inputItemId: l.inputItemId, name: nameOf.get(l.inputItemId)!, estimated: est.toFixed(), issuedBefore: before.toFixed(), thisIssue: D(l.quantity).toFixed(), over: after.minus(est).toFixed() };
+      }).filter((x) => chk.estimate?.hasInputs && D(x.over).gt(0));
+      const estimateNote = !chk.estimate ? 'Mkulima hana makisio ya msimu huu' : chk.estimate.status !== 'APPROVED' ? 'Makisio ya mkulima bado hayajaidhinishwa' : !chk.estimate.hasInputs ? 'Makisio hayana pembejeo zilizokisiwa' : null;
       await audit(tx, req, { action: 'INPUT_ISSUE_REQUEST', entity: 'InputIssue', entityId: issue.id, amcosId, after: { ...issue, lines } });
       const approval = await createApproval(tx, req, {
         amcosId, type: 'INPUT_ISSUE', entityType: 'InputIssue', entityId: issue.id, amount: total,
-        title: `Pembejeo kwa ${member.firstName} ${member.lastName} (${member.memberNo}): ${lines.map(lineLabel).join(', ')}${totalUsd ? ` — $${totalUsd} (kiwango ${rate!.toFixed()})` : ''}`,
+        title: `Pembejeo kwa ${member.firstName} ${member.lastName} (${member.memberNo}): ${lines.map(lineLabel).join(', ')}${totalUsd ? ` — $${totalUsd} (kiwango ${rate!.toFixed()})` : ''}${over.length ? ` · ZAIDI YA MAKISIO: ${over.map((o) => `${o.name} +${o.over}`).join(', ')}` : ''}`,
         reason: body.notes ?? null,
+        payload: { estimate: { over, note: estimateNote } },
       });
       await tx.update(issues).set({ approvalId: approval.id }).where(eq(issues.id, issue.id));
       return issue.id;

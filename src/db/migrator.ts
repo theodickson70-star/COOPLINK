@@ -101,6 +101,15 @@ const MARKERS: Record<string, string[]> = {
   '0017_rebrand_dukalangu': [
     "select not exists (select 1 from platform_settings where key = 'business.profile' and upper(trim(value->>'companyName')) in ('NAYA GROUP', 'NAYA'))",
   ],
+  '0026_estimate_sheet': [
+    "select to_regclass('public.estimate_inputs') is not null",
+    "select exists (select 1 from pg_enum e join pg_type t on t.oid = e.enumtypid where t.typname = 'input_unit' and e.enumlabel = 'METRE')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'amcos' and column_name = 'kg_per_acre')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'amcos' and column_name = 'postal_address')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'estimates' and column_name = 'grading_usd')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'estimates' and column_name = 'tree_acres')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'kuni_settings' and column_name = 'price_per_trip_usd')",
+  ],
   '0025_tree_loans': [
     "select exists (select 1 from pg_enum e join pg_type t on t.oid = e.enumtypid where t.typname = 'loan_type' and e.enumlabel = 'TREES')",
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'kuni_settings' and column_name = 'cost_per_tree_usd')",

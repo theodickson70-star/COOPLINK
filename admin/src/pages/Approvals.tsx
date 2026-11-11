@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { api, type Paged } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
-import { APPROVAL_TYPE_LABEL, dateTime, phone, ROLE_LABEL, tsh } from '../lib/format';
+import { APPROVAL_TYPE_LABEL, dateTime, num, phone, ROLE_LABEL, tsh } from '../lib/format';
 import { Alert, Badge, Button, Empty, Loading, Modal, PageHead, Pager, Select, TextField } from '../components/ui';
 import { Tabs } from '../components/owner-ui';
 
@@ -169,6 +169,10 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
       {a.type === 'MEMBER_REGISTRATION' && (a.payload as { nameOverride?: { name: string; phoneOwnerName: string | null; phone: string | null; reason: string } } | null)?.nameOverride && (() => { const n = (a.payload as { nameOverride: { name: string; phoneOwnerName: string | null; phone: string | null; reason: string } }).nameOverride; return (
         <Alert kind="warn">{t('Jina la mkulima')} <b>{n.name}</b> ni tofauti na mwenye namba {n.phone ? phone(n.phone) : ''} {n.phoneOwnerName ? <>(<b>{n.phoneOwnerName}</b>)</> : '(haijasajiliwa kwenye mobile money)'}. Sababu: {n.reason}. Ukiidhinisha usajili, unaidhinisha pia jina hili.</Alert>
       ); })()}
+      {a.type === 'INPUT_ISSUE' && (() => { const es = (a.payload as { estimate?: { over: { name: string; estimated: string; issuedBefore: string; thisIssue: string; over: string }[]; note: string | null } } | null)?.estimate; if (!es) return null; return (<>
+        {es.over.length > 0 && <Alert kind="warn"><strong>{t('Zaidi ya makisio')}:</strong> {es.over.map((o) => `${o.name}: ${t('makisio')} ${num(o.estimated)}, ${t('amepata')} ${num(o.issuedBefore)}, ${t('sasa')} ${num(o.thisIssue)} → ${t('zaidi')} ${num(o.over)}`).join(' · ')}</Alert>}
+        {es.note && <Alert kind="warn">{t(es.note)}</Alert>}
+      </>); })()}
       {a.type === 'KUNI_BATCH' && a.payload && (() => { const k = a.payload as { loanType?: 'KUNI' | 'GRADING' | 'TREES'; totalTrees?: number | null; treesPerArea?: number | null; areaUnit?: string; costPerTreeUsd?: string | null; farmers: number; total: string; interest: string; rate: string; amountPerAcre?: string; totalUsd?: string; interestUsd?: string; fxRate?: string; amountPerAcreUsd?: string }; return (
         k.totalUsd
           ? <dl className="dl"><dt>{t('Mkopo')}</dt><dd><strong>{t(k.loanType === 'GRADING' ? 'Mkopo wa grading' : k.loanType === 'TREES' ? 'Mkopo wa miti' : 'Mkopo wa kuni')}</strong></dd><dt>{t('Wakulima')}</dt><dd>{k.farmers}</dd>

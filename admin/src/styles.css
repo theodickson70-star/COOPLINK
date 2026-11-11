@@ -1241,3 +1241,30 @@ tr.row-msg.row-warn td { color: var(--warn-ink); }
 .unit-toggle button { border: 0; background: transparent; padding: 3px 10px; font: inherit; font-size: 12.5px; cursor: pointer; color: var(--muted); }
 .unit-toggle button.on { background: var(--green); color: #fff; }
 .table tr.row-sub td { background: var(--line-2); font-size: 13px; }
+
+/* Fomu ya makisio ya chama (kama ya NSANJO) — A4 landscape */
+.est-sheet-head { text-align: center; margin-bottom: 14px; line-height: 1.45; }
+.est-sheet-head .est-org { font-family: var(--font-head); font-weight: 800; font-size: 17px; color: var(--head); letter-spacing: .02em; }
+.est-sheet-head .est-title { font-weight: 700; margin-top: 4px; }
+.est-table { font-size: 12.5px; }
+.est-table th, .est-table td { border: 1px solid var(--line); padding: 5px 6px; }
+.est-table thead th { text-align: center; vertical-align: bottom; white-space: nowrap; }
+.est-table th.est-vert { vertical-align: bottom; height: 120px; padding: 4px 2px; }
+.est-table th.est-vert span { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; display: inline-block; }
+.est-table .est-name { min-width: 150px; }
+.est-table .est-name .muted { font-size: 11px; }
+.est-table .est-sign { min-width: 90px; }
+@media print {
+  .guide { display: none !important; }
+  /* Fomu ya makisio: ukurasa unachapisha fomu tu */
+  .est-print-hide { display: none !important; }
+  .est-sheet { padding: 0 !important; border: 0 !important; background: #fff !important; }
+  .est-sheet .table-wrap { overflow: visible !important; }
+  .est-table { font-size: 8.5px; width: 100%; }
+  .est-table th, .est-table td { padding: 2px 3px; border-color: #888; }
+  .est-table th.est-vert { height: 95px; }
+  .est-table .est-name { min-width: 0; }
+  .est-table .est-sign { min-width: 55px; }
+}
+@page est { size: A4 landscape; margin: 10mm; }
+.est-sheet { page: est; }

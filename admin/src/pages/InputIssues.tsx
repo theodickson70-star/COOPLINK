@@ -71,6 +71,8 @@ export function InputIssueNew() {
   const prices = useFetch<{ data: Price[] }>('/inputs/prices');
   const stock = useFetch<{ data: Stock[] }>('/inputs/stock');
   const { busy, error, run } = useAction();
+  // Makisio ya mkulima: kilichokisiwa dhidi ya kilichokwisha gawiwa (zaidi ya makisio -> Meneja anaonyeshwa)
+  const est = useFetch<{ estimate: { status: string; hasInputs: boolean } | null; items: Record<string, { estimated: string; issued: string }> }>(member ? '/estimates/check' : null, member ? { memberId: member.id } : undefined);
   const fx = useFx();
   const U = fx.usdMode;
   const money = (v: number) => (U ? usd(v) : tsh(v));
@@ -113,9 +115,12 @@ export function InputIssueNew() {
         <section className="card card-pad stack">
           <MemberPicker value={member} onChange={setMember} />
           {member && <MemberGroupNote memberId={member.id} />}
+          {member && est.data && (!est.data.estimate
+            ? <Alert kind="warn">Mkulima huyu hana makisio ya msimu huu. Ugawaji unaruhusiwa, lakini Meneja ataona kuwa hakuna makisio.</Alert>
+            : est.data.estimate.status !== 'APPROVED' ? <Alert kind="warn">Makisio ya mkulima huyu bado hayajaidhinishwa na Meneja.</Alert> : null)}
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Pembejeo</th><th style={{ width: 140 }}>Kiasi</th><th className="num">Bei</th><th className="num">Stoo</th><th className="num">Jumla</th><th /></tr></thead>
+              <thead><tr><th>Pembejeo</th><th style={{ width: 140 }}>Kiasi</th><th className="num">Bei</th><th className="num">Stoo</th><th className="num">Makisio</th><th className="num">Jumla</th><th /></tr></thead>
               <tbody>
                 {lines.map((l, i) => {
                   const { it, kgMode, unitPrice: price, packs } = lineCalc(l);
@@ -143,6 +148,13 @@ export function InputIssueNew() {
                       </td>
                       <td className="num">{l.inputItemId ? (price != null ? <>{money(price)}{kgMode && <div className="muted" style={{ fontSize: 12 }}>kwa kilo</div>}</> : <span className="badge badge-warn">Hakuna bei</span>) : '—'}</td>
                       <td className={`num ${over ? 'money-neg' : ''}`}>{l.inputItemId ? (it?.packKg ? packsAndKg(bal, it.packKg, UNIT_LABEL[it.unit].toLowerCase()) : `${num(bal)} ${it ? UNIT_LABEL[it.unit].toLowerCase() : ''}`) : '—'}</td>
+                      <td className="num">{(() => {
+                        if (!l.inputItemId || !est.data?.estimate?.hasInputs) return <span className="muted">—</span>;
+                        const c = est.data.items[l.inputItemId];
+                        const e = Number(c?.estimated ?? 0), done = Number(c?.issued ?? 0), left = e - done;
+                        const beyond = packs > left + 1e-9;
+                        return <span className={beyond ? 'money-neg' : ''} title="Makisio / tayari amegawiwa">{num(e)}<div className="muted" style={{ fontSize: 11 }}>{done > 0 ? `amepata ${num(done)} · ` : ''}{beyond ? `zaidi ${num(Math.round((packs - left) * 10000) / 10000)}` : `baki ${num(Math.round(left * 10000) / 10000)}`}</div></span>;
+                      })()}</td>
                       <td className="num">{price && l.quantity ? money(price * Number(l.quantity)) : '—'}</td>
                       <td className="num">{lines.length > 1 && <Button size="sm" variant="ghost" aria-label="Ondoa mstari" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}>✕</Button>}</td>
                     </tr>
@@ -160,6 +172,8 @@ export function InputIssueNew() {
           </div>
           <TextField label="Maelezo" value={notes} onChange={setNotes} />
         </section>
+        {est.data?.estimate?.hasInputs && lines.some((l) => { const c = est.data!.items[l.inputItemId]; return l.inputItemId && lineCalc(l).packs > Number(c?.estimated ?? 0) - Number(c?.issued ?? 0) + 1e-9; })
+          && <Alert kind="warn">Baadhi ya pembejeo zinazidi makisio ya mkulima. Unaweza kutuma, lakini Meneja ataona "ZAIDI YA MAKISIO" kwenye idhini.</Alert>}
         <div className="actions">
           <Button variant="gold" busy={busy} disabled={!valid} onClick={save} style={{ minHeight: 48 }}>Tuma kwa Meneja kwa idhini</Button>
           <Link className="btn btn-secondary" to="/input-issues">Ghairi</Link>

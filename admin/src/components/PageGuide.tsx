@@ -61,8 +61,10 @@ const GUIDES: Record<string, Partial<Record<Role, Guide>>> = {
     'Ugawaji uliokamilika haufutwi — unasahihishwa kwa REVERSAL inayoidhinishwa.',
   ] } },
   estimates: { '*': { title: 'Makisio', steps: [
-    'Makisio ni kiasi cha tumbaku mkulima anatarajia kuzalisha msimu huu.',
-    'Yanatumika kupanga pembejeo na kukadiria mapato ya chama.',
+    'Makisio ya kila mkulima: TTB, mabani, ekari za tumbaku (kilo zinajihesabu kwa kilo kwa ekari), mahindi na miti.',
+    'Pembejeo zilizokisiwa zinatoka kwenye bidhaa za chama; ugawaji ukizidi makisio, Meneja anaona "ZAIDI YA MAKISIO".',
+    'Trip za kuni, grading na ekari za miti ni vikomo vya mikopo husika.',
+    'Tab ya "Fomu ya makisio" inachapisha fomu ya chama nzima (A4 landscape) yenye nafasi ya sahihi.',
   ] } },
   finance: { '*': { title: 'Fedha za Chama', steps: [
     'Miamala: mapato, matumizi na malipo — kila moja linaandaliwa, linaidhinishwa, kisha linakamilishwa.',

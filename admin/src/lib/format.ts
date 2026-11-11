@@ -48,7 +48,7 @@ export const CATEGORY_LABEL: Record<string, string> = {
   FERTILIZER: 'Mbolea', SEED: 'Mbegu', CHEMICAL: 'Dawa', PACKAGING: 'Vifungashio', EQUIPMENT: 'Vifaa', OTHER: 'Nyingine',
 };
 export const UNIT_LABEL: Record<string, string> = {
-  BAG: 'Mfuko', KG: 'Kilo', LITRE: 'Lita', ROLL: 'Roli', PIECE: 'Kipande', PACKET: 'Pakiti',
+  BAG: 'Mfuko', KG: 'Kilo', LITRE: 'Lita', ROLL: 'Roli', PIECE: 'Kipande', PACKET: 'Pakiti', BOTTLE: 'Chupa', SPOOL: 'Spool', METRE: 'Mita',
 };
 export const MOVE_LABEL: Record<string, string> = {
   RECEIPT: 'Kupokea', ISSUE: 'Kutoa', RETURN: 'Kurudishwa', ADJUSTMENT: 'Marekebisho', DAMAGE: 'Zimeharibika', EXPIRY: 'Muda umeisha',

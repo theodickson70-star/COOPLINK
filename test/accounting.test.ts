@@ -960,7 +960,8 @@ test('Mikopo: kuni na grading kwa dola — kikomo kwa ekari kila aina, riba yake
 test('Mkopo wa miti: miti kwa hekta x gharama ya mti + riba, kikomo kwa idadi ya miti, deni la dola', async () => {
   const T = await newMember('Tumaini'), U = await newMember('Upendo');
   for (const [m, acres] of [[T, '5'], [U, '2.5']] as const) {
-    const e = await call('POST', '/api/v1/estimates', storekeeper, { memberId: m.id, acresPlanted: acres, estimatedKg: String(Number(acres) * 600) });
+    // Kikomo cha miti kinatoka ekari za MITI kwenye makisio
+    const e = await call('POST', '/api/v1/estimates', storekeeper, { memberId: m.id, acresPlanted: acres, treeAcres: acres, estimatedKg: String(Number(acres) * 600) });
     assert.equal(e.status, 201, JSON.stringify(e.body));
     assert.equal((await call('POST', `/api/v1/estimates/${e.body.estimate.id}/approve`, manager, { confirmPassword: 'Staff12345' })).status, 200);
   }
@@ -993,4 +994,58 @@ test('Mkopo wa miti: miti kwa hekta x gharama ya mti + riba, kikomo kwa idadi ya
   const el2 = (await call('GET', '/api/v1/kuni/eligible?type=TREES', accountant)).body.data;
   assert.equal(el2.find((x: any) => x.memberId === T.id).availableTrees, 200, 'Ekari 5 x 200 = 1000 - 800 alizochukua');
   await assertBooksBalance();
+});
+
+// v0.22 -----------------------------------------------------------------
+test('Makisio kamili: TTB, mabani, kilo @560, mahindi, miti, pembejeo za chama, kuni trip, grading; fomu; ugawaji unaozidi; vikomo vya mikopo', async () => {
+  assert.equal((await call('PUT', '/api/v1/estimates/settings', storekeeper, { kgPerAcre: '600' })).status, 403, 'Meneja anaweka');
+  assert.equal((await call('PUT', '/api/v1/estimates/settings', manager, { kgPerAcre: '560', postalAddress: 'S.L.P 149 Urambo' })).status, 200);
+  await call('POST', '/api/v1/finance/fx', accountant, { usdToTzs: '2500' });
+  assert.equal((await call('PUT', '/api/v1/finance/fx/currency', accountant, { currency: 'USD' })).status, 200);
+  const can = (await call('POST', '/api/v1/inputs/items', storekeeper, { name: 'CAN Est ' + RUN, category: 'FERTILIZER', unit: 'BAG', packKg: '50' })).body.item;
+  const bed = (await call('POST', '/api/v1/inputs/items', storekeeper, { name: 'NPK Mabedi ' + RUN, category: 'FERTILIZER', unit: 'BAG', packKg: '50', looseKg: true })).body.item;
+  for (const it of [can, bed]) { await call('POST', '/api/v1/inputs/stock/receipts', storekeeper, { inputItemId: it.id, quantity: 10, unitPriceUsd: '40', reference: 'EST-' + it.id.slice(0, 6) }); await approve(it.id); }
+  const W = await newMember('Wilson');
+  assert.equal((await call('POST', '/api/v1/estimates', storekeeper, { memberId: W.id, acresPlanted: '2', inputs: [{ inputItemId: can.id, quantity: '1', unit: 'KG' }] })).status, 400, 'CAN haikisiwi kwa kilo');
+  const e = await call('POST', '/api/v1/estimates', storekeeper, { memberId: W.id, acresPlanted: '2', ttbNo: 'TTB-' + RUN, barnsExisting: 1, barnsNew: 1, maizeAcres: '1', treeAcres: '1', kuniTrips: '3', gradingUsd: '40',
+    inputs: [{ inputItemId: can.id, quantity: '4' }, { inputItemId: bed.id, quantity: '10', unit: 'KG' }] });
+  assert.equal(e.status, 201, JSON.stringify(e.body));
+  assert.equal(e.body.estimate.estimatedKg, '1120.00', 'Ekari 2 x kilo 560');
+  const one = (await call('GET', `/api/v1/estimates/${e.body.estimate.id}`, storekeeper)).body.estimate;
+  assert.equal(one.inputs.length, 2); assert.equal(Number(one.inputs.find((x: any) => x.inputItemId === bed.id).quantity), 0.2); assert.equal(one.ttbNo, 'TTB-' + RUN);
+  assert.equal((await call('POST', `/api/v1/estimates/${e.body.estimate.id}/approve`, manager, { confirmPassword: 'Staff12345' })).status, 200);
+  const sheet = (await call('GET', '/api/v1/estimates/sheet', storekeeper)).body;
+  assert.equal(sheet.amcos.postalAddress, 'S.L.P 149 Urambo');
+  assert.ok(sheet.items.some((i: any) => i.id === can.id), 'Safu ya kila pembejeo ya chama');
+  const row = sheet.data.find((r: any) => r.memberId === W.id);
+  assert.equal(Number(row.inputs[can.id].quantity), 4); assert.equal(row.inputs[bed.id].kg, '10.00'); assert.equal(row.barnsNew, 1); assert.equal(row.kuniTrips, '3.00');
+
+  // Ugawaji: ndani ya makisio -> kawaida; ukizidi -> Meneja anaona "ZAIDI YA MAKISIO"
+  const chk = (await call('GET', `/api/v1/estimates/check?memberId=${W.id}`, storekeeper)).body;
+  assert.equal(Number(chk.items[can.id].estimated), 4);
+  const i1 = await call('POST', '/api/v1/input-issues', storekeeper, { memberId: W.id, lines: [{ inputItemId: can.id, quantity: '3' }] });
+  assert.equal(i1.status, 201, JSON.stringify(i1.body));
+  const i2 = await call('POST', '/api/v1/input-issues', storekeeper, { memberId: W.id, lines: [{ inputItemId: can.id, quantity: '2' }] });
+  const pend = (await call('GET', '/api/v1/approvals?status=PENDING&pageSize=100', manager)).body.data as any[];
+  const a1 = pend.find((x) => x.entityId === i1.body.issue.id), a2 = pend.find((x) => x.entityId === i2.body.issue.id);
+  assert.ok(!/ZAIDI/.test(a1.title), 'Ndani ya makisio');
+  assert.match(a2.title, /ZAIDI YA MAKISIO: CAN Est .* \+1/);
+  assert.equal(a2.payload.estimate.over[0].over, '1');
+  await approve(i1.body.issue.id); await approve(i2.body.issue.id);
+
+  // Mikopo: kuni = trip 3 x $30; grading = $40 ya makisio; miti = ekari 1 ya miti
+  assert.equal((await call('PUT', '/api/v1/kuni/settings', accountant, { loanType: 'KUNI', limitBasis: 'TRIP', interestRate: '10', isOpen: true })).status, 400, 'Bei ya trip inahitajika');
+  assert.equal((await call('PUT', '/api/v1/kuni/settings', accountant, { loanType: 'GRADING', limitBasis: 'TRIP', pricePerTripUsd: '30', interestRate: '5', isOpen: true })).status, 400, 'Trip ni ya kuni tu');
+  assert.equal((await call('PUT', '/api/v1/kuni/settings', accountant, { loanType: 'KUNI', limitBasis: 'TRIP', pricePerTripUsd: '30', interestRate: '10', isOpen: true })).status, 200);
+  assert.equal((await call('PUT', '/api/v1/kuni/settings', accountant, { loanType: 'GRADING', limitBasis: 'ESTIMATE', interestRate: '5', isOpen: true })).status, 200);
+  const elK = (await call('GET', '/api/v1/kuni/eligible?type=KUNI&search=Wilson', accountant)).body.data.find((x: any) => x.memberId === W.id);
+  assert.equal(elK.limit, '90.00'); assert.match(elK.basis, /trip 3/);
+  const elG = (await call('GET', '/api/v1/kuni/eligible?type=GRADING&search=Wilson', accountant)).body.data.find((x: any) => x.memberId === W.id);
+  assert.equal(elG.limit, '40.00');
+  const elT = (await call('GET', '/api/v1/kuni/eligible?type=TREES&search=Wilson', accountant)).body.data.find((x: any) => x.memberId === W.id);
+  assert.equal(elT.limitTrees, 200, 'Ekari 1 ya miti x miti 200 kwa ekari (mipangilio ya jaribio la miti)');
+  assert.equal((await call('POST', '/api/v1/kuni/batches', accountant, { loanType: 'KUNI', loans: [{ memberId: W.id, amountUsd: '90.01' }] })).status, 400);
+  assert.equal((await call('POST', '/api/v1/kuni/batches', accountant, { loanType: 'GRADING', loans: [{ memberId: W.id, amountUsd: '40' }] })).status, 201);
+  await assertBooksBalance();
+  assert.equal((await call('PUT', '/api/v1/finance/fx/currency', accountant, { currency: 'TZS' })).status, 200);
 });

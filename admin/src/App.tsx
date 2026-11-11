@@ -83,6 +83,7 @@ const MemberDetail = lazyPage(load_MemberDetail_pages, 'MemberDetail');
 PAGE_LOADERS.push(load_MemberDetail_pages);
 const load_Estimates_pages = () => import('./pages/Estimates');
 const Estimates = lazyPage(load_Estimates_pages, 'Estimates');
+const EstimateForm = lazyPage(load_Estimates_pages, 'EstimateForm');
 PAGE_LOADERS.push(load_Estimates_pages);
 const load_Inputs_pages = () => import('./pages/Inputs');
 const Inputs = lazyPage(load_Inputs_pages, 'Inputs');
@@ -276,6 +277,8 @@ export default function App() {
             <Route path="members/import" element={<Need p={['members.approve']}><MemberImport /></Need>} />
             <Route path="members/:id" element={<MemberDetail />} />
             <Route path="estimates" element={<Estimates />} />
+            <Route path="estimates/new" element={<Need p={['estimates.write']}><EstimateForm /></Need>} />
+            <Route path="estimates/:id/edit" element={<Need p={['estimates.write']}><EstimateForm /></Need>} />
             <Route path="inputs" element={<Inputs />} />
             <Route path="input-issues" element={<InputIssues />} />
             <Route path="input-issues/new" element={<Need p={['issues.request']}><InputIssueNew /></Need>} />

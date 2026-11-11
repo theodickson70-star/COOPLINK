@@ -49,7 +49,9 @@ async function settingsOf(amcosId: string, seasonId: string, type: LoanType) {
   const [s] = await db.select().from(KS).where(and(eq(KS.amcosId, amcosId), eq(KS.seasonId, seasonId), eq(KS.loanType, type)));
   return s ?? null;
 }
-const blank = (t: LoanType) => ({ loanType: t, interestRate: '0', amountPerAcreUsd: null, areaUnit: 'HECTARE', treesPerArea: null, costPerTreeUsd: null, isOpen: false, configured: false });
+// Mipangilio mipya: kuni kwa trip za makisio, grading kwa kiasi cha makisio (mipangilio ya zamani inabaki kwa ekari)
+const DEFAULT_BASIS: Record<LoanType, string> = { KUNI: 'TRIP', GRADING: 'ESTIMATE', TREES: 'ESTIMATE' };
+const blank = (t: LoanType) => ({ loanType: t, interestRate: '0', amountPerAcreUsd: null, areaUnit: 'HECTARE', treesPerArea: null, costPerTreeUsd: null, limitBasis: DEFAULT_BASIS[t], pricePerTripUsd: null, isOpen: false, configured: false });
 type St = typeof schema.kuniSettings.$inferSelect;
 
 /** Mkopo wa miti: miti anayostahili mkulima = eneo (hekta au ekari, kutoka ekari za makisio) x miti kwa eneo (chini, mti mzima). */
@@ -58,7 +60,31 @@ export function treeLimit(st: Pick<St, 'areaUnit' | 'treesPerArea'>, acres: Deci
   return area.times(st.treesPerArea ?? 0).floor();
 }
 /** Mipangilio imekamilika? (kuni/grading: dola kwa ekari; miti: idadi ya miti kwa eneo na gharama ya mti) */
-const configured = (st: St | null) => !!st && (st.loanType === 'TREES' ? (st.treesPerArea ?? 0) > 0 && D(st.costPerTreeUsd ?? 0).gt(0) : D(st.amountPerAcreUsd ?? 0).gt(0));
+const configured = (st: St | null) => !!st && (st.loanType === 'TREES' ? (st.treesPerArea ?? 0) > 0 && D(st.costPerTreeUsd ?? 0).gt(0)
+  : st.limitBasis === 'TRIP' ? D(st.pricePerTripUsd ?? 0).gt(0) : st.limitBasis === 'ESTIMATE' ? true : D(st.amountPerAcreUsd ?? 0).gt(0));
+
+/** Makisio ya mkulima yanayohusika na vikomo vya mikopo */
+type EstFacts = { acres: Decimal; treeAcres: Decimal; trips: Decimal; gradingUsd: Decimal };
+/**
+ * Kikomo cha mkulima kwa aina ya mkopo (kutoka makisio yaliyoidhinishwa):
+ *  miti = ekari za MITI x miti kwa eneo x gharama ya mti · kuni (TRIP) = trip x bei ya trip
+ *  grading (ESTIMATE) = kiasi cha grading cha makisio · (ACRE) = ekari za tumbaku x dola kwa ekari
+ */
+function limitFor(st: St, f: EstFacts): { usd: Decimal; trees: number | null; why: string } {
+  if (st.loanType === 'TREES') {
+    const n = treeLimit(st, f.treeAcres).toNumber();
+    const area = st.areaUnit === 'ACRE' ? `ekari ${fmt2(f.treeAcres)}` : `hekta ${f.treeAcres.times(ACRE_TO_HA).toFixed(2)}`;
+    return { usd: D(st.costPerTreeUsd ?? 0).times(n).toDecimalPlaces(2), trees: n, why: `${area} za miti × miti ${st.treesPerArea} kwa ${areaText(st.areaUnit)}` };
+  }
+  if (st.limitBasis === 'TRIP') return { usd: f.trips.times(st.pricePerTripUsd ?? 0).toDecimalPlaces(2), trees: null, why: `trip ${f.trips.toFixed()} × ${usdText(st.pricePerTripUsd ?? 0)}` };
+  if (st.limitBasis === 'ESTIMATE') return { usd: f.gradingUsd.toDecimalPlaces(2), trees: null, why: `makisio ya grading ${usdText(f.gradingUsd)}` };
+  return { usd: f.acres.times(st.amountPerAcreUsd ?? 0).toDecimalPlaces(2), trees: null, why: `ekari ${fmt2(f.acres)} × ${usdText(st.amountPerAcreUsd ?? 0)}` };
+}
+const estFacts = {
+  acres: sql<string>`sum(${schema.estimates.acresPlanted})`, treeAcres: sql<string>`coalesce(sum(${schema.estimates.treeAcres}), 0)`,
+  trips: sql<string>`coalesce(sum(${schema.estimates.kuniTrips}), 0)`, gradingUsd: sql<string>`coalesce(sum(${schema.estimates.gradingUsd}), 0)`,
+};
+const toFacts = (r: { acres: string; treeAcres: string; trips: string; gradingUsd: string }): EstFacts => ({ acres: D(r.acres), treeAcres: D(r.treeAcres), trips: D(r.trips), gradingUsd: D(r.gradingUsd) });
 const areaText = (u: string) => (u === 'ACRE' ? 'ekari' : 'hekta');
 
 /** Mipangilio ya aina zote za mikopo kwa msimu huu + kiwango cha dola cha sasa */
@@ -81,19 +107,29 @@ kuniRouter.put('/settings', requireAmcosPerm('finance.record'), ah(async (req, r
     areaUnit: z.enum(['HECTARE', 'ACRE']).optional(),
     treesPerArea: z.coerce.number().int('Idadi ya miti iwe namba nzima').min(1, 'Weka idadi ya miti kwa eneo').max(100000).optional(),
     costPerTreeUsd: decimalSchema({ min: 0.0001 }).optional(),
+    limitBasis: z.enum(['ACRE', 'TRIP', 'ESTIMATE']).optional(),
+    pricePerTripUsd: decimalSchema({ min: 0.01 }).optional(),
     isOpen: z.boolean(),
   }).superRefine((b, ctx) => {
     if (b.loanType === 'TREES') {
       if (!b.treesPerArea) ctx.addIssue({ code: 'custom', path: ['treesPerArea'], message: 'Weka idadi ya miti kwa hekta (au ekari)' });
       if (!b.costPerTreeUsd) ctx.addIssue({ code: 'custom', path: ['costPerTreeUsd'], message: 'Weka gharama ya mti mmoja (USD)' });
-    } else if (b.amountPerAcreUsd === undefined) ctx.addIssue({ code: 'custom', path: ['amountPerAcreUsd'], message: 'Weka kikomo kwa ekari (USD)' });
+      return;
+    }
+    const basis = b.limitBasis ?? 'ACRE';
+    if (basis === 'TRIP' && b.loanType !== 'KUNI') ctx.addIssue({ code: 'custom', path: ['limitBasis'], message: 'Kikomo kwa trip ni cha mkopo wa kuni tu' });
+    if (basis === 'ESTIMATE' && b.loanType !== 'GRADING') ctx.addIssue({ code: 'custom', path: ['limitBasis'], message: 'Kikomo cha makisio ni cha mkopo wa grading tu' });
+    if (basis === 'TRIP' && !b.pricePerTripUsd) ctx.addIssue({ code: 'custom', path: ['pricePerTripUsd'], message: 'Weka bei ya trip moja ya kuni (USD)' });
+    if (basis === 'ACRE' && b.amountPerAcreUsd === undefined) ctx.addIssue({ code: 'custom', path: ['amountPerAcreUsd'], message: 'Weka kikomo kwa ekari (USD)' });
   }).parse(req.body);
   const amcosId = await resolveWriteAmcosId(req);
   const s = await season();
   const before = await settingsOf(amcosId, s.id, body.loanType);
   const vals = body.loanType === 'TREES'
     ? { interestRate: body.interestRate, areaUnit: body.areaUnit ?? 'HECTARE', treesPerArea: body.treesPerArea!, costPerTreeUsd: D(body.costPerTreeUsd!).toFixed(4), isOpen: body.isOpen, updatedById: req.auth!.userId }
-    : { interestRate: body.interestRate, amountPerAcreUsd: fmt2(body.amountPerAcreUsd!), isOpen: body.isOpen, updatedById: req.auth!.userId };
+    : { interestRate: body.interestRate, limitBasis: body.limitBasis ?? 'ACRE', isOpen: body.isOpen, updatedById: req.auth!.userId,
+      ...(body.amountPerAcreUsd !== undefined ? { amountPerAcreUsd: fmt2(body.amountPerAcreUsd) } : {}),
+      ...(body.pricePerTripUsd !== undefined ? { pricePerTripUsd: fmt2(body.pricePerTripUsd) } : {}) };
   const row = await db.transaction(async (tx) => {
     const [r] = await tx.insert(KS).values({ amcosId, seasonId: s.id, loanType: body.loanType, ...vals })
       .onConflictDoUpdate({ target: [KS.amcosId, KS.seasonId, KS.loanType], set: { ...vals, updatedAt: new Date() } }).returning();
@@ -123,7 +159,7 @@ kuniRouter.get('/eligible', requireAmcosPerm('finance.read'), ah(async (req, res
   const st = await settingsOf(amcosId, s.id, type);
   const rate = await currentRate(db, amcosId);
   const like = search ? `%${search}%` : null;
-  const rows = await db.select({ m: M, acres: sql<string>`sum(${E.acresPlanted})`, kg: sql<string>`sum(${E.estimatedKg})`,
+  const rows = await db.select({ m: M, ...estFacts, kg: sql<string>`sum(${E.estimatedKg})`,
     group: sql<string | null>`(select g.name from member_group_members x join member_groups g on g.id = x.group_id where x.member_id = "members"."id" and x.left_at is null and g.status = 'ACTIVE' limit 1)`,
     balance: sql<string>`(select coalesce(sum(l.credit) - sum(l.debit), 0) from member_ledger_entries l where l.member_id = "members"."id")`,
     usdDebt: sql<string>`(select coalesce(sum(u.usd), 0) from member_usd_ledger u where u.member_id = "members"."id")` })
@@ -132,22 +168,23 @@ kuniRouter.get('/eligible', requireAmcosPerm('finance.read'), ah(async (req, res
       like ? sql`(${M.firstName} ilike ${like} or ${M.lastName} ilike ${like} or ${M.memberNo} ilike ${like})` : undefined))
     .groupBy(M.id).orderBy(asc(M.memberNo));
   const taken = rate ? await takenBy(amcosId, s.id, type, D(rate.usdToTzs)) : new Map<string, Decimal & { trees: number }>();
-  const per = D(st?.amountPerAcreUsd ?? 0);
   res.json({
     settings: st, season: s, type, rate: rate?.usdToTzs ?? null,
     data: rows.map((r) => {
       const d = destinationOf(r.m);
       const t = taken.get(r.m.id) ?? Object.assign(D(0), { trees: 0 });
       // Miti: kikomo ni idadi ya miti; dola = miti x gharama ya mti
+      const f = toFacts(r);
+      const lim = st ? limitFor(st, f) : { usd: D(0), trees: null, why: '' };
       const trees = type === 'TREES' && st ? (() => {
-        const lim = treeLimit(st, r.acres).toNumber();
-        const avail = Math.max(lim - t.trees, 0);
-        const cost = D(st.costPerTreeUsd ?? 0);
-        return { limitTrees: lim, takenTrees: t.trees, availableTrees: avail, hectares: D(r.acres).times(ACRE_TO_HA).toFixed(2), limitUsd: cost.times(lim), availUsd: cost.times(avail).toDecimalPlaces(2) };
+        const n = lim.trees ?? 0;
+        const avail = Math.max(n - t.trees, 0);
+        return { limitTrees: n, takenTrees: t.trees, availableTrees: avail, hectares: f.treeAcres.times(ACRE_TO_HA).toFixed(2), availUsd: D(st.costPerTreeUsd ?? 0).times(avail).toDecimalPlaces(2) };
       })() : null;
-      const limit = trees ? trees.limitUsd.toDecimalPlaces(2) : D(r.acres).times(per).toDecimalPlaces(2);
+      const limit = lim.usd;
       return { memberId: r.m.id, memberNo: r.m.memberNo, name: `${r.m.firstName} ${r.m.lastName}`, village: r.m.village, group: r.group,
-        acres: fmt2(r.acres), estimatedKg: fmt2(r.kg), limit: fmt2(limit), taken: fmt2(t), available: fmt2(trees ? trees.availUsd : pos(limit.minus(t))),
+        acres: fmt2(r.acres), treeAcres: fmt2(f.treeAcres), kuniTrips: f.trips.toFixed(), gradingUsd: fmt2(f.gradingUsd), basis: lim.why,
+        estimatedKg: fmt2(r.kg), limit: fmt2(limit), taken: fmt2(t), available: fmt2(trees ? trees.availUsd : pos(limit.minus(t))),
         ...(trees ? { hectares: trees.hectares, limitTrees: trees.limitTrees, takenTrees: trees.takenTrees, availableTrees: trees.availableTrees } : {}),
         debt: fmt2(D(r.balance).lt(0) ? D(r.balance).neg() : 0), debtUsd: fmt2(pos(D(r.usdDebt))), method: d.method, destination: d.destination };
     }),
@@ -167,37 +204,39 @@ kuniRouter.post('/batches', requireAmcosPerm('finance.record'), ah(async (req, r
   const st = await settingsOf(amcosId, s.id, body.loanType);
   const isTrees = body.loanType === 'TREES';
   if (!st || !st.isOpen) throw badRequest(`${label} haujafunguliwa msimu huu — weka mipangilio kwanza`);
-  if (!configured(st)) throw badRequest(isTrees ? 'Weka idadi ya miti kwa eneo na gharama ya mti mmoja kwenye mipangilio' : `Weka kikomo cha ${label.toLowerCase()} kwa dola kwa ekari kwenye mipangilio`);
+  if (!configured(st)) throw badRequest(isTrees ? 'Weka idadi ya miti kwa eneo na gharama ya mti mmoja kwenye mipangilio' : st.limitBasis === 'TRIP' ? 'Weka bei ya trip moja ya kuni kwenye mipangilio' : `Weka kikomo cha ${label.toLowerCase()} kwa dola kwa ekari kwenye mipangilio`);
   const rate = await requireRate(db, amcosId);
   const ids = body.loans.map((l) => l.memberId);
   if (new Set(ids).size !== ids.length) throw badRequest('Mkulima amerudiwa kwenye orodha');
   const mems = await db.select().from(M).where(and(eq(M.amcosId, amcosId), inArray(M.id, ids)));
   if (mems.length !== ids.length) throw badRequest('Baadhi ya wakulima si wa chama hiki');
-  const acres = await db.select({ memberId: E.memberId, a: sql<string>`sum(${E.acresPlanted})` }).from(E)
+  const facts = await db.select({ memberId: E.memberId, ...estFacts }).from(E)
     .where(and(eq(E.seasonId, s.id), eq(E.status, 'APPROVED'), inArray(E.memberId, ids))).groupBy(E.memberId);
-  const acreOf = new Map(acres.map((a) => [a.memberId, D(a.a)]));
+  const factsOf = new Map(facts.map((a) => [a.memberId, toFacts(a)]));
   const taken = await takenBy(amcosId, s.id, body.loanType, rate, ids);
   const byId = new Map(mems.map((m) => [m.id, m]));
   const pct = D(st.interestRate);
   const rows = body.loans.map((l) => {
     const m = byId.get(l.memberId)!;
     if (m.status !== 'ACTIVE') throw badRequest(`${m.memberNo}: mkulima hayuko hai`);
-    const ac = acreOf.get(m.id);
-    if (!ac || ac.lte(0)) throw badRequest(`${m.firstName} ${m.lastName} (${m.memberNo}) hana makisio yaliyoidhinishwa msimu huu`);
+    const f = factsOf.get(m.id);
+    if (!f || f.acres.lte(0)) throw badRequest(`${m.firstName} ${m.lastName} (${m.memberNo}) hana makisio yaliyoidhinishwa msimu huu`);
+    const lim = limitFor(st, f);
+    const who = `${m.firstName} ${m.lastName} (${m.memberNo})`;
     let usd: Decimal;
     let trees: number | null = null;
     if (isTrees) {
       if (!l.trees) throw badRequest(`${m.firstName} ${m.lastName} (${m.memberNo}): weka idadi ya miti`);
-      const lim = treeLimit(st, ac).toNumber();
-      const left = lim - (taken.get(m.id)?.trees ?? 0);
-      if (l.trees > left) throw badRequest(`${m.firstName} ${m.lastName} (${m.memberNo}): miti iliyobaki ni ${Math.max(left, 0)} (${st.areaUnit === 'ACRE' ? `ekari ${fmt2(ac)}` : `hekta ${ac.times(ACRE_TO_HA).toFixed(2)}`} × miti ${st.treesPerArea} kwa ${areaText(st.areaUnit)})`);
+      if (f.treeAcres.lte(0)) throw badRequest(`${who}: makisio yake hayana ekari za miti`);
+      const left = (lim.trees ?? 0) - (taken.get(m.id)?.trees ?? 0);
+      if (l.trees > left) throw badRequest(`${who}: miti iliyobaki ni ${Math.max(left, 0)} (${lim.why})`);
       trees = l.trees;
       usd = D(st.costPerTreeUsd!).times(trees).toDecimalPlaces(2);
     } else {
       if (!l.amountUsd) throw badRequest(`${m.firstName} ${m.lastName} (${m.memberNo}): weka kiasi`);
-      const available = ac.times(st.amountPerAcreUsd!).toDecimalPlaces(2).minus(taken.get(m.id) ?? 0);
+      const available = lim.usd.minus(taken.get(m.id) ?? 0);
       usd = D(l.amountUsd).toDecimalPlaces(2);
-      if (usd.gt(available)) throw badRequest(`${m.firstName} ${m.lastName} (${m.memberNo}): kikomo kilichobaki ni ${usdText(pos(available))} (ekari ${fmt2(ac)} × ${usdText(st.amountPerAcreUsd!)})`);
+      if (usd.gt(available)) throw badRequest(`${who}: kikomo kilichobaki ni ${usdText(pos(available))} (${lim.why})`);
     }
     const interestUsd = usd.times(pct).div(100).toDecimalPlaces(2);
     return { m, trees, amountUsd: fmt2(usd), interestUsd: fmt2(interestUsd), amount: fmt2(toTzs(usd, rate)), interest: fmt2(toTzs(interestUsd, rate)), ...destinationOf(m) };
@@ -215,8 +254,8 @@ kuniRouter.post('/batches', requireAmcosPerm('finance.record'), ah(async (req, r
     const approval = await createApproval(tx, req, {
       amcosId, type: 'KUNI_BATCH', entityType: 'KuniBatch', entityId: b.id, amount: fmt2(total),
       title: `${label} ${b.batchNo}: wakulima ${rows.length}${totalTrees ? `, miti ${totalTrees.toLocaleString('en-US')}` : ''}, ${usdText(totalUsd)} (${tshText(total)}) · riba ${fmt2(pct)}%: ${usdText(interestUsd)}`,
-      reason: body.notes ?? (isTrees ? `Miti ${st.treesPerArea} kwa ${areaText(st.areaUnit)} × $${D(st.costPerTreeUsd!).toFixed()} kwa mti · 1 USD = TSh ${rate.toFixed()}` : `Kikomo: ${usdText(st.amountPerAcreUsd!)} kwa ekari · 1 USD = TSh ${rate.toFixed()}`),
-      payload: { loanType: body.loanType, totalTrees, treesPerArea: st.treesPerArea, areaUnit: st.areaUnit, costPerTreeUsd: st.costPerTreeUsd, farmers: rows.length, totalUsd: fmt2(totalUsd), interestUsd: fmt2(interestUsd), total: fmt2(total), interest: fmt2(interest), rate: st.interestRate, fxRate: rate.toFixed(), amountPerAcreUsd: st.amountPerAcreUsd },
+      reason: body.notes ?? `${isTrees ? `Miti ${st.treesPerArea} kwa ${areaText(st.areaUnit)} ya miti × $${D(st.costPerTreeUsd!).toFixed()} kwa mti` : st.limitBasis === 'TRIP' ? `Kikomo: trip za kuni za makisio × ${usdText(st.pricePerTripUsd!)}` : st.limitBasis === 'ESTIMATE' ? 'Kikomo: grading ya makisio' : `Kikomo: ${usdText(st.amountPerAcreUsd!)} kwa ekari`} · 1 USD = TSh ${rate.toFixed()}`,
+      payload: { loanType: body.loanType, totalTrees, limitBasis: st.limitBasis, pricePerTripUsd: st.pricePerTripUsd, treesPerArea: st.treesPerArea, areaUnit: st.areaUnit, costPerTreeUsd: st.costPerTreeUsd, farmers: rows.length, totalUsd: fmt2(totalUsd), interestUsd: fmt2(interestUsd), total: fmt2(total), interest: fmt2(interest), rate: st.interestRate, fxRate: rate.toFixed(), amountPerAcreUsd: st.amountPerAcreUsd },
     });
     const [upd] = await tx.update(KB).set({ approvalId: approval.id }).where(eq(KB.id, b.id)).returning();
     await audit(tx, req, { action: 'KUNI_BATCH_PREPARE', entity: 'KuniBatch', entityId: b.id, amcosId, after: { ...upd, farmers: rows.length } });

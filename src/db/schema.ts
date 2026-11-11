@@ -43,7 +43,7 @@ export const mobileMoneyProviderEnum = pgEnum('mobile_money_provider', ['MPESA',
 export const seasonStatusEnum = pgEnum('season_status', ['PLANNING', 'ACTIVE', 'MARKETING', 'CLOSED']);
 export const estimateStatusEnum = pgEnum('estimate_status', ['DRAFT', 'APPROVED', 'REJECTED']);
 export const inputCategoryEnum = pgEnum('input_category', ['FERTILIZER', 'SEED', 'CHEMICAL', 'PACKAGING', 'EQUIPMENT', 'OTHER']);
-export const inputUnitEnum = pgEnum('input_unit', ['BAG', 'KG', 'LITRE', 'ROLL', 'PIECE', 'PACKET']);
+export const inputUnitEnum = pgEnum('input_unit', ['BAG', 'KG', 'LITRE', 'ROLL', 'PIECE', 'PACKET', 'BOTTLE', 'SPOOL', 'METRE']);
 export const stockMovementTypeEnum = pgEnum('stock_movement_type', ['RECEIPT', 'ISSUE', 'RETURN', 'ADJUSTMENT', 'DAMAGE', 'EXPIRY']);
 export const inputIssueStatusEnum = pgEnum('input_issue_status', ['ISSUED', 'CANCELLED', 'PENDING_APPROVAL', 'REJECTED']);
 export const ledgerEntryTypeEnum = pgEnum('ledger_entry_type', [
@@ -110,6 +110,8 @@ export const amcos = pgTable('amcos', {
   farmerPortal: boolean().notNull().default(false), // Meneja anawasha portal ya wakulima (bure ndani ya ada ya chama)
   // Sarafu ya pembejeo: USD = bei, mikopo ya pembejeo na manunuzi kwa dola (vitabu bado ni TSh kwa kiwango cha siku husika)
   inputCurrency: currencyEnum().notNull().default('TZS'),
+  kgPerAcre: numeric({ precision: 10, scale: 2 }).notNull().default('560'), // makisio: kilo za tumbaku kwa ekari (mf. @560)
+  postalAddress: text(),                                                      // mf. S.L.P 149 Urambo (kwa fomu zilizochapishwa)
   // Biashara ya CoopLink (Owner)
   status: amcosStatusEnum().notNull().default('ACTIVE'),
   statusReason: text(),
@@ -281,6 +283,14 @@ export const estimates = pgTable('estimates', {
   buyerId: uuid().references(() => buyers.id),
   acresPlanted: numeric({ precision: 10, scale: 2 }).notNull(),
   estimatedKg: numeric({ precision: 12, scale: 2 }).notNull(),
+  // Fomu ya makisio ya chama (kama ya NSANJO): TTB, mabani, mahindi, miti, kuni na grading
+  ttbNo: text(),                                            // namba ya TTB ya msimu huu
+  barnsExisting: integer(),                                 // mabani yaliyopo
+  barnsNew: integer(),                                      // mabani yanayoongezeka
+  maizeAcres: numeric({ precision: 10, scale: 2 }),
+  treeAcres: numeric({ precision: 10, scale: 2 }),          // kikomo cha mkopo wa miti
+  kuniTrips: numeric({ precision: 10, scale: 2 }),          // kikomo cha mkopo wa kuni (trip x bei ya trip)
+  gradingUsd: numeric({ precision: 14, scale: 2 }),         // kikomo cha mkopo wa grading
   status: estimateStatusEnum().notNull().default('DRAFT'),
   notes: text(),
   approvedById: uuid(),
@@ -1347,6 +1357,16 @@ export const memberGroupMembers = pgTable('member_group_members', {
 //  Mhasibu anaandaa orodha -> Meneja anaidhinisha -> pesa zinatumwa kwenye akaunti za wakulima
 //  -> Mhasibu anathibitisha waliolipwa. Deni (mkopo + riba) linakatwa kwenye mauzo pamoja na pembejeo.
 // =====================================================================
+/** Pembejeo zilizokisiwa kwa mkulima (makisio ya msimu). quantity = mifuko/vipimo vya bidhaa; kg = kama imekisiwa kwa kilo (vitalu). */
+export const estimateInputs = pgTable('estimate_inputs', {
+  id: id(),
+  estimateId: uuid().notNull().references(() => estimates.id),
+  inputItemId: uuid().notNull().references(() => inputItems.id),
+  quantity: numeric({ precision: 16, scale: 4 }).notNull(),
+  kg: numeric({ precision: 12, scale: 2 }),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex().on(t.estimateId, t.inputItemId), index().on(t.inputItemId)]);
+
 export const kuniSettings = pgTable('kuni_settings', {
   id: id(),
   amcosId: uuid().notNull().references(() => amcos.id),
@@ -1357,6 +1377,9 @@ export const kuniSettings = pgTable('kuni_settings', {
   amountPerAcreUsd: numeric({ precision: 14, scale: 2 }),                  // kikomo: USD kwa ekari
   // Mkopo wa miti: idadi ya miti kwa eneo (hekta au ekari) x gharama ya mti mmoja
   areaUnit: text().notNull().default('HECTARE'),                           // 'HECTARE' | 'ACRE'
+  // Kikomo cha kuni/grading: 'ACRE' (dola kwa ekari) | 'TRIP' (kuni: trip za makisio x bei ya trip) | 'ESTIMATE' (grading: kiasi cha makisio)
+  limitBasis: text().notNull().default('ACRE'),
+  pricePerTripUsd: numeric({ precision: 14, scale: 2 }),
   treesPerArea: integer(),
   costPerTreeUsd: numeric({ precision: 12, scale: 4 }),
   isOpen: boolean().notNull().default(true),

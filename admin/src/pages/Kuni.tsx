@@ -18,18 +18,20 @@ import { Kpi, Section, Tabs } from '../components/owner-ui';
 import { DocHead, PrintButton, Signatures } from './acc-common';
 
 type LoanType = 'KUNI' | 'GRADING' | 'TREES';
-interface Settings { loanType: LoanType; interestRate: string; amountPerAcreUsd: string | null; areaUnit?: 'HECTARE' | 'ACRE'; treesPerArea?: number | null; costPerTreeUsd?: string | null; isOpen: boolean; configured?: boolean }
-const isSet = (s: Settings) => (s.loanType === 'TREES' ? Number(s.treesPerArea ?? 0) > 0 && Number(s.costPerTreeUsd ?? 0) > 0 : Number(s.amountPerAcreUsd ?? 0) > 0);
+type Basis = 'ACRE' | 'TRIP' | 'ESTIMATE';
+interface Settings { loanType: LoanType; interestRate: string; amountPerAcreUsd: string | null; limitBasis?: Basis; pricePerTripUsd?: string | null; areaUnit?: 'HECTARE' | 'ACRE'; treesPerArea?: number | null; costPerTreeUsd?: string | null; isOpen: boolean; configured?: boolean }
+const isSet = (s: Settings) => (s.loanType === 'TREES' ? Number(s.treesPerArea ?? 0) > 0 && Number(s.costPerTreeUsd ?? 0) > 0
+  : s.limitBasis === 'TRIP' ? Number(s.pricePerTripUsd ?? 0) > 0 : s.limitBasis === 'ESTIMATE' ? s.configured !== false : Number(s.amountPerAcreUsd ?? 0) > 0);
 const AREA: Record<string, string> = { HECTARE: 'hekta', ACRE: 'ekari' };
 const trees = (n: number | string | null | undefined) => `miti ${Number(n ?? 0).toLocaleString('en-US')}`;
 interface SettingsRes { season: { name: string }; types: Record<LoanType, Settings>; labels: Record<LoanType, string>; rate: { usdToTzs: string; createdAt: string } | null }
-interface Eligible { memberId: string; memberNo: string; name: string; village: string | null; group: string | null; acres: string; hectares?: string; limitTrees?: number; takenTrees?: number; availableTrees?: number; estimatedKg: string; limit: string; taken: string; available: string; debt: string; debtUsd: string; method: string; destination: string }
+interface Eligible { memberId: string; memberNo: string; name: string; village: string | null; group: string | null; acres: string; treeAcres?: string; kuniTrips?: string; gradingUsd?: string; basis?: string; hectares?: string; limitTrees?: number; takenTrees?: number; availableTrees?: number; estimatedKg: string; limit: string; taken: string; available: string; debt: string; debtUsd: string; method: string; destination: string }
 const METHOD: Record<string, string> = { MOBILE_MONEY: 'Simu', BANK: 'Benki', CASH: 'Taslimu' };
 const B_STATUS: Record<string, string> = { DRAFT: 'Inasubiri idhini', APPROVED: 'Imeidhinishwa — tuma pesa', PROCESSING: 'Inalipwa', PARTIAL: 'Sehemu', COMPLETED: 'Imekamilika', CANCELLED: 'Imefutwa' };
 export const LOAN: Record<LoanType, { label: string; short: string; about: string }> = {
-  KUNI: { label: 'Mkopo wa kuni', short: 'Kuni', about: 'Pesa ya kuandaa kuni za kukaushia (kuchoma) tumbaku.' },
+  KUNI: { label: 'Mkopo wa kuni', short: 'Kuni', about: 'Pesa ya kuandaa kuni za kukaushia (kuchoma) tumbaku. Kikomo kinaweza kutoka trip za kuni kwenye makisio.' },
   GRADING: { label: 'Mkopo wa grading', short: 'Grading', about: 'Hutolewa baada ya kuchoma tumbaku: kupanga madaraja (grading) na kufunga mabelo.' },
-  TREES: { label: 'Mkopo wa miti', short: 'Miti', about: 'Pesa ya kupanda miti shambani: kila hekta (au ekari) ina idadi ya miti iliyowekwa na chama, kwa gharama ya kila mti pamoja na riba.' },
+  TREES: { label: 'Mkopo wa miti', short: 'Miti', about: 'Pesa ya kupanda miti shambani: kila hekta (au ekari) ina idadi ya miti iliyowekwa na chama, kwa gharama ya kila mti pamoja na riba. Eneo linatoka "ekari za miti" kwenye makisio.' },
 };
 type Tab = LoanType | 'debts';
 
@@ -76,6 +78,7 @@ function SettingsCard({ type, s, rate, canEdit, onSaved }: { type: LoanType; s: 
   const isTrees = type === 'TREES';
   const [edit, setEdit] = useState(fresh && canEdit);
   const [f, setF] = useState({ interestRate: String(Number(s.interestRate)), amountPerAcreUsd: s.amountPerAcreUsd ? String(Number(s.amountPerAcreUsd)) : '', isOpen: s.isOpen || fresh,
+    limitBasis: (s.limitBasis ?? 'ACRE') as Basis, pricePerTripUsd: s.pricePerTripUsd ? String(Number(s.pricePerTripUsd)) : '',
     areaUnit: s.areaUnit ?? 'HECTARE', treesPerArea: s.treesPerArea ? String(s.treesPerArea) : '', costPerTreeUsd: s.costPerTreeUsd ? String(Number(s.costPerTreeUsd)) : '' });
   const { busy, error, run } = useAction();
   const r = rate ? Number(rate.usdToTzs) : null;
@@ -85,6 +88,17 @@ function SettingsCard({ type, s, rate, canEdit, onSaved }: { type: LoanType; s: 
       <Kpi tone="dark" label={`Miti kwa ${unit}`} value={s.treesPerArea ? Number(s.treesPerArea).toLocaleString('en-US') : '—'} hint={s.treesPerArea && s.costPerTreeUsd ? `= ${usd(Number(s.treesPerArea) * Number(s.costPerTreeUsd))} kwa ${unit} · eneo kutoka makisio` : 'Eneo kutoka makisio yaliyoidhinishwa'} />
       <Kpi tone="gold" label="Gharama ya mti mmoja" value={s.costPerTreeUsd ? usd(s.costPerTreeUsd, 2) : '—'} hint={r && s.costPerTreeUsd ? `≈ ${tsh(Number(s.costPerTreeUsd) * r)} · 1 USD = TSh ${num(r)}` : undefined} />
       <Kpi label="Riba kwa msimu" value={`${num(s.interestRate)}%`} hint="Inaongezwa pesa zikitumwa" />
+      <Kpi tone={s.isOpen ? undefined : 'warn'} label="Hali" value={s.isOpen ? t('Wazi') : t('Imefungwa')} hint={canEdit ? <button type="button" className="link-btn" onClick={() => setEdit(true)}>{t('Badilisha mipangilio →')}</button> : 'Inawekwa na Mhasibu'} />
+    </div>
+  );
+  const basis = s.limitBasis ?? 'ACRE';
+  if (!edit && basis !== 'ACRE') return (
+    <div className="grid grid-kpi">
+      {basis === 'TRIP'
+        ? <Kpi tone="dark" label="Bei ya trip moja ya kuni" value={s.pricePerTripUsd ? usd(s.pricePerTripUsd) : '—'} hint={`Kikomo = trip za kuni kwenye makisio × bei hii${r && s.pricePerTripUsd ? ` · ≈ ${tsh(Number(s.pricePerTripUsd) * r)}` : ''}`} />
+        : <Kpi tone="dark" label="Kikomo" value={t('Makisio ya grading')} hint="Kiasi cha grading (USD) kwenye makisio ya mkulima" />}
+      <Kpi label="Riba kwa msimu" value={`${num(s.interestRate)}%`} hint="Inaongezwa pesa zikitumwa" />
+      <Kpi tone="gold" label="Kiwango cha dola" value={r ? `TSh ${num(r)}` : '—'} hint={rate ? `Kwa USD 1 · ${dateTime(rate.createdAt)}` : 'Bado hakijawekwa'} />
       <Kpi tone={s.isOpen ? undefined : 'warn'} label="Hali" value={s.isOpen ? t('Wazi') : t('Imefungwa')} hint={canEdit ? <button type="button" className="link-btn" onClick={() => setEdit(true)}>{t('Badilisha mipangilio →')}</button> : 'Inawekwa na Mhasibu'} />
     </div>
   );
@@ -108,16 +122,22 @@ function SettingsCard({ type, s, rate, canEdit, onSaved }: { type: LoanType; s: 
           help={Number(f.costPerTreeUsd) > 0 && Number(f.treesPerArea) > 0 ? `${AREA[f.areaUnit]} moja = ${usd(Number(f.costPerTreeUsd) * Number(f.treesPerArea))}${r ? ` (≈ ${tsh(Number(f.costPerTreeUsd) * Number(f.treesPerArea) * r)})` : ''}` : 'Mf. 0.25 — miti 800 = $200'} />
         <TextField label="Riba kwa msimu (%) *" type="number" min="0" step="0.1" value={f.interestRate} onChange={(v) => setF({ ...f, interestRate: v })} help="Mf. 10% — mkopo wa $200 unakuwa deni la $220" />
       </div> : <div className="form-grid">
-        <TextField label="Kikomo kwa ekari (USD) *" type="number" min="0" step="0.01" value={f.amountPerAcreUsd} onChange={(v) => setF({ ...f, amountPerAcreUsd: v })}
-          help={r && Number(f.amountPerAcreUsd) > 0 ? `≈ ${tsh(Number(f.amountPerAcreUsd) * r)} kwa ekari leo. Mkulima mwenye ekari 2, kikomo = 2 × kiasi hiki` : 'Mkulima mwenye ekari 2 za makisio, kikomo = 2 × kiasi hiki'} />
+        <SelectField label="Kikomo kinatoka wapi *" value={f.limitBasis} onChange={(v) => setF({ ...f, limitBasis: v as Basis })}
+          options={type === 'KUNI' ? [{ value: 'TRIP', label: 'Trip za kuni kwenye makisio × bei ya trip' }, { value: 'ACRE', label: 'Ekari za tumbaku × dola kwa ekari' }]
+            : [{ value: 'ESTIMATE', label: 'Kiasi cha grading kwenye makisio' }, { value: 'ACRE', label: 'Ekari za tumbaku × dola kwa ekari' }]} />
+        {f.limitBasis === 'TRIP' && <TextField label="Bei ya trip moja (USD) *" type="number" min="0" step="0.01" value={f.pricePerTripUsd} onChange={(v) => setF({ ...f, pricePerTripUsd: v })}
+          help={r && Number(f.pricePerTripUsd) > 0 ? `≈ ${tsh(Number(f.pricePerTripUsd) * r)} leo. Mkulima wa trip 3 = 3 × kiasi hiki` : 'Mkulima wa trip 3 kwenye makisio, kikomo = 3 × kiasi hiki'} />}
+        {f.limitBasis === 'ACRE' && <TextField label="Kikomo kwa ekari (USD) *" type="number" min="0" step="0.01" value={f.amountPerAcreUsd} onChange={(v) => setF({ ...f, amountPerAcreUsd: v })}
+          help={r && Number(f.amountPerAcreUsd) > 0 ? `≈ ${tsh(Number(f.amountPerAcreUsd) * r)} kwa ekari leo. Mkulima mwenye ekari 2, kikomo = 2 × kiasi hiki` : 'Mkulima mwenye ekari 2 za makisio, kikomo = 2 × kiasi hiki'} />}
         <TextField label="Riba kwa msimu (%) *" type="number" min="0" step="0.1" value={f.interestRate} onChange={(v) => setF({ ...f, interestRate: v })} help="Mf. 10% — mkopo wa $100 unakuwa deni la $110" />
       </div>}
       <label className="check"><input type="checkbox" checked={f.isOpen} onChange={(e) => setF({ ...f, isOpen: e.target.checked })} /> {t(`${LOAN[type].label} uko wazi (unaweza kutolewa)`)}</label>
       <div className="actions" style={{ justifyContent: 'flex-end', marginTop: 10 }}>
         {!fresh && <Button variant="secondary" onClick={() => setEdit(false)}>Ghairi</Button>}
-        {canEdit && <Button busy={busy} disabled={isTrees ? !f.treesPerArea || !f.costPerTreeUsd : !f.amountPerAcreUsd} onClick={async () => {
+        {canEdit && <Button busy={busy} disabled={isTrees ? !f.treesPerArea || !f.costPerTreeUsd : f.limitBasis === 'TRIP' ? !f.pricePerTripUsd : f.limitBasis === 'ACRE' ? !f.amountPerAcreUsd : false} onClick={async () => {
           const body = isTrees ? { loanType: type, interestRate: f.interestRate, isOpen: f.isOpen, areaUnit: f.areaUnit, treesPerArea: Number(f.treesPerArea), costPerTreeUsd: f.costPerTreeUsd }
-            : { loanType: type, interestRate: f.interestRate, isOpen: f.isOpen, amountPerAcreUsd: f.amountPerAcreUsd };
+            : { loanType: type, interestRate: f.interestRate, isOpen: f.isOpen, limitBasis: f.limitBasis,
+              ...(f.limitBasis === 'ACRE' ? { amountPerAcreUsd: f.amountPerAcreUsd } : {}), ...(f.limitBasis === 'TRIP' ? { pricePerTripUsd: f.pricePerTripUsd } : {}) };
           if (await run(() => api('/kuni/settings', { method: 'PUT', body }))) { setEdit(false); onSaved(); }
         }}>Hifadhi</Button>}
       </div>
@@ -147,7 +167,7 @@ function Prepare({ type, settings, rate, onDone }: { type: LoanType; settings: S
   const total = useMemo(() => chosen.reduce((s, r) => s + usdOf(r.memberId), 0), [chosen, amounts]); // eslint-disable-line react-hooks/exhaustive-deps
   const totalTrees = isTrees ? chosen.reduce((s, r) => s + Number(amounts[r.memberId] || 0), 0) : 0;
   const toggle = (id: string) => { const n = new Set(picked); if (n.has(id)) n.delete(id); else n.add(id); setPicked(n); };
-  if (!open) return <Alert kind="warn">{t(`${LOAN[type].label} haujafunguliwa msimu huu.`)} {t(isTrees ? 'Weka idadi ya miti kwa hekta, gharama ya mti na riba kwenye mipangilio juu, kisha weka "uko wazi".' : 'Weka kikomo kwa ekari (dola) na riba kwenye mipangilio juu, kisha weka "uko wazi".')}</Alert>;
+  if (!open) return <Alert kind="warn">{t(`${LOAN[type].label} haujafunguliwa msimu huu.`)} {t(isTrees ? 'Weka idadi ya miti kwa hekta, gharama ya mti na riba kwenye mipangilio juu, kisha weka "uko wazi".' : 'Weka kikomo na riba kwenye mipangilio juu, kisha weka "uko wazi".')}</Alert>;
   const tz = (v: number) => (rate ? tsh(v * rate) : '—');
   return (
     <section className="card">
@@ -159,16 +179,16 @@ function Prepare({ type, settings, rate, onDone }: { type: LoanType; settings: S
       {!el.data ? <Loading /> : rows.length === 0 ? <Empty>Hakuna mkulima mwenye makisio yaliyoidhinishwa msimu huu. Makisio yanaingizwa na Stokipa na kuidhinishwa na Meneja.</Empty> : (
         <div className="table-wrap"><table className="table">
           <thead><tr><th style={{ width: 36 }}><input type="checkbox" aria-label="Chagua wote" onChange={(e) => setPicked(e.target.checked ? new Set(rows.filter((r) => Number(r.available) > 0).map((r) => r.memberId)) : new Set())} /></th>
-            <th>Mkulima</th><th className="num">{isTrees && settings.areaUnit !== 'ACRE' ? 'Hekta' : 'Ekari'}</th><th className="num">Kikomo</th><th className="num">Amekopa</th><th className="num">Deni la dola sasa</th><th>{isTrees ? 'Miti ya kutoa' : 'Kiasi cha kutoa (USD)'}</th><th>Atalipwa kupitia</th></tr></thead>
+            <th>Mkulima</th><th className="num">{isTrees ? (settings.areaUnit !== 'ACRE' ? 'Hekta za miti' : 'Ekari za miti') : settings.limitBasis === 'TRIP' ? 'Trip za kuni' : settings.limitBasis === 'ESTIMATE' ? 'Grading (makisio)' : 'Ekari'}</th><th className="num">Kikomo</th><th className="num">Amekopa</th><th className="num">Deni la dola sasa</th><th>{isTrees ? 'Miti ya kutoa' : 'Kiasi cha kutoa (USD)'}</th><th>Atalipwa kupitia</th></tr></thead>
           <tbody>{rows.map((r) => (
             <tr key={r.memberId} className={picked.has(r.memberId) ? 'row-picked' : ''} style={{ opacity: Number(r.available) > 0 ? 1 : 0.55 }}>
               <td>{Number(r.available) > 0 && <input type="checkbox" aria-label={`Chagua ${r.name}`} checked={picked.has(r.memberId)} onChange={() => toggle(r.memberId)} />}</td>
               <td><strong>{r.name}</strong><div className="muted" style={{ fontSize: 12 }}>{r.memberNo}{r.group ? ` · ${r.group}` : ''}</div></td>
               {isTrees ? <>
-                <td className="num">{settings.areaUnit === 'ACRE' ? num(r.acres) : num(r.hectares)}{settings.areaUnit !== 'ACRE' && <div className="muted" style={{ fontSize: 11 }}>ekari {num(r.acres)}</div>}</td>
+                <td className="num">{settings.areaUnit === 'ACRE' ? num(r.treeAcres) : num(r.hectares)}{settings.areaUnit !== 'ACRE' && <div className="muted" style={{ fontSize: 11 }}>ekari {num(r.treeAcres)}</div>}</td>
                 <td className="num">{trees(r.limitTrees)}<div className="muted" style={{ fontSize: 11 }}>{usd(r.limit)}</div></td>
                 <td className="num">{r.takenTrees ? <>{trees(r.takenTrees)}<div className="muted" style={{ fontSize: 11 }}>{usd(r.taken)}</div></> : '—'}</td>
-              </> : <><td className="num">{num(r.acres)}</td><td className="num">{usd(r.limit)}</td><td className="num">{Number(r.taken) ? usd(r.taken) : '—'}</td></>}
+              </> : <><td className="num">{settings.limitBasis === 'TRIP' ? num(r.kuniTrips) : settings.limitBasis === 'ESTIMATE' ? usd(r.gradingUsd) : num(r.acres)}</td><td className="num">{usd(r.limit)}</td><td className="num">{Number(r.taken) ? usd(r.taken) : '—'}</td></>}
               <td className="num">{Number(r.debtUsd) ? usd(r.debtUsd) : '—'}{Number(r.debt) > 0 && <div className="muted" style={{ fontSize: 11 }}>{t('vitabu')}: {tsh(r.debt)}</div>}</td>
               <td>{Number(r.available) > 0 ? <>
                 <input className="input" style={{ maxWidth: 130 }} type="number" min={isTrees ? 1 : 0.01} step={isTrees ? 1 : 0.01} max={isTrees ? r.availableTrees : Number(r.available)} value={amounts[r.memberId] ?? ''} aria-label={`${isTrees ? 'Miti' : 'Kiasi'} ${r.name}`}
