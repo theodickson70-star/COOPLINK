@@ -126,7 +126,7 @@ export function Pager({ meta, onPage }: { meta?: Paged<unknown>['meta']; onPage:
   );
 }
 
-export function Modal({ open, title, onClose, children, footer }: { open: boolean; title: string; onClose: () => void; children: ReactNode; footer?: ReactNode }) {
+export function Modal({ open, title, onClose, children, footer, size, head }: { open: boolean; title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; size?: 'lg'; head?: ReactNode }) {
   const t = useT();
   useEffect(() => {
     if (!open) return;
@@ -137,9 +137,9 @@ export function Modal({ open, title, onClose, children, footer }: { open: boolea
   if (!open) return null;
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={t(title)}>
+      <div className={`modal${size === 'lg' ? ' modal-lg' : ''}`} role="dialog" aria-modal="true" aria-label={t(title)}>
         <div className="modal-head">
-          <h2>{t(title)}</h2>
+          {head ?? <h2>{t(title)}</h2>}
           <Button variant="ghost" size="sm" onClick={onClose} aria-label={t('Funga')}>✕</Button>
         </div>
         <div className="modal-body">{children}</div>

@@ -1,7 +1,7 @@
 // IDHINI — Meneja anaona na kuamua maombi yote ya chama; wengine wanaona maombi yao wenyewe
 import { Router } from 'express';
 import { z } from 'zod';
-import { aliasedTable, and, count, desc, eq, type SQL } from 'drizzle-orm';
+import { aliasedTable, and, count, desc, eq, inArray, min, sql, type SQL } from 'drizzle-orm';
 import { db, schema } from '../db';
 import { ah, decimalSchema, paged, paginationQuery, uuidParam } from '../lib/http';
 import { notFound } from '../lib/errors';
@@ -30,8 +30,10 @@ approvalsRouter.get('/', requireAmcosPerm('approvals.read'), ah(async (req, res)
   const q = paginationQuery.extend({
     status: z.enum(schema.approvalStatusEnum.enumValues).optional(),
     type: z.enum(schema.approvalTypeEnum.enumValues).optional(),
+    // Kundi la maombi (mf. FEDHA): aina kadhaa kwa koma
+    types: z.string().optional().transform((v) => (v ? v.split(',').filter(Boolean) : [])).pipe(z.array(z.enum(schema.approvalTypeEnum.enumValues))),
   }).parse(req.query);
-  const where = and(amcosScope(req, A.amcosId), visible(req), q.status ? eq(A.status, q.status) : undefined, q.type ? eq(A.type, q.type) : undefined);
+  const where = and(amcosScope(req, A.amcosId), visible(req), q.status ? eq(A.status, q.status) : undefined, q.type ? eq(A.type, q.type) : undefined, q.types.length ? inArray(A.type, q.types) : undefined);
   const [rows, [{ total }]] = await Promise.all([
     db.select(cols).from(A)
       .leftJoin(requester, eq(requester.id, A.requestedById))
@@ -43,9 +45,13 @@ approvalsRouter.get('/', requireAmcosPerm('approvals.read'), ah(async (req, res)
 }));
 
 approvalsRouter.get('/summary', requireAmcosPerm('approvals.read'), ah(async (req, res) => {
-  const rows = await db.select({ type: A.type, n: count() }).from(A)
+  const rows = await db.select({ type: A.type, n: count(), amount: sql<string>`coalesce(sum(${A.amount}), 0)`, oldest: min(A.createdAt) }).from(A)
     .where(and(amcosScope(req, A.amcosId), visible(req), eq(A.status, 'PENDING'))).groupBy(A.type);
-  res.json({ pending: Object.fromEntries(rows.map((r) => [r.type, r.n])), total: rows.reduce((s, r) => s + r.n, 0) });
+  const oldest = rows.reduce<Date | null>((o, r) => (r.oldest && (!o || r.oldest < o) ? r.oldest : o), null);
+  res.json({
+    pending: Object.fromEntries(rows.map((r) => [r.type, r.n])), total: rows.reduce((s, r) => s + r.n, 0),
+    amounts: Object.fromEntries(rows.map((r) => [r.type, r.amount])), amountTotal: rows.reduce((s, r) => s + Number(r.amount), 0).toFixed(2), oldestAt: oldest,
+  });
 }));
 
 approvalsRouter.get('/:id', requireAmcosPerm('approvals.read'), ah(async (req, res) => {

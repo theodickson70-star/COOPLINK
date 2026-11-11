@@ -1274,3 +1274,66 @@ tr.row-msg.row-warn td { color: var(--warn-ink); }
 .grade-table td, .grade-table th { padding: 5px 8px; }
 @media (max-width: 900px) { .grade-cols { grid-template-columns: 1fr; } }
 @media print { .grade-cols { gap: 8px; } .grade-table { font-size: 10px; } }
+
+/* ------------------------------ IDHINI (maombi kwa Meneja) ------------------------------ */
+.apv-summary { display: flex; flex-direction: column; gap: 14px; margin-bottom: 16px; }
+.apv-sum-main { display: flex; gap: 14px; align-items: center; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 14px 18px; }
+.apv-sum-n { font-family: var(--font-head); font-size: 34px; font-weight: 800; color: var(--head); min-width: 46px; text-align: center; }
+.apv-cats { display: flex; gap: 8px; flex-wrap: wrap; }
+.apv-cats button { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); font: inherit; font-size: 13.5px; font-weight: 600; color: var(--muted); cursor: pointer; min-height: 38px; }
+.apv-cats button svg { width: 17px; height: 17px; }
+.apv-cats button b { background: var(--line-2); color: var(--head); border-radius: 999px; padding: 1px 8px; font-size: 12px; }
+.apv-cats button.on { background: var(--forest, #0b2f23); color: #fff; border-color: transparent; }
+.apv-cats button.on b { background: rgba(255, 255, 255, .2); color: #fff; }
+.apv-list { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; }
+.apv-card { --c: #2f7d59; display: grid; grid-template-columns: 46px 1fr auto; gap: 14px; align-items: start; background: var(--paper); border: 1px solid var(--line); border-left: 4px solid var(--c); border-radius: 14px; padding: 14px 16px; }
+.apv-card.late { box-shadow: 0 0 0 1px rgba(192, 57, 43, .25); }
+.apv-icon { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: color-mix(in srgb, var(--c) 14%, transparent); color: var(--c); }
+.apv-icon svg { width: 22px; height: 22px; }
+.cat-farmers { --c: #2f6fb0; } .cat-inputs { --c: #b7791f; } .cat-finance { --c: #2f7d59; } .cat-sales { --c: #6b8e23; } .cat-loans { --c: #8e44ad; } .cat-books { --c: #5d6d7e; }
+.apv-main { min-width: 0; }
+.apv-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.apv-type { font-size: 12px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--c, var(--muted)); }
+.apv-no { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.apv-title { font-size: 15.5px; font-weight: 600; color: var(--head); margin: 5px 0 2px; line-height: 1.4; font-family: inherit; }
+.apv-reason { margin: 2px 0 0; color: var(--muted); font-size: 13.5px; font-style: italic; }
+.apv-meta { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-top: 8px; font-size: 13px; }
+.apv-who { display: inline-flex; align-items: center; gap: 7px; }
+.apv-av { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--line-2); color: var(--head); font-size: 11px; font-weight: 700; flex: none; }
+.apv-wait { color: var(--muted); } .apv-wait.late { color: #c0392b; font-weight: 600; }
+.apv-side { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.apv-amount { font-family: var(--font-head); font-weight: 700; font-size: 17px; color: var(--head); white-space: nowrap; }
+@media (max-width: 700px) {
+  .apv-card { grid-template-columns: 38px 1fr; }
+  .apv-icon { width: 36px; height: 36px; }
+  .apv-side { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; align-items: center; }
+}
+/* Dirisha la kukagua ombi */
+.modal.modal-lg { width: min(820px, 100%); }
+.apv-mhead { display: flex; gap: 12px; align-items: center; }
+.apv-mhead h2 { font-size: 18px; margin-top: 2px; }
+.apv-hero { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; background: var(--line-2); border-radius: 14px; padding: 14px 16px; }
+.apv-hero-title { margin: 4px 0 0; font-size: 16px; font-weight: 600; color: var(--head); line-height: 1.45; }
+.apv-hero-amt { text-align: right; white-space: nowrap; }
+.apv-hero-amt strong { font-family: var(--font-head); font-size: 22px; color: var(--head); }
+.apv-label { display: block; font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.apv-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; }
+.apv-facts > div { display: flex; flex-direction: column; }
+.apv-facts .wide { grid-column: 1 / -1; }
+.apv-decision { border-radius: 12px; padding: 10px 14px; border: 1px solid var(--line); }
+.apv-decision.ok { background: color-mix(in srgb, #2f7d59 10%, transparent); } .apv-decision.bad { background: color-mix(in srgb, #c0392b 9%, transparent); }
+.apv-detail { display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
+.apv-detail:empty { display: none; }
+.apv-effect { background: color-mix(in srgb, #2f7d59 9%, transparent); border: 1px solid color-mix(in srgb, #2f7d59 25%, transparent); border-radius: 12px; padding: 10px 14px; }
+.apv-decide-title { font-family: var(--font-head); font-weight: 700; color: var(--head); border-top: 1px solid var(--line); padding-top: 14px; }
+@media (max-width: 640px) { .apv-hero { flex-direction: column; } .apv-hero-amt { text-align: left; } .apv-facts { grid-template-columns: 1fr; } }
+
+/* Simu ndogo: topbar isizidi upana wa skrini (avatar inafichwa; Toka inabaki) */
+@media (max-width: 480px) {
+  .topbar { gap: 4px; padding: 10px 12px; }
+  .topbar .user-chip { display: none; }
+  .topbar .help-btn { padding-left: 8px; padding-right: 8px; }
+  .topbar .pref-switch button { padding-left: 7px; padding-right: 7px; }
+  .apv-cats { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+  .apv-cats button { flex: none; }
+}

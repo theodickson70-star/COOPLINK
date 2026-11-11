@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { usd } from '../lib/fx';
 import { useT } from '../lib/prefs';
 import { Link } from 'react-router-dom';
@@ -6,7 +6,7 @@ import { api, type Paged } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
 import { APPROVAL_TYPE_LABEL, dateTime, num, phone, ROLE_LABEL, tsh } from '../lib/format';
-import { Alert, Badge, Button, Empty, Loading, Modal, PageHead, Pager, Select, TextField } from '../components/ui';
+import { Alert, Badge, Button, Empty, Loading, Modal, PageHead, Pager, TextField } from '../components/ui';
 import { Tabs } from '../components/owner-ui';
 
 export interface Approval {
@@ -34,16 +34,79 @@ export function entityLink(a: Pick<Approval, 'entityType' | 'entityId'>) {
   return null;
 }
 
+// ------------------------------ MAKUNDI YA MAOMBI ------------------------------
+const ICON = {
+  members: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /><circle cx="17" cy="9" r="2.6" /><path d="M16.5 14.6c2.5.2 4.4 1.9 5 5.4" /></>,
+  inputs: <><path d="M3 7l9-4 9 4-9 4-9-4z" /><path d="M3 7v10l9 4 9-4V7" /><path d="M12 11v10" /></>,
+  money: <><rect x="2.5" y="6" width="19" height="12" rx="2" /><circle cx="12" cy="12" r="2.8" /><path d="M6 9v.01M18 15v.01" /></>,
+  leaf: <><path d="M5 19c0-8 5-14 15-15-1 10-7 15-15 15z" /><path d="M5 19l8-8" /></>,
+  wallet: <><path d="M3 7a2 2 0 0 1 2-2h13v4" /><rect x="3" y="7" width="18" height="13" rx="2" /><circle cx="16" cy="13.5" r="1.3" /></>,
+  book: <><path d="M4 4h6a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4z" /><path d="M20 4h-6a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h7z" /></>,
+  all: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
+};
+const Svg = ({ d }: { d: ReactNode }) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>;
+
+type Cat = 'farmers' | 'inputs' | 'finance' | 'sales' | 'loans' | 'books';
+export const CATS: Record<Cat, { label: string; icon: ReactNode; types: string[] }> = {
+  farmers: { label: 'Wakulima na vikundi', icon: ICON.members, types: ['MEMBER_REGISTRATION', 'GROUP_REGISTRATION', 'GROUP_CHANGE'] },
+  inputs: { label: 'Pembejeo na stoo', icon: ICON.inputs, types: ['INPUT_ISSUE', 'STOCK_RECEIPT', 'STOCK_ADJUSTMENT', 'PURCHASE'] },
+  finance: { label: 'Fedha na malipo', icon: ICON.money, types: ['EXPENSE', 'FARMER_PAYMENT', 'SUPPLIER_PAYMENT', 'TRANSFER', 'REVERSAL', 'PAYROLL'] },
+  sales: { label: 'Mauzo ya tumbaku', icon: ICON.leaf, types: ['TOBACCO_SALE', 'PAYMENT_BATCH'] },
+  loans: { label: 'Mikopo', icon: ICON.wallet, types: ['KUNI_BATCH'] },
+  books: { label: 'Uhasibu', icon: ICON.book, types: ['JOURNAL', 'OPENING_BALANCE', 'PERIOD_CLOSE', 'YEAR_END_CLOSE', 'ASSET_DISPOSAL'] },
+};
+export const catOf = (type: string): Cat => (Object.entries(CATS).find(([, c]) => c.types.includes(type))?.[0] as Cat) ?? 'books';
+
+/** Kitakachotokea Meneja akiidhinisha — kwa lugha rahisi */
+const EFFECT: Record<string, string> = {
+  MEMBER_REGISTRATION: 'Mkulima atakuwa mwanachama hai na kupata namba ya uanachama.',
+  GROUP_REGISTRATION: 'Kikundi kitakuwa hai; wanachama wake watadhaminiana madeni.',
+  GROUP_CHANGE: 'Mabadiliko ya wanachama wa kikundi yataanza kutumika.',
+  INPUT_ISSUE: 'Pembejeo zitatoka stoo na thamani yake itaingia kwenye deni la mkulima.',
+  STOCK_RECEIPT: 'Mzigo utaingia stoo kwa idadi na bei utakazothibitisha.',
+  STOCK_ADJUSTMENT: 'Salio la stoo litarekebishwa kama ilivyoombwa.',
+  PURCHASE: 'Ombi la manunuzi litaruhusiwa kuendelea kwa mzabuni.',
+  EXPENSE: 'Matumizi yataruhusiwa kulipwa kutoka akaunti ya chama.',
+  FARMER_PAYMENT: 'Malipo kwa mkulima yataruhusiwa kutoka akaunti ya chama.',
+  SUPPLIER_PAYMENT: 'Mzabuni atalipwa kutoka akaunti ya chama.',
+  TRANSFER: 'Fedha zitahamishwa kati ya akaunti za chama.',
+  REVERSAL: 'Muamala utasahihishwa (kinyume chake kitaandikwa); historia inabaki.',
+  PAYROLL: 'Mishahara itaruhusiwa kulipwa kwa watumishi.',
+  TOBACCO_SALE: 'Mauzo yataingia kwenye daftari kuu na madeni ya wakulima yatakatwa.',
+  PAYMENT_BATCH: 'Mhasibu ataruhusiwa kuwalipa wakulima kwenye orodha.',
+  KUNI_BATCH: 'Mhasibu atatuma pesa kwa wakulima; mkopo na riba vitaingia kwenye deni la dola la mkulima.',
+  JOURNAL: 'Journal itaandikwa kwenye daftari kuu.',
+  OPENING_BALANCE: 'Salio la kuanzia litaandikwa kwenye vitabu vya chama.',
+  PERIOD_CLOSE: 'Vitabu vitafungwa — hakuna muamala wa kipindi hicho utakaoruhusiwa tena.',
+  YEAR_END_CLOSE: 'Mwaka utafungwa na ziada/upungufu kuhamishiwa kwenye mtaji.',
+  ASSET_DISPOSAL: 'Mali itaondolewa kwenye rejista ya mali za chama.',
+};
+
+/** "dakika 5 / saa 3 / siku 2" tangu ombi litumwe */
+function waited(iso: string) {
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (m < 1) return { text: 'sasa hivi', late: false };
+  if (m < 60) return { text: `dakika ${m}`, late: false };
+  const h = Math.round(m / 60);
+  if (h < 24) return { text: `saa ${h}`, late: false };
+  const d = Math.round(h / 24);
+  return { text: `siku ${d}`, late: d >= 2 };
+}
+const initials = (n: string | null) => (n ?? '?').split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0]).join('').toUpperCase();
+
 export function Approvals() {
   const t = useT();
   const { may } = useAuth();
   const decider = may('approvals.decide');
   const [tab, setTab] = useState<'PENDING' | 'ALL'>('PENDING');
-  const [type, setType] = useState('');
+  const [cat, setCat] = useState<Cat | ''>('');
   const [page, setPage] = useState(1);
-  const { data, loading, error, reload } = useFetch<Paged<Approval>>('/approvals', { status: tab === 'PENDING' ? 'PENDING' : undefined, type: type || undefined, page, pageSize: 25 });
+  const { data, loading, error, reload } = useFetch<Paged<Approval>>('/approvals', { status: tab === 'PENDING' ? 'PENDING' : undefined, types: cat ? CATS[cat].types.join(',') : undefined, page, pageSize: 25 });
+  const sum = useFetch<{ pending: Record<string, number>; total: number; amountTotal: string; oldestAt: string | null }>('/approvals/summary');
   const [sel, setSel] = useState<Approval | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const catCount = (c: Cat) => CATS[c].types.reduce((n, ty) => n + (sum.data?.pending[ty] ?? 0), 0);
+  const old = sum.data?.oldestAt ? waited(sum.data.oldestAt) : null;
 
   return (
     <>
@@ -52,33 +115,60 @@ export function Approvals() {
         : 'Maombi uliyotuma kwa Meneja na hali yake'} />
       <Alert kind="ok">{ok}</Alert>
       <Alert>{error}</Alert>
-      <Tabs value={tab} onChange={(v) => { setTab(v); setPage(1); }} items={[['PENDING', 'Yanayosubiri'], ['ALL', 'Historia yote']]} />
-      <section className="card">
-        <div className="toolbar">
-          <Select aria-label="Aina ya ombi" value={type} onChange={(e) => { setType(e.target.value); setPage(1); }}>
-            <option value="">{t('Aina zote')}</option>
-            {Object.entries(APPROVAL_TYPE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </Select>
+      {sum.data && (
+        <div className="apv-summary">
+          <div className="apv-sum-main">
+            <span className="apv-sum-n">{num(sum.data.total)}</span>
+            <div><strong>{decider ? t('Maombi yanasubiri uamuzi wako') : t('Maombi yako yanasubiri Meneja')}</strong>
+              <div className="muted">{Number(sum.data.amountTotal) > 0 ? <>{t('Thamani')}: <strong>{tsh(sum.data.amountTotal)}</strong></> : null}
+                {old && sum.data.total > 0 ? <> · {t('la zamani zaidi limesubiri')} <strong className={old.late ? 'money-neg' : ''}>{old.text}</strong></> : null}</div></div>
+          </div>
+          <div className="apv-cats" role="tablist" aria-label={t('Makundi ya maombi')}>
+            <button type="button" role="tab" aria-selected={cat === ''} className={cat === '' ? 'on' : ''} onClick={() => { setCat(''); setPage(1); }}><Svg d={ICON.all} /><span>{t('Yote')}</span>{sum.data.total > 0 && <b>{sum.data.total}</b>}</button>
+            {(Object.keys(CATS) as Cat[]).map((c) => (
+              <button key={c} type="button" role="tab" aria-selected={cat === c} className={`${cat === c ? 'on' : ''} cat-${c}`} onClick={() => { setCat(c); setPage(1); }}>
+                <Svg d={CATS[c].icon} /><span>{t(CATS[c].label)}</span>{catCount(c) > 0 && <b>{catCount(c)}</b>}
+              </button>
+            ))}
+          </div>
         </div>
-        {loading && !data ? <Loading /> : data?.data.length === 0 ? <Empty>{tab === 'PENDING' ? 'Hakuna ombi linalosubiri. 👍' : 'Hakuna maombi bado.'}</Empty> : (
-          <div className="table-wrap"><table className="table">
-            <thead><tr><th>{t('Ombi')}</th><th>{t('Maelezo')}</th><th className="num">{t('Kiasi')}</th><th>{t('Aliyeomba')}</th><th>{t('Hali')}</th><th /></tr></thead>
-            <tbody>{data?.data.map((a) => (
-              <tr key={a.id}>
-                <td style={{ whiteSpace: 'nowrap' }}><strong>{a.requestNo}</strong><div className="muted" style={{ fontSize: 12 }}>{a.typeLabel}</div></td>
-                <td style={{ minWidth: 240 }}>{a.title}{a.reason && <div className="muted" style={{ fontSize: 13 }}>Sababu: {a.reason}</div>}</td>
-                <td className="num">{a.amount ? tsh(a.amount) : '—'}</td>
-                <td>{a.requestedBy ?? '—'}<div className="muted" style={{ fontSize: 12 }}>{ROLE_LABEL[a.requestedRole] ?? a.requestedRole} · {dateTime(a.createdAt)}</div></td>
-                <td><Badge status={a.status === 'PENDING' ? 'DRAFT' : a.status} label={STATUS[a.status]} />{isSelf(a) && <> <SelfBadge /></>}
-                  {a.decidedAt && <div className="muted" style={{ fontSize: 12 }}>{a.decidedBy} · {dateTime(a.decidedAt)}</div>}</td>
-                <td className="num"><Button size="sm" variant={a.status === 'PENDING' && decider ? 'primary' : 'secondary'} onClick={() => setSel(a)}>{a.status === 'PENDING' && decider ? 'Amua' : 'Fungua'}</Button></td>
-              </tr>
-            ))}</tbody>
-          </table></div>
-        )}
-        <Pager meta={data?.meta} onPage={setPage} />
-      </section>
-      {sel && <DecideModal approval={sel} onClose={() => setSel(null)} onDone={(msg) => { setSel(null); setOk(msg); reload(); }} />}
+      )}
+      <Tabs value={tab} onChange={(v) => { setTab(v); setPage(1); }} items={[['PENDING', 'Yanayosubiri'], ['ALL', 'Historia yote']]} />
+      {loading && !data ? <Loading /> : data?.data.length === 0 ? <section className="card"><Empty>{tab === 'PENDING' ? 'Hakuna ombi linalosubiri. 👍' : 'Hakuna maombi bado.'}</Empty></section> : (
+        <div className="apv-list">
+          {data?.data.map((a) => {
+            const c = catOf(a.type);
+            const w = waited(a.createdAt);
+            const pending = a.status === 'PENDING';
+            return (
+              <article key={a.id} className={`apv-card cat-${c}${pending && w.late ? ' late' : ''}`}>
+                <div className="apv-icon"><Svg d={CATS[c].icon} /></div>
+                <div className="apv-main">
+                  <div className="apv-top">
+                    <span className="apv-type">{a.typeLabel ?? APPROVAL_TYPE_LABEL[a.type]}</span>
+                    <span className="apv-no">{a.requestNo}</span>
+                    <Badge status={pending ? 'DRAFT' : a.status} label={STATUS[a.status]} />{isSelf(a) && <SelfBadge />}
+                  </div>
+                  <h3 className="apv-title">{a.title}</h3>
+                  {a.reason && <p className="apv-reason">“{a.reason}”</p>}
+                  <div className="apv-meta">
+                    <span className="apv-who"><span className="apv-av">{initials(a.requestedBy)}</span>{a.requestedBy ?? '—'} <span className="muted">· {ROLE_LABEL[a.requestedRole] ?? a.requestedRole}</span></span>
+                    <span className="muted">{dateTime(a.createdAt)}</span>
+                    {pending ? <span className={w.late ? 'apv-wait late' : 'apv-wait'}>⏱ {w.text === 'sasa hivi' ? t('imetumwa sasa hivi') : `${t('inasubiri')} ${w.text}`}</span>
+                      : a.decidedAt && <span className="muted">{STATUS[a.status]}: {a.decidedBy} · {dateTime(a.decidedAt)}</span>}
+                  </div>
+                </div>
+                <div className="apv-side">
+                  {a.amount && Number(a.amount) > 0 ? <div className="apv-amount">{tsh(a.amount)}</div> : <span />}
+                  <Button size="sm" variant={pending && decider ? 'primary' : 'secondary'} onClick={() => setSel(a)}>{pending && decider ? t('Kagua na uamue') : t('Fungua')}</Button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+      <Pager meta={data?.meta} onPage={setPage} />
+      {sel && <DecideModal approval={sel} onClose={() => setSel(null)} onDone={(msg) => { setSel(null); setOk(msg); reload(); sum.reload(); }} />}
     </>
   );
 }
@@ -117,19 +207,29 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
   };
   const p = a.payload as { balanceAtRequest?: string; kind?: string; date?: string; lines?: { code: string; name: string; debit?: string; credit?: string; memo?: string | null }[]; totals?: { farmers: number; kg: string; grossTzs: string; deductions: string; netTzs: string; debit?: string; credit?: string; equity?: string; income?: string; expense?: string; surplus?: string }; farmers?: { memberNo: string; name: string; debt?: string | null; credit?: string | null }[]; lockedThrough?: string; closeDate?: string; openTransactions?: number; members?: { memberNo: string; name: string }[]; guarantees?: { groupName: string; debtorName: string; remaining: string; covered: string; uncovered: string }[]; groupCovered?: string } | null;
   return (
-    <Modal open title={`${a.requestNo} · ${a.typeLabel ?? APPROVAL_TYPE_LABEL[a.type]}`} onClose={onClose}
+    <Modal open size="lg" title={`${a.requestNo} · ${a.typeLabel ?? APPROVAL_TYPE_LABEL[a.type]}`} onClose={onClose}
+      head={<div className={`apv-mhead cat-${catOf(a.type)}`}><div className="apv-icon"><Svg d={CATS[catOf(a.type)].icon} /></div>
+        <div><div className="apv-top"><span className="apv-type">{a.typeLabel ?? APPROVAL_TYPE_LABEL[a.type]}</span><span className="apv-no">{a.requestNo}</span><Badge status={a.status === 'PENDING' ? 'DRAFT' : a.status} label={STATUS[a.status]} /></div>
+          <h2>{t(CATS[catOf(a.type)].label)}</h2></div></div>}
       footer={canDecide ? <>
         <Button variant="danger" busy={busy} disabled={note.trim().length < 3} onClick={() => act('REJECTED')}>{t('Kataa')}</Button>
         <Button busy={busy} disabled={note.trim().length < minNote || !pw || (!!user?.totpEnabled && code.length !== 6)} onClick={() => act('APPROVED')}>{selfOk ? t('Jiidhinishe') : t('Idhinisha')}</Button>
       </> : canCancel ? <Button variant="danger" busy={busy} disabled={note.trim().length < 3} onClick={() => act('CANCEL')}>{t('Ondoa ombi')}</Button> : <Button variant="secondary" onClick={onClose}>{t('Funga')}</Button>}>
-      <dl className="dl">
-        <dt>{t('Ombi')}</dt><dd>{a.title}</dd>
-        {a.amount && <><dt>{t('Kiasi')}</dt><dd><strong>{tsh(a.amount)}</strong></dd></>}
-        {a.reason && <><dt>{t('Sababu')}</dt><dd>{a.reason}</dd></>}
-        {p?.balanceAtRequest && <><dt>{t('Salio wakati wa ombi')}</dt><dd>{p.balanceAtRequest}</dd></>}
-        <dt>{t('Aliyeomba')}</dt><dd>{a.requestedBy} ({ROLE_LABEL[a.requestedRole] ?? a.requestedRole}) · {dateTime(a.createdAt)}</dd>
-        {a.decidedAt && <><dt>{t('Uamuzi')}</dt><dd>{STATUS[a.status]} na {a.decidedBy} · {dateTime(a.decidedAt)}{isSelf(a) && <> <SelfBadge /></>}<div className="muted">"{(a.decisionNote ?? '').replace(SELF_TAG, '').trim()}"</div></dd></>}
-      </dl>
+      {/* 1. Kwa ufupi */}
+      <div className="apv-hero">
+        <div><div className="apv-label">{t('Ombi')}</div><p className="apv-hero-title">{a.title}</p></div>
+        {a.amount && Number(a.amount) > 0 && <div className="apv-hero-amt"><div className="apv-label">{t('Kiasi')}</div><strong>{tsh(a.amount)}</strong></div>}
+      </div>
+      <div className="apv-facts">
+        <div><span className="apv-label">{t('Aliyeomba')}</span><span className="apv-who"><span className="apv-av">{initials(a.requestedBy)}</span><span>{a.requestedBy}<div className="muted">{ROLE_LABEL[a.requestedRole] ?? a.requestedRole}</div></span></span></div>
+        <div><span className="apv-label">{t('Lilitumwa')}</span><span>{dateTime(a.createdAt)}{a.status === 'PENDING' && <div className={waited(a.createdAt).late ? 'money-neg' : 'muted'}>{t('inasubiri')} {waited(a.createdAt).text}</div>}</span></div>
+        {a.reason && <div className="wide"><span className="apv-label">{t('Sababu / maelezo ya aliyeomba')}</span><span>“{a.reason}”</span></div>}
+        {p?.balanceAtRequest && <div><span className="apv-label">{t('Salio wakati wa ombi')}</span><span>{p.balanceAtRequest}</span></div>}
+      </div>
+      {a.decidedAt && <div className={`apv-decision ${a.status === 'APPROVED' ? 'ok' : 'bad'}`}><strong>{STATUS[a.status]}</strong> {t('na')} {a.decidedBy} · {dateTime(a.decidedAt)}{isSelf(a) && <> <SelfBadge /></>}
+        <div>“{(a.decisionNote ?? '').replace(SELF_TAG, '').trim()}”</div></div>}
+      {/* 2. Maelezo ya kina ya ombi hili */}
+      <div className="apv-detail">
       {a.type === 'JOURNAL' && p?.lines && (
         <div className="table-wrap"><table className="table fin-table">
           <thead><tr><th>{t('Akaunti')}</th><th className="num">{t('Debit')}</th><th className="num">{t('Credit')}</th></tr></thead>
@@ -193,9 +293,13 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
         <dl className="dl"><dt>{t('Wakulima')}</dt><dd>{p.totals.farmers} · kilo {Number(p.totals.kg).toLocaleString('en-US')}</dd><dt>{t('Mauzo')}</dt><dd>{tsh(p.totals.grossTzs)}</dd><dt>{t('Makato')}</dt><dd>{tsh(p.totals.deductions)}</dd><dt>{t('Malipo halisi')}</dt><dd><strong>{tsh(p.totals.netTzs)}</strong></dd></dl>
       )}
       {link && <p style={{ margin: 0 }}><Link to={link} onClick={onClose}>{t('Fungua rekodi inayohusika →')}</Link></p>}
+      </div>
       {mine && !selfOk && a.status === 'PENDING' && may('approvals.decide') && <Alert kind="warn">{t('Huwezi kuidhinisha ombi ulilolianzisha mwenyewe.')}</Alert>}
       {selfOk && a.status === 'PENDING' && <Alert kind="warn">{t('Ombi hili umeliandaa wewe. Kwa kuwa chama hakina Mhasibu/Storekeeper, unaweza kujiidhinisha — idhini itaandikwa "Imejiidhinisha" na itaonekana kwa CoopLink na Chama Kikuu. Eleza kwa nini ombi ni sahihi.')}</Alert>}
       <Alert>{error}</Alert>
+      {/* 3. Uamuzi */}
+      {canDecide && EFFECT[a.type] && <div className="apv-effect"><span className="apv-label">{t('Ukiidhinisha')}</span>{t(EFFECT[a.type])}</div>}
+      {(canDecide || canCancel) && <div className="apv-decide-title">{canDecide ? t('Uamuzi wako') : t('Kuondoa ombi')}</div>}
       {(canDecide || canCancel) && <TextField label={canDecide ? 'Maelezo ya uamuzi *' : 'Sababu ya kuondoa *'} placeholder={canDecide ? 'mf. Nimekagua risiti, gharama ni sahihi' : ''} value={note} onChange={setNote} />}
       {canDecide && (
         <div className="reauth-box">
