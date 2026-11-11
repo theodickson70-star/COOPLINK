@@ -83,7 +83,7 @@ export async function providerSend(phone: string, text: string): Promise<Deliver
       // RodSMS API v1: POST /messages (namba 255XXXXXXXXX, Sender ID iliyoidhinishwa, SMS ya kawaida ya huduma)
       const sender = await rodsmsSender();
       if (!sender) return { status: 'FAILED', error: 'Sender ID haipo: weka RODSMS_SENDER_ID kwenye Railway (jina la Sender ID iliyoidhinishwa kwenye RodSMS)' };
-      const { res, data } = await rodsms('/messages', { method: 'POST', body: { sender_id: sender, to: phone, message: text, sms_type: 'transactional' } });
+      const { res, data } = await rodsms('/messages', { method: 'POST', body: { sender_id: sender, recipient: phone, message: text, sms_type: 'transactional' } });
       const d = (data.data ?? data) as Record<string, unknown>;
       if (res.ok && !data.error) return { status: 'SENT', providerRef: String(d.id ?? d.message_id ?? d.messageId ?? '') || undefined };
       return { status: 'FAILED', error: errText(data, res.status) };
@@ -112,7 +112,7 @@ export async function providerStatus() {
   try {
     const b = await rodsms('/balance', { method: 'GET' });
     const bd = (b.data.data ?? b.data) as Record<string, unknown>;
-    if (b.res.ok) base.balance = String(bd.balance ?? bd.credits ?? bd.sms_balance ?? JSON.stringify(bd)).slice(0, 80);
+    if (b.res.ok) base.balance = bd.sms_credits !== undefined ? `${Number(bd.sms_credits).toLocaleString('en-US')} SMS` : String(bd.balance ?? bd.credits ?? bd.sms_balance ?? JSON.stringify(bd)).slice(0, 80);
     else base.error = errText(b.data, b.res.status);
     const s = await rodsms('/sender-ids', { method: 'GET' });
     const list = (s.data.data ?? s.data.sender_ids ?? s.data) as unknown;
