@@ -6,7 +6,9 @@ import { z } from 'zod';
 import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import { db, schema, type DbOrTx } from '../db';
 import { ah, phoneSchema, uuidParam } from '../lib/http';
-import { hashPassword, passwordSchemaRule, signChallenge, signToken, tokenExpiry, verifyPassword, verifyToken } from '../lib/security';
+import { hashPassword, passwordSchemaRule, signChallenge, signSmsChallenge, signToken, tokenExpiry, verifyPassword, verifyToken } from '../lib/security';
+import { issueOtp, verifyOtp } from '../lib/otp';
+import { smsConfigured, smsEnabled } from '../lib/sms';
 import { AppError, badRequest, notFound } from '../lib/errors';
 import { activeSessionsWhere, authenticateAllowPending as authenticate, requireReauth } from '../middleware/auth';
 import { audit } from '../lib/audit';
@@ -77,7 +79,7 @@ async function completeLogin(req: Request, user: User) {
   });
   await logLogin(req, { userId: user.id, phone: user.phone, success: true, reason: 'OK', suspicious });
   if (suspicious) {
-    void sendSms(user.phone, `CoopLink: akaunti yako imeingiwa kutoka kifaa/mtandao mpya (${req.ip ?? '?'}). Kama si wewe, badilisha nenosiri mara moja.`);
+    void sendSms(user.phone, `CoopLink: akaunti yako imeingiwa kutoka kifaa/mtandao mpya (${req.ip ?? '?'}). Kama si wewe, badilisha nenosiri mara moja.`, 'SECURITY_ALERT', { userId: user.id, amcosId: user.amcosId });
   }
   return { token, user: await publicUser(user) };
 }
@@ -86,7 +88,7 @@ authRouter.post(
   '/login',
   loginLimiter,
   ah(async (req, res) => {
-    const body = z.object({ phone: phoneSchema, password: z.string().min(1) }).parse(req.body);
+    const body = z.object({ phone: phoneSchema, password: z.string().min(1), deviceToken: z.string().max(200).optional() }).parse(req.body);
     const user = await db.query.users.findFirst({ where: eq(schema.users.phone, body.phone) });
     // Ujumbe mmoja kwa makosa yote — usimwambie mshambuliaji kama namba ipo
     const fail = async (reason: string) => {
@@ -121,7 +123,135 @@ authRouter.post(
     if (user.totpEnabled && user.totpSecret) {
       return res.json({ twoFactorRequired: true, challenge: signChallenge(user.id, user.tokenVersion) });
     }
+    // OTP ya kuingia kwa SMS (Owner ameiwasha): kifaa kisichoaminika kinaulizwa namba iliyotumwa kwa simu ya mtumishi
+    if (smsConfigured() && (await smsEnabled('LOGIN_OTP')) && !(await trustedDevice(user.id, body.deviceToken))) {
+      try {
+        const o = await sendLoginOtp(req, user);
+        return res.json({ otpRequired: true, challenge: signSmsChallenge(user.id, user.tokenVersion), phoneMasked: o.phoneMasked, resendIn: o.resendIn });
+      } catch (e) {
+        const code = (e as AppError).code;
+        // Namba iliyotumwa sekunde chache zilizopita bado inafanya kazi
+        if (code === 'OTP_RESEND_WAIT') return res.json({ otpRequired: true, challenge: signSmsChallenge(user.id, user.tokenVersion), phoneMasked: maskedPhone(user.phone), resendIn: 60 });
+        // Owner asifungiwe nje kama mtoa huduma wa SMS ameshindwa (inarekodiwa)
+        if (!(user.role === 'SUPER_ADMIN' && code === 'OTP_SMS_FAILED')) throw e;
+        await logLogin(req, { userId: user.id, phone: user.phone, success: false, reason: 'LOGIN_OTP_SMS_FAILED_OWNER_BYPASS', suspicious: true });
+      }
+    }
     res.json(await completeLogin(req, user));
+  }),
+);
+
+const maskedPhone = (p: string) => `${p.slice(0, 5)}****${p.slice(-3)}`;
+const sendLoginOtp = (req: Request, user: User) => issueOtp({
+  purpose: 'LOGIN', kind: 'LOGIN_OTP', subjectId: user.id, phone: user.phone, userId: user.id, amcosId: user.amcosId, ip: req.ip ?? null,
+  text: (c) => `CoopLink: namba yako ya kuingia ni ${c}. Inadumu dakika 10. Usimpe mtu yeyote.`,
+});
+const deviceHash = (t: string) => crypto.createHash('sha256').update(t).digest('hex');
+const DEVICE_DAYS = 30;
+/** Kifaa kinachoaminika (OTP ya kuingia haiulizwi tena kwa siku 30) */
+async function trustedDevice(userId: string, token?: string) {
+  if (!token) return false;
+  const TD = schema.trustedDevices;
+  const [d] = await db.select().from(TD).where(and(eq(TD.tokenHash, deviceHash(token)), eq(TD.userId, userId), gte(TD.expiresAt, new Date())));
+  if (!d) return false;
+  await db.update(TD).set({ lastUsedAt: new Date() }).where(eq(TD.id, d.id));
+  return true;
+}
+
+async function smsChallengeUser(challenge: string) {
+  let p;
+  try { p = verifyToken(challenge); } catch { throw new AppError(401, 'CHALLENGE_EXPIRED', 'Muda umeisha. Ingia tena.'); }
+  if (p.typ !== 'sms') throw new AppError(401, 'CHALLENGE_EXPIRED', 'Ingia tena.');
+  const user = await db.query.users.findFirst({ where: eq(schema.users.id, p.sub) });
+  if (!user || !user.isActive || user.tokenVersion !== p.tv) throw new AppError(401, 'CHALLENGE_EXPIRED', 'Ingia tena.');
+  return user;
+}
+
+// Hatua ya pili ya kuingia: namba ya SMS
+authRouter.post(
+  '/login/otp',
+  loginLimiter,
+  ah(async (req, res) => {
+    const body = z.object({ challenge: z.string().min(10), code: z.string().trim().min(4).max(10), rememberDevice: z.boolean().default(true) }).parse(req.body);
+    const user = await smsChallengeUser(body.challenge);
+    try {
+      await verifyOtp('LOGIN', user.id, body.code);
+    } catch (e) {
+      await logLogin(req, { userId: user.id, phone: user.phone, success: false, reason: 'BAD_LOGIN_OTP' });
+      throw e;
+    }
+    const out = await completeLogin(req, user);
+    let deviceToken: string | undefined;
+    if (body.rememberDevice) {
+      deviceToken = crypto.randomBytes(32).toString('base64url');
+      await db.insert(schema.trustedDevices).values({ userId: user.id, tokenHash: deviceHash(deviceToken), label: ua(req)?.slice(0, 120) ?? null, lastUsedAt: new Date(), expiresAt: new Date(Date.now() + DEVICE_DAYS * 86_400_000) });
+    }
+    res.json({ ...out, deviceToken });
+  }),
+);
+
+authRouter.post(
+  '/login/otp/resend',
+  loginLimiter,
+  ah(async (req, res) => {
+    const { challenge } = z.object({ challenge: z.string().min(10) }).parse(req.body);
+    const user = await smsChallengeUser(challenge);
+    const o = await sendLoginOtp(req, user);
+    res.json({ phoneMasked: o.phoneMasked, resendIn: o.resendIn });
+  }),
+);
+
+// ------------------------------ UMESAHAU NENOSIRI (OTP ya SMS) ------------------------------
+/** Hatua 1: namba ya simu -> SMS. Jibu ni lilelile hata kama namba haipo (mshambuliaji asijue namba zipi zipo). */
+authRouter.post(
+  '/password/forgot',
+  loginLimiter,
+  ah(async (req, res) => {
+    const { phone } = z.object({ phone: phoneSchema }).parse(req.body);
+    if (!smsConfigured() || !(await smsEnabled('PASSWORD_RESET_OTP'))) throw new AppError(400, 'RESET_UNAVAILABLE', 'Huduma ya kurejesha nenosiri kwa SMS haipo kwa sasa. Wasiliana na Meneja wako au CoopLink.');
+    const user = await db.query.users.findFirst({ where: eq(schema.users.phone, phone) });
+    let resendIn = 60;
+    if (user && user.isActive) {
+      try {
+        const o = await issueOtp({ purpose: 'PASSWORD_RESET', kind: 'PASSWORD_RESET_OTP', subjectId: user.id, phone: user.phone, userId: user.id, amcosId: user.amcosId, ip: req.ip ?? null,
+          text: (c) => `CoopLink: namba ya kubadilisha nenosiri ni ${c}. Inadumu dakika 10. Kama hukuomba, puuza ujumbe huu.` });
+        resendIn = o.resendIn;
+      } catch (e) {
+        if ((e as AppError).code === 'OTP_SMS_FAILED' || (e as AppError).code === 'OTP_TOO_MANY') throw e;
+        if ((e as AppError).code !== 'OTP_RESEND_WAIT') throw e;
+      }
+      await logLogin(req, { userId: user.id, phone, success: true, reason: 'PASSWORD_RESET_OTP_SENT' });
+    }
+    res.json({ sent: true, phoneMasked: maskedPhone(phone), resendIn });
+  }),
+);
+
+/** Hatua 2: namba ya SMS (+ 2FA kama imewashwa) + nenosiri jipya. Vikao vyote vya zamani vinafungwa. */
+authRouter.post(
+  '/password/reset',
+  loginLimiter,
+  ah(async (req, res) => {
+    const body = z.object({
+      phone: phoneSchema, code: z.string().trim().min(4).max(10), totpCode: z.string().trim().optional(),
+      newPassword: z.string().refine(passwordSchemaRule.test, passwordSchemaRule.message),
+    }).parse(req.body);
+    const user = await db.query.users.findFirst({ where: eq(schema.users.phone, body.phone) });
+    if (!user || !user.isActive) throw new AppError(400, 'OTP_INVALID', 'Namba ya uthibitisho si sahihi');
+    if (user.totpEnabled && !body.totpCode) throw new AppError(401, 'INVALID_2FA', 'Weka msimbo sahihi wa 2FA (programu ya uthibitisho)');
+    await verifyOtp('PASSWORD_RESET', user.id, body.code);
+    if (user.totpEnabled && user.totpSecret && !(body.totpCode && verifyTotp(decryptSecret(user.totpSecret), body.totpCode))) {
+      throw new AppError(401, 'INVALID_2FA', 'Weka msimbo sahihi wa 2FA (programu ya uthibitisho)');
+    }
+    if (await verifyPassword(body.newPassword, user.passwordHash)) throw badRequest('Nenosiri jipya lisifanane na la zamani');
+    await db.transaction(async (tx) => {
+      await tx.update(schema.users).set({ passwordHash: await hashPassword(body.newPassword), mustChangePassword: false, tokenVersion: sql`${schema.users.tokenVersion} + 1` }).where(eq(schema.users.id, user.id));
+      await tx.update(schema.userSessions).set({ revokedAt: new Date(), revokedById: user.id }).where(activeSessionsWhere(user.id));
+      await tx.delete(schema.trustedDevices).where(eq(schema.trustedDevices.userId, user.id));
+      req.auth = { userId: user.id, role: user.role, amcosId: user.amcosId } as typeof req.auth; // mtumiaji mwenyewe (hakuna token katika hatua hii)
+      await audit(tx, req, { action: 'PASSWORD_RESET_SMS', entity: 'User', entityId: user.id, amcosId: user.amcosId });
+    });
+    await logLogin(req, { userId: user.id, phone: user.phone, success: true, reason: 'PASSWORD_RESET' });
+    res.json({ ok: true });
   }),
 );
 

@@ -10,6 +10,7 @@ import { requirePermission, requireReauth } from '../../middleware/auth';
 import { audit } from '../../lib/audit';
 import { getSetting, setSetting } from '../../lib/settings';
 import { emailConfigured, smsConfigured } from '../../lib/notify';
+import { smsProvider } from '../../lib/sms';
 import { JOB_CATALOG, JOBS, latestJobRuns } from '../../lib/jobs';
 import { anyProvider, clearFeeLock as clearFeeLockCache } from '../../lib/fees';
 import { teepayConfig, getCollection, TeePayError } from '../../lib/teepay';
@@ -260,8 +261,10 @@ systemRouter.get('/integrations', requirePermission('system.read'), ah(async (_r
     { key: 'lookup', name: 'Jina la mwenye namba (Abliner)', role: 'Kuthibitisha jina la mwenye namba ya simu kwenye fomu',
       configured: lookupEnabled(), parts: { 'API key': lookupEnabled() }, switchOn: sw.nameLookup,
       stats: { checks24: lk?.n24 ?? 0, found24: lk?.found24 ?? 0, lastCheck: lk?.last ?? null }, test: tests.lookup ?? null, testable: false },
-    { key: 'sms', name: "SMS (Africa's Talking)", role: 'Matangazo, tahadhari kwa Owner, nenosiri la muda',
-      configured: smsConfigured(), parts: { 'AT_USERNAME': !!process.env.AT_USERNAME, 'AT_API_KEY': !!process.env.AT_API_KEY, 'Sender ID': !!process.env.AT_SENDER_ID }, switchOn: sw.sms,
+    { key: 'sms', name: `SMS (${smsProvider() === 'RODSMS' ? 'RodSMS' : smsProvider() === 'AT' ? "Africa's Talking" : 'haijawekwa'})`, role: 'OTP, taarifa kwa wakulima na vikundi, matangazo, tahadhari (SMS Center)',
+      configured: smsConfigured(), parts: process.env.RODSMS_API_KEY || !process.env.AT_USERNAME
+        ? { 'RODSMS_API_KEY': !!process.env.RODSMS_API_KEY, 'RODSMS_SENDER_ID': !!process.env.RODSMS_SENDER_ID }
+        : { 'AT_USERNAME': !!process.env.AT_USERNAME, 'AT_API_KEY': !!process.env.AT_API_KEY, 'Sender ID': !!process.env.AT_SENDER_ID }, switchOn: sw.sms,
       stats: { lastOk: sms?.last_ok ?? null, ok24: sms?.ok24 ?? 0, failed24: sms?.failed24 ?? 0 }, test: tests.sms ?? null, testable: smsConfigured() },
     { key: 'email', name: 'Email', role: 'Bado haijaunganishwa', configured: emailConfigured(), parts: {}, switchOn: true, stats: {}, test: null, testable: false },
   ] });
@@ -287,9 +290,9 @@ systemRouter.post('/integrations/:key/test', requirePermission('system.manage'),
         message = st && [401, 403].includes(st) ? 'API key imekataliwa na Abliner' : (e as Error).message;
       }
     } else {
-      if (!smsConfigured()) throw badRequest("SMS haijawekwa (AT_USERNAME / AT_API_KEY)");
-      const me = await db.query.users.findFirst({ where: eq(schema.users.id, req.auth!.userId), columns: { phone: true } });
-      const r = await sendSms(me!.phone, 'CoopLink: SMS ya majaribio kutoka System Control Center.');
+      if (!smsConfigured()) throw badRequest('SMS haijawekwa (RODSMS_API_KEY + RODSMS_SENDER_ID, au AT_USERNAME / AT_API_KEY)');
+      const me = await db.query.users.findFirst({ where: eq(schema.users.id, req.auth!.userId), columns: { phone: true, id: true } });
+      const r = await sendSms(me!.phone, 'CoopLink: SMS ya majaribio kutoka System Control Center.', 'SYSTEM_ALERT', { force: true, userId: me!.id });
       ok = r.status === 'SENT'; message = ok ? 'SMS imetumwa kwenye namba yako' : r.error ?? r.status;
     }
   } catch (e) {

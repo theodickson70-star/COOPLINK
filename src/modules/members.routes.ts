@@ -3,7 +3,9 @@ import { z } from 'zod';
 import { and, asc, count, desc, eq, ilike, ne, or, sql } from 'drizzle-orm';
 import { db, schema } from '../db';
 import { ah, decimalSchema, paged, paginationQuery, phoneSchema, uuidParam } from '../lib/http';
-import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
+import { AppError, badRequest, conflict, forbidden, notFound } from '../lib/errors';
+import { smsConfigured, smsEnabled } from '../lib/sms';
+import { issueOtp, verifyOtp } from '../lib/otp';
 import { requireAmcosPerm, requireReauth } from '../middleware/auth';
 import { checkRows, MAX_IMPORT_ROWS } from '../lib/member-import';
 import { activeGroups } from '../lib/groups';
@@ -361,12 +363,58 @@ membersRouter.patch(
     checkEntryFee(body, before);
     await verifyMemberNames(req, body, before);
     await assertUnique(before.amcosId, body, id);
+    // Namba ya simu / ya malipo ikibadilika: namba mpya lazima ithibitishwe kwa OTP (Storekeeper hawezi kuweka namba yake)
+    const extra = z.object({ phoneOtpOverride: z.string().trim().min(10, 'Eleza sababu ya kutothibitisha kwa OTP (herufi 10+)').optional() }).parse(req.body);
+    const changed = [...new Set([body.phone !== undefined && body.phone !== before.phone ? body.phone : null, body.mobileMoneyNumber !== undefined && body.mobileMoneyNumber !== before.mobileMoneyNumber ? body.mobileMoneyNumber : null]
+      .filter((x): x is string => !!x))];
+    let phoneVerifiedAt: Date | undefined;
+    if (changed.length && smsConfigured() && (await smsEnabled('MEMBER_PHONE_OTP'))) {
+      if (extra.phoneOtpOverride) {
+        if (!canAmcos(req.auth!, 'members.approve')) throw badRequest('Meneja pekee ndiye anaweza kubadilisha namba bila OTP');
+      } else {
+        const ok = await db.select({ payload: schema.otpCodes.payload }).from(schema.otpCodes).where(and(eq(schema.otpCodes.purpose, 'PHONE_CHANGE'), eq(schema.otpCodes.subjectId, id),
+          sql`${schema.otpCodes.verifiedAt} > now() - interval '30 minutes'`));
+        const verified = new Set(ok.map((r) => (r.payload as { phone?: string } | null)?.phone).filter(Boolean));
+        const missing = changed.filter((ph) => !verified.has(ph));
+        if (missing.length) throw new AppError(400, 'PHONE_OTP_REQUIRED', `Namba mpya ${missing.map((x) => '0' + x.slice(3)).join(', ')} haijathibitishwa — tuma namba ya uthibitisho (OTP) kwa simu hiyo kwanza`);
+        if (body.phone && verified.has(body.phone)) phoneVerifiedAt = new Date();
+      }
+    }
     const member = await db.transaction(async (tx) => {
-      const [row] = await tx.update(m).set({ ...body, memberNo: body.memberNo ?? undefined }).where(eq(m.id, id)).returning();
+      const [row] = await tx.update(m).set({ ...body, memberNo: body.memberNo ?? undefined, ...(phoneVerifiedAt ? { phoneVerifiedAt } : body.phone !== undefined && body.phone !== before.phone ? { phoneVerifiedAt: null } : {}) }).where(eq(m.id, id)).returning();
+      if (extra.phoneOtpOverride && changed.length) await audit(tx, req, { action: 'MEMBER_PHONE_OTP_OVERRIDE', entity: 'Member', entityId: id, amcosId: before.amcosId, after: { phones: changed, reason: extra.phoneOtpOverride } });
       await audit(tx, req, { action: 'MEMBER_UPDATE', entity: 'Member', entityId: id, amcosId: before.amcosId, before, after: row });
       return row;
     });
     res.json({ member });
+  }),
+);
+
+// ------------------------------ OTP YA NAMBA MPYA YA SIMU YA MKULIMA ------------------------------
+membersRouter.post(
+  '/:id/phone-otp',
+  requireAmcosPerm('members.write'),
+  ah(async (req, res) => {
+    const { id } = uuidParam.parse(req.params);
+    const { phone } = z.object({ phone: phoneSchema }).parse(req.body);
+    const mem = await findMemberScoped(req, id);
+    if (!smsConfigured() || !(await smsEnabled('MEMBER_PHONE_OTP'))) throw badRequest('OTP ya namba ya mkulima haijawashwa');
+    const amcos = await db.query.amcos.findFirst({ where: eq(schema.amcos.id, mem.amcosId), columns: { name: true } });
+    const o = await issueOtp({ purpose: 'PHONE_CHANGE', kind: 'MEMBER_PHONE_OTP', subjectId: id, phone, payload: { phone }, amcosId: mem.amcosId, memberId: id, createdById: req.auth!.userId, ip: req.ip ?? null,
+      text: (c) => `${amcos?.name ?? 'Chama'}: namba ${c} inathibitisha simu hii kuwa ya ${mem.firstName} ${mem.lastName} (${mem.memberNo}). Mpe mtumishi wa chama tu kama ni wewe.` });
+    res.json(o);
+  }),
+);
+membersRouter.post(
+  '/:id/phone-otp/verify',
+  requireAmcosPerm('members.write'),
+  ah(async (req, res) => {
+    const { id } = uuidParam.parse(req.params);
+    const b = z.object({ phone: phoneSchema, code: z.string().trim().min(4).max(10) }).parse(req.body);
+    await findMemberScoped(req, id);
+    const row = await verifyOtp('PHONE_CHANGE', id, b.code);
+    if ((row.payload as { phone?: string } | null)?.phone !== b.phone) throw new AppError(400, 'OTP_INVALID', 'Namba hii ya uthibitisho si ya simu hiyo');
+    res.json({ verified: true, phone: b.phone });
   }),
 );
 

@@ -37,6 +37,7 @@ const I = {
   payroll: <><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="11" r="2.2" /><path d="M5.5 16.5c.6-1.8 2-2.6 3.5-2.6s2.9.8 3.5 2.6M15 10h3M15 13.5h3" /></>,
   building: <><rect x="4" y="3" width="16" height="18" rx="1" /><path d="M8 7h2M14 7h2M8 11h2M14 11h2M8 15h2M14 15h2M10 21v-3h4v3" /></>,
   report: <><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z" /><path d="M14 3v5h5" /><path d="M9 17v-3M12 17v-6M15 17v-4" /></>,
+  sms: <><path d="M4 5h16v11H8l-4 4z" /><path d="M8 9h8M8 12h5" /></>,
   help: <><circle cx="12" cy="12" r="9" /><path d="M9.5 9.3a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.3-2.5 3.8" /><path d="M12 17v.01" /></>,
 };
 
@@ -56,6 +57,7 @@ const NAV: { section?: string; items: NavItem[] }[] = [
     items: [
       { to: '/members', label: 'Wakulima (wanachama)', icon: I.members, perm: ['members.read'] },
       { to: '/groups', label: 'Vikundi vya wakulima', icon: I.org, perm: ['members.read'] },
+      { to: '/sms', label: 'Matangazo kwa SMS', icon: I.sms, perm: ['members.approve'] },
       { to: '/estimates', label: 'Makisio', icon: I.estimate, perm: ['members.read'] },
       { to: '/balances', label: 'Madeni na Salio', icon: I.money, perm: ['ledger.read'] },
     ],

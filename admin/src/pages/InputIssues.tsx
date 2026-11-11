@@ -10,6 +10,7 @@ import { Alert, Badge, Button, clientRef, Empty, Loading, MemberPicker, Modal, P
 interface Issue {
   id: string; issueNo: string; issuedAt: string; totalAmount: string; status: string; notes: string | null; cancelReason: string | null;
   currency?: 'TZS' | 'USD'; fxRate?: string | null; totalUsd?: string | null;
+  handedOverAt?: string | null; handoverMethod?: 'OTP' | 'MANUAL' | null; handoverNote?: string | null;
   member: { id: string; memberNo: string; firstName: string; lastName: string };
   lines?: { id: string; quantity: string; unitPrice: string; amount: string; kg?: string | null; unitPriceUsd?: string | null; amountUsd?: string | null; inputItem: { name: string; unit: string; packKg?: string | null } }[];
 }
@@ -17,8 +18,9 @@ interface Issue {
 export function InputIssues() {
   const { may } = useAuth();
   const [status, setStatus] = useState('');
+  const [handover, setHandover] = useState('');
   const [page, setPage] = useState(1);
-  const { data, loading, error } = useFetch<Paged<Issue>>('/input-issues', { status, page, pageSize: 25 });
+  const { data, loading, error } = useFetch<Paged<Issue>>('/input-issues', { status, handover: handover || undefined, page, pageSize: 25 });
   return (
     <>
       <PageHead title="Utoaji wa Pembejeo" sub="Pembejeo zilizotolewa kwa mkopo. Kila utoaji unaingia kwenye deni la mkulima.">
@@ -29,6 +31,9 @@ export function InputIssues() {
         <div className="toolbar">
           <Select aria-label="Hali" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
             <option value="">Hali zote</option><option value="PENDING_APPROVAL">Inasubiri idhini</option><option value="ISSUED">Imetolewa</option><option value="REJECTED">Imekataliwa</option><option value="CANCELLED">Imefutwa</option>
+          </Select>
+          <Select aria-label="Kukabidhi" value={handover} onChange={(e) => { setHandover(e.target.value); setPage(1); }}>
+            <option value="">Kukabidhi: zote</option><option value="PENDING">Hazijakabidhiwa</option><option value="DONE">Zimekabidhiwa</option>
           </Select>
         </div>
         {loading && !data ? <Loading /> : data?.data.length === 0 ? <Empty>Bado hakuna utoaji wa pembejeo.</Empty> : (
@@ -42,7 +47,7 @@ export function InputIssues() {
                     <td>{i.member.firstName} {i.member.lastName}<div className="muted" style={{ fontSize: 13 }}>{i.member.memberNo}</div></td>
                     <td>{dateTime(i.issuedAt)}</td>
                     <td className="num">{i.currency === 'USD' && i.totalUsd ? <>{usd(i.totalUsd)}<div className="muted" style={{ fontSize: 12 }}>{tsh(i.totalAmount)}</div></> : tsh(i.totalAmount)}</td>
-                    <td><Badge status={i.status} /></td>
+                    <td><Badge status={i.status} />{i.status === 'ISSUED' && i.handedOverAt && <div style={{ marginTop: 4 }}><Badge status="APPROVED" label={i.handoverMethod === 'OTP' ? 'Imekabidhiwa · OTP' : 'Imekabidhiwa'} /></div>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -186,7 +191,7 @@ export function InputIssueNew() {
 export function InputIssueDetail() {
   const { id } = useParams();
   const { may } = useAuth();
-  const { data, loading, error, reload } = useFetch<{ issue: Issue }>(`/input-issues/${id}`);
+  const { data, loading, error, reload } = useFetch<{ issue: Issue; handoverOtp?: boolean }>(`/input-issues/${id}`);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reason, setReason] = useState('');
   const act = useAction();
@@ -231,6 +236,7 @@ export function InputIssueDetail() {
         </div>
         {i.notes && <div className="card-pad muted">Maelezo: {i.notes}</div>}
       </section>
+      {i.status === 'ISSUED' && <Handover issue={i} otp={!!data.handoverOtp} canAct={may('issues.request')} onDone={reload} />}
       <Modal open={cancelOpen} title="Futa utoaji huu?" onClose={() => setCancelOpen(false)}
         footer={<><Button variant="secondary" onClick={() => setCancelOpen(false)}>Hapana</Button><Button variant="danger" busy={act.busy} disabled={reason.trim().length < 5} onClick={cancel}>Ndiyo, futa</Button></>}>
         <Alert kind="warn">Pembejeo zitarudi stoo na deni la {i.currency === 'USD' && i.totalUsd ? `${usd(i.totalUsd)} (${tsh(i.totalAmount)})` : tsh(i.totalAmount)} litafutwa kwa rekodi ya REVERSAL. Historia itabaki.</Alert>
@@ -238,6 +244,48 @@ export function InputIssueDetail() {
         <TextField label="Sababu ya kufuta *" value={reason} onChange={setReason} />
       </Modal>
     </>
+  );
+}
+
+/** Kukabidhi mzigo kwa mkulima: kwa OTP (namba aliyopokea kwenye simu yake) au bila OTP kwa sababu */
+function Handover({ issue, otp, canAct, onDone }: { issue: Issue; otp: boolean; canAct: boolean; onDone: () => void }) {
+  const [sent, setSent] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+  const [manual, setManual] = useState(false);
+  const [note, setNote] = useState('');
+  const act = useAction();
+  if (issue.handedOverAt) return (
+    <section className="card no-print" style={{ marginTop: 16 }}><div className="card-pad">
+      <h3 style={{ margin: 0 }}>Kukabidhi mzigo</h3>
+      <p style={{ margin: '8px 0 0' }}><Badge status="APPROVED" label={issue.handoverMethod === 'OTP' ? 'Imekabidhiwa (OTP ya mkulima)' : 'Imekabidhiwa (bila OTP)'} /> · {dateTime(issue.handedOverAt)}</p>
+      {issue.handoverNote && <p className="muted" style={{ margin: '6px 0 0' }}>Sababu: {issue.handoverNote}</p>}
+    </div></section>
+  );
+  if (!canAct) return <div style={{ marginTop: 16 }}><Alert kind="warn">Mzigo bado haujakabidhiwa kwa mkulima.</Alert></div>;
+  const send = async () => { const r = await act.run(() => api<{ phoneMasked: string }>(`/input-issues/${issue.id}/handover/otp`, { method: 'POST' })); if (r) setSent(r.phoneMasked); };
+  const finish = async (body: Record<string, unknown>) => { const r = await act.run(() => api(`/input-issues/${issue.id}/handover`, { method: 'POST', body })); if (r) onDone(); };
+  return (
+    <section className="card no-print" style={{ marginTop: 16 }}><div className="card-pad stack">
+      <div><h3 style={{ margin: 0 }}>Kabidhi mzigo kwa mkulima <Badge status="PENDING" label="Haijakabidhiwa" /></h3>
+        <p className="muted" style={{ margin: '6px 0 0' }}>{otp ? 'Mkulima atapokea SMS yenye orodha ya pembejeo, thamani yake na namba ya uthibitisho. Akipokea mzigo, anakutajia namba hiyo — huo ndio ushahidi wake (badala ya karatasi).' : 'Thibitisha kuwa mkulima amepokea mzigo wote ulioorodheshwa hapo juu.'}</p></div>
+      <Alert>{act.error}</Alert>
+      {otp && !manual && <>
+        <Button variant="secondary" busy={act.busy && !sent} onClick={send}>{sent ? 'Tuma namba upya' : 'Tuma OTP kwa mkulima'}</Button>
+        {sent && <><div className="muted">Namba imetumwa kwa {sent}. Inadumu dakika 10.</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 160px' }}><TextField label="Namba aliyopokea mkulima" inputMode="numeric" maxLength={6} value={code} onChange={(v) => setCode(v.replace(/\D/g, ''))} /></div>
+            <Button busy={act.busy} disabled={code.length !== 6} onClick={() => finish({ code })}>Thibitisha na kabidhi</Button>
+          </div></>}
+        <Button variant="ghost" onClick={() => setManual(true)}>Mkulima hana simu? Kabidhi bila OTP</Button>
+      </>}
+      {(!otp || manual) && <>
+        <TextField label={otp ? 'Sababu ya kukabidhi bila OTP * (Meneja ataona)' : 'Maelezo (si lazima)'} value={note} onChange={setNote} />
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {otp && <Button variant="secondary" onClick={() => setManual(false)}>Rudi kwenye OTP</Button>}
+          <Button busy={act.busy} disabled={otp && note.trim().length < 10} onClick={() => finish({ note: note.trim() || undefined })}>Thibitisha kukabidhi</Button>
+        </div>
+      </>}
+    </div></section>
   );
 }
 

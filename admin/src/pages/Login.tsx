@@ -84,53 +84,101 @@ function AuthHero() {
   );
 }
 
-interface PublicStatus { maintenance: { enabled: boolean; message: string }; banner: { message: string; tone: 'info' | 'warn' } | null; brand: { companyName: string; slogan: string; poweredBy?: string } }
+interface PublicStatus { maintenance: { enabled: boolean; message: string }; banner: { message: string; tone: 'info' | 'warn' } | null; brand: { companyName: string; slogan: string; poweredBy?: string }; sms?: { passwordReset: boolean } }
+type Step = 'login' | '2fa' | 'otp' | 'forgot' | 'reset';
+
+/** Hesabu ya sekunde kabla ya kuruhusu kutuma namba upya */
+function useCountdown() {
+  const [left, setLeft] = useState(0);
+  useEffect(() => {
+    if (left <= 0) return;
+    const t = setTimeout(() => setLeft((x) => x - 1), 1000);
+    return () => clearTimeout(t);
+  }, [left]);
+  return [left, setLeft] as const;
+}
 
 export function Login() {
-  const { login, verify2fa } = useAuth();
+  const { login, verify2fa, verifyOtp } = useAuth();
   const t = useT();
   const nav = useNavigate();
+  const [step, setStep] = useState<Step>('login');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const [challenge, setChallenge] = useState<string | null>(null);
   const [code, setCode] = useState('');
+  const [masked, setMasked] = useState('');
+  const [remember, setRemember] = useState(true);
+  const [totp, setTotp] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [wait, setWait] = useCountdown();
   const [status, setStatus] = useState<PublicStatus | null>(null);
 
   useEffect(() => {
     api<PublicStatus>('/public/status').then(setStatus).catch(() => {});
   }, []);
 
+  const go = (s: Step) => { setStep(s); setCode(''); setError(null); setInfo(null); };
   const done = (u: User) => {
     playTone();
     nav(u.mustChangePassword ? '/change-password' : homeFor(u), { replace: true });
   };
 
-  const submit = async (e: FormEvent) => {
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true); setError(null);
+    try { await fn(); } catch (err) {
+      setError((err as Error).message);
+      if (/Ingia tena|Muda umeisha/.test((err as Error).message)) { setChallenge(null); setStep('login'); }
+    } finally { setBusy(false); }
+  };
+
+  const submit = (e: FormEvent) => {
     e.preventDefault();
     unlockAudio();
-    setBusy(true);
-    setError(null);
-    try {
-      if (challenge) {
-        done(await verify2fa(challenge, code.trim()));
+    void run(async () => {
+      if (step === '2fa' && challenge) return done(await verify2fa(challenge, code.trim()));
+      if (step === 'otp' && challenge) return done(await verifyOtp(phone.trim(), challenge, code.trim(), remember));
+      if (step === 'forgot') {
+        const r = await api<{ phoneMasked: string; resendIn: number }>('/auth/password/forgot', { method: 'POST', body: { phone: phone.trim() } });
+        setMasked(r.phoneMasked); setWait(r.resendIn); go('reset');
+        setInfo(t('Kama namba hii imesajiliwa, SMS yenye namba ya uthibitisho imetumwa.'));
+        return;
+      }
+      if (step === 'reset') {
+        if (next !== confirm) throw new Error(t('Nenosiri jipya na uthibitisho havilingani'));
+        await api('/auth/password/reset', { method: 'POST', body: { phone: phone.trim(), code: code.trim(), totpCode: totp.trim() || undefined, newPassword: next } });
+        setPassword(''); setNext(''); setConfirm(''); setTotp(''); go('login');
+        setInfo(t('Nenosiri limebadilishwa. Ingia kwa nenosiri jipya.'));
         return;
       }
       const r = await login(phone.trim(), password);
-      if ('twoFactor' in r) {
-        setChallenge(r.challenge);
-        return;
-      }
+      if ('twoFactor' in r) { setChallenge(r.challenge); go('2fa'); return; }
+      if ('otp' in r) { setChallenge(r.challenge); setMasked(r.phoneMasked); setWait(r.resendIn); go('otp'); return; }
       done(r.user);
-    } catch (err) {
-      setError((err as Error).message);
-      if (challenge && /Ingia tena/.test((err as Error).message)) setChallenge(null);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
+
+  const resend = () => void run(async () => {
+    if (step === 'otp' && challenge) {
+      const r = await api<{ phoneMasked: string; resendIn: number }>('/auth/login/otp/resend', { method: 'POST', body: { challenge } });
+      setWait(r.resendIn); setInfo(t('Namba mpya imetumwa kwa SMS.'));
+    } else {
+      const r = await api<{ resendIn: number }>('/auth/password/forgot', { method: 'POST', body: { phone: phone.trim() } });
+      setWait(r.resendIn); setInfo(t('Namba mpya imetumwa kwa SMS.'));
+    }
+  });
+
+  const codeField = (
+    <>
+      <TextField label={t('Namba ya uthibitisho (SMS)')} inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="123456" value={code} onChange={(v) => setCode(v.replace(/\D/g, ''))} required autoFocus />
+      <Button variant="ghost" onClick={resend} disabled={wait > 0 || busy}>{wait > 0 ? `${t('Tuma upya baada ya sekunde')} ${wait}` : t('Tuma namba upya')}</Button>
+    </>
+  );
 
   return (
     <div className="auth">
@@ -140,12 +188,13 @@ export function Login() {
         <form className="auth-card" onSubmit={submit}>
           {status?.maintenance.enabled && <Alert kind="warn"><strong>{t('Matengenezo:')}</strong> {status.maintenance.message}</Alert>}
           {status?.banner && <Alert kind={status.banner.tone === 'warn' ? 'warn' : 'ok'}>{status.banner.message}</Alert>}
-          {!challenge ? (
+          {step === 'login' && (
             <>
               <div>
                 <h1>{t('Karibu tena')}</h1>
                 <p className="muted" style={{ margin: '6px 0 0' }}>{t('Ingia kwa namba yako ya simu na nenosiri.')}</p>
               </div>
+              {info && <Alert kind="ok">{info}</Alert>}
               <Alert>{error}</Alert>
               <TextField label={t('Namba ya simu')} type="tel" inputMode="tel" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="0712 345 678" value={phone} onChange={setPhone} required />
               <TextField label={t('Nenosiri')} type={showPw ? 'text' : 'password'} autoComplete="current-password" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={password} onChange={setPassword} required />
@@ -153,8 +202,10 @@ export function Login() {
                 <input type="checkbox" checked={showPw} onChange={(e) => setShowPw(e.target.checked)} /> {t('Onyesha nenosiri')}
               </label>
               <Button type="submit" variant="primary" busy={busy} style={{ minHeight: 48 }}>{t('Ingia')}</Button>
+              {status?.sms?.passwordReset && <Button variant="ghost" onClick={() => go('forgot')}>{t('Umesahau nenosiri?')}</Button>}
             </>
-          ) : (
+          )}
+          {step === '2fa' && (
             <>
               <div>
                 <h1>{t('Uthibitisho wa hatua mbili')}</h1>
@@ -163,7 +214,51 @@ export function Login() {
               <Alert>{error}</Alert>
               <TextField label={t('Msimbo wa 2FA')} inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="123456" value={code} onChange={(v) => setCode(v.replace(/\D/g, ''))} required autoFocus />
               <Button type="submit" variant="primary" busy={busy} disabled={code.length !== 6} style={{ minHeight: 48 }}>{t('Thibitisha')}</Button>
-              <Button variant="ghost" onClick={() => { setChallenge(null); setCode(''); setError(null); }}>{t('Rudi nyuma')}</Button>
+              <Button variant="ghost" onClick={() => { setChallenge(null); go('login'); }}>{t('Rudi nyuma')}</Button>
+            </>
+          )}
+          {step === 'otp' && (
+            <>
+              <div>
+                <h1>{t('Thibitisha kwa SMS')}</h1>
+                <p className="muted" style={{ margin: '6px 0 0' }}>{t('Tumetuma namba ya tarakimu 6 kwa SMS kwenda')} <strong>{masked}</strong>. {t('Inadumu dakika 10.')}</p>
+              </div>
+              {info && <Alert kind="ok">{info}</Alert>}
+              <Alert>{error}</Alert>
+              {codeField}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--muted)' }}>
+                <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> {t('Kiamini kifaa hiki kwa siku 30 (usiulizwe tena)')}
+              </label>
+              <Button type="submit" variant="primary" busy={busy} disabled={code.length !== 6} style={{ minHeight: 48 }}>{t('Thibitisha na ingia')}</Button>
+              <Button variant="ghost" onClick={() => { setChallenge(null); go('login'); }}>{t('Rudi nyuma')}</Button>
+            </>
+          )}
+          {step === 'forgot' && (
+            <>
+              <div>
+                <h1>{t('Umesahau nenosiri?')}</h1>
+                <p className="muted" style={{ margin: '6px 0 0' }}>{t('Weka namba ya simu uliyosajiliwa nayo. Tutatuma namba ya uthibitisho kwa SMS.')}</p>
+              </div>
+              <Alert>{error}</Alert>
+              <TextField label={t('Namba ya simu')} type="tel" inputMode="tel" autoComplete="username" placeholder="0712 345 678" value={phone} onChange={setPhone} required autoFocus />
+              <Button type="submit" variant="primary" busy={busy} style={{ minHeight: 48 }}>{t('Tuma namba ya uthibitisho')}</Button>
+              <Button variant="ghost" onClick={() => go('login')}>{t('Rudi kuingia')}</Button>
+            </>
+          )}
+          {step === 'reset' && (
+            <>
+              <div>
+                <h1>{t('Weka nenosiri jipya')}</h1>
+                <p className="muted" style={{ margin: '6px 0 0' }}>{t('Namba ya simu:')} <strong>{masked}</strong></p>
+              </div>
+              {info && <Alert kind="ok">{info}</Alert>}
+              <Alert>{error}</Alert>
+              {codeField}
+              <TextField label={t('Nenosiri jipya')} help={t('Herufi 8 au zaidi, liwe na herufi na namba')} type="password" autoComplete="new-password" value={next} onChange={setNext} required />
+              <TextField label={t('Rudia nenosiri jipya')} type="password" autoComplete="new-password" value={confirm} onChange={setConfirm} required />
+              <TextField label={t('Msimbo wa 2FA (kama umewasha)')} inputMode="numeric" maxLength={6} value={totp} onChange={(v) => setTotp(v.replace(/\D/g, ''))} />
+              <Button type="submit" variant="primary" busy={busy} disabled={code.length !== 6} style={{ minHeight: 48 }}>{t('Badilisha nenosiri')}</Button>
+              <Button variant="ghost" onClick={() => go('login')}>{t('Rudi kuingia')}</Button>
             </>
           )}
           <p className="muted" style={{ fontSize: 12, margin: '8px 0 0', textAlign: 'center' }}>

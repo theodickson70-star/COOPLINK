@@ -4,6 +4,7 @@
 //   Meneja anaidhinisha -> ledger ya mkulima + daftari kuu (journal moja kwa soko)
 // =====================================================================
 import type { Request } from 'express';
+import { smsSaleSettled } from './sms-events';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { schema, type Tx } from '../db';
 import { D, Decimal, fmt2, tshText } from './money';
@@ -182,6 +183,10 @@ export async function onTobaccoSale(tx: Tx, req: Request, a: Approval, o: Outcom
   await tx.update(MK).set({ status: 'CLOSED' }).where(eq(MK.id, market.id));
   await audit(tx, req, { action: 'TOBACCO_SALE_APPROVED', entity: 'Market', entityId: market.id, amcosId: a.amcosId,
     after: { settlements: drafts.length, grossTzs: fmt2(gross), deductions: fmt2(totalDed), note } });
+  // SMS: hesabu ya kila mkulima (kilo, mauzo, makato, atakacholipwa)
+  const mems = await tx.select().from(schema.members).where(inArray(schema.members.id, drafts.map((d) => d.memberId)));
+  const byId = new Map(mems.map((x) => [x.id, x]));
+  await smsSaleSettled(tx, drafts.filter((d) => byId.has(d.memberId)).map((d) => ({ member: byId.get(d.memberId)!, settlementId: d.id, kg: d.totalKg, grossTzs: d.grossTzs, deductions: d.totalDeductions, netTzs: d.netTzs, marketDate: market.marketDate })));
 }
 
 /** Idhini ya orodha ya malipo ya wakulima. Fedha HAZITOKI hapa: Mhasibu anathibitisha kila malipo yaliyofanyika kweli. */

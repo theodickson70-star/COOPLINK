@@ -14,6 +14,7 @@ import { backupRouter } from './backup.routes';
 import { businessRouter } from './business.routes';
 import { ownerFeesRouter } from './fees.routes';
 import { ownerSupportRouter } from './support.routes';
+import { ownerSmsRouter } from './sms.routes';
 
 export const ownerRouter = Router();
 ownerRouter.use(requirePlatform);
@@ -29,3 +30,4 @@ ownerRouter.use('/backup', backupRouter);
 ownerRouter.use('/business', businessRouter);
 ownerRouter.use('/fees', ownerFeesRouter);
 ownerRouter.use('/support', ownerSupportRouter);
+ownerRouter.use('/sms', ownerSmsRouter);

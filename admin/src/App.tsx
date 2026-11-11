@@ -62,6 +62,9 @@ const load_FarmerDebts_pages = () => import('./pages/FarmerDebts');
 const FarmerDebtDetail = lazyPage(load_FarmerDebts_pages, 'FarmerDebtDetail');
 const FarmerDebts = lazyPage(load_FarmerDebts_pages, 'FarmerDebts');
 PAGE_LOADERS.push(load_FarmerDebts_pages);
+const load_SmsBroadcasts_pages = () => import('./pages/SmsBroadcasts');
+const SmsBroadcasts = lazyPage(load_SmsBroadcasts_pages, 'SmsBroadcasts');
+PAGE_LOADERS.push(load_SmsBroadcasts_pages);
 const load_Groups_pages = () => import('./pages/Groups');
 const GroupDetail = lazyPage(load_Groups_pages, 'GroupDetail');
 const Groups = lazyPage(load_Groups_pages, 'Groups');
@@ -118,6 +121,9 @@ PAGE_LOADERS.push(load_Staff_owner);
 const load_System_owner = () => import('./owner/System');
 const OwnerSystem = lazyPage(load_System_owner, 'OwnerSystem');
 PAGE_LOADERS.push(load_System_owner);
+const load_SmsCenter_owner = () => import('./owner/SmsCenter');
+const OwnerSmsCenter = lazyPage(load_SmsCenter_owner, 'OwnerSmsCenter');
+PAGE_LOADERS.push(load_SmsCenter_owner);
 const load_Comms_owner = () => import('./owner/Comms');
 const OwnerComms = lazyPage(load_Comms_owner, 'OwnerComms');
 PAGE_LOADERS.push(load_Comms_owner);
@@ -234,6 +240,7 @@ export default function App() {
             <Route path="finance" element={<Perm p="finance.read"><OwnerFinance /></Perm>} />
             <Route path="staff" element={<Perm p="staff.manage"><OwnerStaff /></Perm>} />
             <Route path="system" element={<Perm p="system.read"><OwnerSystem /></Perm>} />
+            <Route path="sms" element={<Perm p="system.read"><OwnerSmsCenter /></Perm>} />
             <Route path="comms" element={<Perm p="comms.read"><OwnerComms /></Perm>} />
             <Route path="security" element={<Perm p="security.read"><OwnerSecurity /></Perm>} />
             <Route path="backup" element={<Perm p="backup.read"><OwnerBackup /></Perm>} />
@@ -262,6 +269,7 @@ export default function App() {
             <Route path="payroll" element={<Need p={['payroll.read']}><Payroll /></Need>} />
             <Route path="payroll/runs/:id" element={<Need p={['payroll.read']}><PayrollRunDetail /></Need>} />
             <Route path="accounting/periods" element={<Need p={['accounting.read']}><Periods /></Need>} />
+            <Route path="sms" element={<Need p={['members.approve']}><SmsBroadcasts /></Need>} />
             <Route path="groups" element={<Need p={['members.read']}><Groups /></Need>} />
             <Route path="groups/:id" element={<Need p={['members.read', 'finance.read']}><GroupDetail /></Need>} />
             <Route path="kuni" element={<Need p={['finance.read']}><Kuni /></Need>} />

@@ -6,6 +6,7 @@
 //   4. Orodha ya malipo (payment sheet) -> idhini -> Mhasibu anathibitisha kila malipo yaliyofanyika kweli
 // =====================================================================
 import { Router, type Request } from 'express';
+import { smsPaymentSent } from '../lib/sms-events';
 import { z } from 'zod';
 import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db, schema, type Tx } from '../db';
@@ -627,6 +628,7 @@ salesRouter.post('/batches/:id/confirm', requireAmcosPerm('sales.manage'), ah(as
       });
       await tx.update(PY).set({ status: 'SUCCESS', providerRef: body.reference, paidAt: new Date(), financeTxnId: t.id, failureReason: null }).where(eq(PY.id, p.id));
       if (p.settlementId) await tx.update(S).set({ status: 'PAID' }).where(eq(S.id, p.settlementId));
+      await smsPaymentSent(tx, mem, { paymentId: p.id, amount: p.amount, method: p.method, destination: p.destination });
     }
     const all = await tx.select({ status: PY.status }).from(PY).where(eq(PY.batchId, id));
     const status = all.every((x) => x.status === 'SUCCESS' || x.status === 'CANCELLED') ? 'COMPLETED' : all.some((x) => x.status === 'FAILED') ? 'PARTIAL' : 'PROCESSING';

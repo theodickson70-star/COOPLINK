@@ -1,6 +1,7 @@
 // Mipangilio ya jukwaa (platform_settings) — inabadilishwa na Owner bila kubadilisha code.
 import { eq } from 'drizzle-orm';
 import { db, schema, type DbOrTx } from '../db';
+import { SMS_EVENT_DEFAULTS, type SmsKind } from './sms-kinds';
 
 export interface PlatformConfig {
   defaultTrialDays: number;
@@ -21,6 +22,8 @@ export interface FeeConfig {
   primaryProvider?: 'TEEPAY' | 'ABLINER'; // njia ya kwanza ya malipo; ikishindwa, nyingine inajaribiwa
 }
 export interface Maintenance { enabled: boolean; message: string }
+/** SMS: kikomo cha matangazo ya chama kwa mwezi, bei ya SMS moja (makadirio ya gharama), saa za kimya (taarifa zinasubiri) */
+export interface SmsLimits { broadcastPerMonth: number; pricePerSms: number; quietStart: number; quietEnd: number }
 /** Swichi za dharura: kuzima kipengele kwa mfumo mzima bila deploy (Owner + nenosiri, kila badiliko kwenye audit). */
 export interface Switches { mobilePayments: boolean; sms: boolean; farmerPortal: boolean; nameLookup: boolean }
 /** Matokeo ya mwisho ya "Jaribu muunganiko" kwa kila integration */
@@ -39,6 +42,8 @@ export const DEFAULTS = {
   maintenance: { enabled: false, message: 'Mfumo uko kwenye matengenezo. Tafadhali jaribu tena baadaye.' } as Maintenance,
   banner: { enabled: false, message: '', tone: 'info' } as Banner,
   switches: { mobilePayments: true, sms: true, farmerPortal: true, nameLookup: true } as Switches,
+  'sms.events': SMS_EVENT_DEFAULTS as Record<SmsKind, boolean>,
+  'sms.limits': { broadcastPerMonth: 1000, pricePerSms: 20, quietStart: 21, quietEnd: 7 } as SmsLimits,
   'integrations.tests': {} as IntegrationTests,
   'business.profile': {
     companyName: 'DUKALANGU SOLUTION', productName: 'CoopLink', slogan: 'Connecting Cooperatives. Empowering Farmers.',

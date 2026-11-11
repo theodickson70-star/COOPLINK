@@ -7,7 +7,7 @@
 // =====================================================================
 import { Router, type Request } from 'express';
 import { z } from 'zod';
-import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { db, schema, type DbOrTx } from '../db';
 import { ah, decimalSchema, paged, paginationQuery, uuidParam } from '../lib/http';
 import { AppError, badRequest, conflict, notFound } from '../lib/errors';
@@ -24,6 +24,9 @@ import { createApproval } from '../lib/approvals';
 import { inputCurrency, recordUsd, requireRate, toTzs } from '../lib/fx';
 import { currentSeason } from './seasons.routes';
 import { activeGroups } from '../lib/groups';
+import { smsConfigured, smsEnabled } from '../lib/sms';
+import { issueOtp, verifyOtp } from '../lib/otp';
+import { farmerPhone, smsGroupInputTaken, smsInputHandedOver } from '../lib/sms-events';
 
 export const inputsRouter = Router();
 export const inputIssuesRouter = Router();
@@ -374,10 +377,12 @@ inputIssuesRouter.get(
   requireAmcosPerm('stock.read'),
   ah(async (req, res) => {
     const q = paginationQuery
-      .extend({ seasonId: z.string().uuid().optional(), memberId: z.string().uuid().optional(), status: z.enum(schema.inputIssueStatusEnum.enumValues).optional() })
+      .extend({ seasonId: z.string().uuid().optional(), memberId: z.string().uuid().optional(), status: z.enum(schema.inputIssueStatusEnum.enumValues).optional(),
+        handover: z.enum(['PENDING', 'DONE']).optional() })
       .parse(req.query);
     const where = and(
       amcosScope(req, issues.amcosId),
+      q.handover === 'PENDING' ? and(eq(issues.status, 'ISSUED'), isNull(issues.handedOverAt)) : q.handover === 'DONE' ? isNotNull(issues.handedOverAt) : undefined,
       q.seasonId ? eq(issues.seasonId, q.seasonId) : undefined,
       q.memberId ? eq(issues.memberId, q.memberId) : undefined,
       q.status ? eq(issues.status, q.status) : undefined,
@@ -402,7 +407,7 @@ inputIssuesRouter.get(
     const { id } = uuidParam.parse(req.params);
     const [scoped] = await db.select({ id: issues.id }).from(issues).where(and(eq(issues.id, id), amcosScope(req, issues.amcosId)));
     if (!scoped) throw notFound('Utoaji wa pembejeo');
-    res.json({ issue: await loadIssue(id) });
+    res.json({ issue: await loadIssue(id), handoverOtp: smsConfigured() && (await smsEnabled('ISSUE_HANDOVER_OTP')) });
   }),
 );
 
@@ -522,6 +527,77 @@ inputIssuesRouter.post(
     });
 
     res.status(201).json({ issue: await loadIssue(issueId) });
+  }),
+);
+
+// ------------------------------ MAKABIDHIANO: mkulima amepokea mzigo ------------------------------
+/** Orodha ya pembejeo kwa SMS: "UREA mifuko 2, CAN mfuko 1, NPK kilo 10" */
+function itemsText(lines: { quantity: string; kg: string | null; inputItem: { name: string; unit: string } }[]) {
+  const UNIT: Record<string, [string, string]> = { BAG: ['mfuko', 'mifuko'], KG: ['kilo', 'kilo'], LITRE: ['lita', 'lita'], PACKET: ['pakiti', 'pakiti'], PIECE: ['kipande', 'vipande'], ROLL: ['roli', 'roli'], BOTTLE: ['chupa', 'chupa'], SPOOL: ['spool', 'spools'], METRE: ['mita', 'mita'] };
+  return lines.map((l) => {
+    if (l.kg) return `${l.inputItem.name} kilo ${D(l.kg).toFixed()}`;
+    const q = D(l.quantity), u = UNIT[l.inputItem.unit] ?? [l.inputItem.unit.toLowerCase(), l.inputItem.unit.toLowerCase()];
+    return `${l.inputItem.name} ${u[q.eq(1) ? 0 : 1]} ${q.toFixed()}`;
+  }).join(', ');
+}
+async function handoverTarget(req: Request, id: string) {
+  const [scoped] = await db.select({ id: issues.id }).from(issues).where(and(eq(issues.id, id), amcosScope(req, issues.amcosId)));
+  if (!scoped) throw notFound('Utoaji wa pembejeo');
+  const issue = (await loadIssue(id))!;
+  if (issue.status !== 'ISSUED') throw badRequest('Pembejeo hizi bado hazijaidhinishwa na Meneja (au zimefutwa)');
+  if (issue.handedOverAt) throw conflict('Pembejeo hizi zimeshakabidhiwa');
+  const member = (await db.query.members.findFirst({ where: eq(schema.members.id, issue.memberId) }))!;
+  return { issue, member };
+}
+
+/** Tuma OTP kwa mkulima: SMS ina orodha ya pembejeo na thamani yake + namba ya uthibitisho */
+inputIssuesRouter.post(
+  '/:id/handover/otp',
+  requireAmcosPerm('issues.request'),
+  ah(async (req, res) => {
+    const { id } = uuidParam.parse(req.params);
+    if (!smsConfigured() || !(await smsEnabled('ISSUE_HANDOVER_OTP'))) throw badRequest('OTP ya kukabidhi pembejeo haijawashwa — kabidhi bila OTP');
+    const { issue, member } = await handoverTarget(req, id);
+    const value = issue.totalUsd ? `$${D(issue.totalUsd).toFixed(2)}` : `TSh ${D(issue.totalAmount).toDecimalPlaces(0).toNumber().toLocaleString('en-US')}`;
+    const o = await issueOtp({
+      purpose: 'ISSUE_HANDOVER', kind: 'ISSUE_HANDOVER_OTP', subjectId: issue.id, phone: farmerPhone(member), amcosId: issue.amcosId, memberId: member.id, createdById: req.auth!.userId, ip: req.ip ?? null,
+      text: (c) => `${member.firstName}, unakabidhiwa ${itemsText(issue.lines)} (${issue.issueNo}). Thamani ${value} inaingia kwenye deni lako. Namba ya uthibitisho: ${c}. Usimpe mtu kama hujapokea mzigo.`,
+    });
+    res.json(o);
+  }),
+);
+
+/**
+ * Kukabidhi: kwa OTP (namba aliyopokea mkulima) au bila OTP (sababu inahitajika OTP ikiwa imewashwa; Meneja anaona).
+ * Baada ya kukabidhi: SMS kwa wanakikundi wengine (deni la jumla la kikundi) na, bila OTP, SMS kwa mkulima.
+ */
+inputIssuesRouter.post(
+  '/:id/handover',
+  requireAmcosPerm('issues.request'),
+  ah(async (req, res) => {
+    const { id } = uuidParam.parse(req.params);
+    const b = z.object({ code: z.string().trim().min(4).max(10).optional(), note: z.string().trim().max(300).optional() }).parse(req.body);
+    const { issue, member } = await handoverTarget(req, id);
+    const otpOn = smsConfigured() && (await smsEnabled('ISSUE_HANDOVER_OTP'));
+    let method: 'OTP' | 'MANUAL' = 'MANUAL', phone: string | null = null;
+    if (b.code) {
+      const row = await verifyOtp('ISSUE_HANDOVER', issue.id, b.code);
+      method = 'OTP'; phone = row.phone;
+    } else if (otpOn && (!b.note || b.note.length < 10)) {
+      throw badRequest('Kabidhi kwa OTP, au eleza kwa nini OTP haikutumika (herufi 10+), mf. "Mkulima hana simu — amesaini daftari"');
+    }
+    const items = itemsText(issue.lines);
+    const done = await db.transaction(async (tx) => {
+      const [u] = await tx.update(issues).set({ handedOverAt: new Date(), handedOverById: req.auth!.userId, handoverMethod: method, handoverPhone: phone, handoverNote: b.note ?? null })
+        .where(and(eq(issues.id, issue.id), isNull(issues.handedOverAt))).returning();
+      if (!u) throw conflict('Pembejeo hizi zimeshakabidhiwa');
+      await audit(tx, req, { action: method === 'OTP' ? 'INPUT_HANDOVER_OTP' : 'INPUT_HANDOVER_MANUAL', entity: 'InputIssue', entityId: issue.id, amcosId: issue.amcosId, after: { method, note: b.note ?? null } });
+      // Kwa OTP mkulima alishapata orodha na thamani; bila OTP anapata taarifa sasa
+      if (method === 'MANUAL') await smsInputHandedOver(tx, member, issue, items);
+      await smsGroupInputTaken(tx, member, issue, items);
+      return u;
+    });
+    res.json({ issue: { ...(await loadIssue(done.id)) } });
   }),
 );
 

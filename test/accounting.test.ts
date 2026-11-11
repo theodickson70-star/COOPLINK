@@ -10,6 +10,9 @@ import { hashPassword } from '../src/lib/security';
 import { clearStaffingCache } from '../src/lib/amcos-permissions';
 import { D } from '../src/lib/money';
 import { paye } from '../src/lib/payroll';
+import { dryOutbox } from '../src/lib/sms';
+
+process.env.SMS_DRY_RUN = 'true'; // SMS hazitumwi kweli: zinahifadhiwa kwenye dryOutbox
 
 let base = '';
 let server: ReturnType<ReturnType<typeof createApp>['listen']>;
@@ -1101,6 +1104,136 @@ test('Bei za madaraja ya msimu (TTB): orodha ya chama, belo kwa daraja -> bei in
   const det = (await call('GET', `/api/v1/sales/markets/${mk.id}`, accountant)).body;
   assert.equal(Number(det.bales.find((b: any) => b.baleNo.startsWith('GP1-')).priceUsd), 3.16);
   assert.equal((await call('GET', '/api/v1/sales/grade-prices', accountant)).body.count, 2, 'C3O imeondolewa');
+});
+
+// v0.27 — SMS: swichi za Owner, OTP ya namba ya mkulima, kukabidhi pembejeo, deni la kikundi, matangazo, kuingia na nenosiri -----
+const lastCode = (phone: string, re: RegExp) => {
+  const m = [...dryOutbox].reverse().find((x) => x.phone === phone && re.test(x.text));
+  assert.ok(m, `SMS kwa ${phone}`);
+  return m!.text.match(re)![1];
+};
+const tz = (p: string) => '255' + p.replace(/^0/, '');
+test('SMS: Owner anawasha huduma; OTP ya namba ya mkulima, kukabidhi pembejeo, deni la kikundi, matangazo na kikomo', async () => {
+  const c = (await call('GET', '/api/v1/owner/sms', owner)).body;
+  assert.equal(c.provider.provider, 'DRY');
+  assert.ok(c.kinds.find((k: any) => k.key === 'LOGIN_OTP').on === false, 'Huduma mpya zimezimwa mwanzoni');
+  assert.equal((await call('PUT', '/api/v1/owner/sms/events', manager, { events: { MEMBER_REGISTERED: true }, confirmPassword: 'Staff12345' })).status, 403);
+  assert.equal((await call('PUT', '/api/v1/owner/sms/events', owner, { events: { NOPE: true }, confirmPassword: OWNER_PW })).status, 400);
+  const on = { MEMBER_PHONE_OTP: true, ISSUE_HANDOVER_OTP: true, GROUP_DEBT: true, CHAMA_BROADCAST: true, GROUP_INPUT_TAKEN: true, MEMBER_REGISTERED: true };
+  assert.equal((await call('PUT', '/api/v1/owner/sms/events', owner, { events: on, confirmPassword: OWNER_PW })).status, 200);
+
+  // 1. Namba mpya ya simu ya mkulima lazima ithibitishwe kwa OTP
+  const M1 = await newMember('Simu');
+  const newPhone = '0765' + String(Math.floor(Math.random() * 1e6)).padStart(6, '0');
+  const p1 = await call('PATCH', `/api/v1/members/${M1.id}`, storekeeper, { phone: newPhone });
+  assert.equal(p1.status, 400); assert.equal(p1.body.error.code, 'PHONE_OTP_REQUIRED');
+  assert.equal((await call('PATCH', `/api/v1/members/${M1.id}`, storekeeper, { phone: newPhone, phoneOtpOverride: 'Storekeeper anajaribu kupita' })).status, 400, 'Storekeeper hawezi kupita OTP');
+  assert.equal((await call('POST', `/api/v1/members/${M1.id}/phone-otp`, storekeeper, { phone: newPhone })).status, 200);
+  const code1 = lastCode(tz(newPhone), /namba (\d{6}) inathibitisha/);
+  assert.equal((await call('POST', `/api/v1/members/${M1.id}/phone-otp/verify`, storekeeper, { phone: newPhone, code: code1 === '000000' ? '111111' : '000000' })).status, 400);
+  assert.equal((await call('POST', `/api/v1/members/${M1.id}/phone-otp/verify`, storekeeper, { phone: newPhone, code: code1 })).status, 200);
+  const p2 = await call('PATCH', `/api/v1/members/${M1.id}`, storekeeper, { phone: newPhone });
+  assert.equal(p2.status, 200, JSON.stringify(p2.body)); assert.ok(p2.body.member.phoneVerifiedAt);
+  // Namba nyingine ambayo OTP yake ilifutwa (namba mpya ilitumwa) haihesabiki kuwa imethibitishwa
+  const other = '0766' + String(Math.floor(Math.random() * 1e6)).padStart(6, '0');
+  assert.equal((await call('PATCH', `/api/v1/members/${M1.id}`, manager, { mobileMoneyNumber: other, phoneOtpOverride: 'Mkulima yuko shambani, simu imeharibika' })).status, 200, 'Meneja anaweza kupita kwa sababu');
+
+  // 2. Kukabidhi pembejeo kwa OTP ya mkulima
+  const item = (await call('POST', '/api/v1/inputs/items', storekeeper, { name: 'SMS-NPK ' + RUN, category: 'FERTILIZER', unit: 'BAG' })).body.item;
+  assert.equal((await call('POST', '/api/v1/inputs/stock/receipts', storekeeper, { inputItemId: item.id, quantity: 10, unitPrice: '70000', reference: 'DN-SMS-' + RUN })).status, 202);
+  await approve(item.id);
+  assert.equal((await call('PUT', '/api/v1/inputs/prices', manager, { inputItemId: item.id, unitPrice: '70000' })).status, 200);
+  const issue = async (memberId: string) => {
+    const r = await call('POST', '/api/v1/input-issues', storekeeper, { memberId, lines: [{ inputItemId: item.id, quantity: 1 }] });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.equal((await call('POST', `/api/v1/input-issues/${r.body.issue.id}/handover/otp`, storekeeper)).status, 400, 'Kabla ya idhini hakuna kukabidhi');
+    await approve(r.body.issue.id);
+    return r.body.issue.id as string;
+  };
+  const i1 = await issue(M1.id);
+  const d1 = (await call('GET', `/api/v1/input-issues/${i1}`, storekeeper)).body;
+  assert.equal(d1.handoverOtp, true); assert.equal(d1.issue.handedOverAt, null);
+  assert.equal((await call('POST', `/api/v1/input-issues/${i1}/handover/otp`, storekeeper)).status, 200);
+  const sms = [...dryOutbox].reverse().find((x) => x.phone === tz(newPhone))!;
+  assert.match(sms.text, /SMS-NPK/); assert.match(sms.text, /deni/);
+  const code2 = lastCode(tz(newPhone), /uthibitisho: (\d{6})/);
+  assert.equal((await call('POST', `/api/v1/input-issues/${i1}/handover`, storekeeper, {})).status, 400, 'Bila OTP lazima sababu');
+  const h = await call('POST', `/api/v1/input-issues/${i1}/handover`, storekeeper, { code: code2 });
+  assert.equal(h.status, 200, JSON.stringify(h.body)); assert.equal(h.body.issue.handoverMethod, 'OTP');
+  assert.equal((await call('POST', `/api/v1/input-issues/${i1}/handover`, storekeeper, { code: code2 })).status, 409);
+  const i2 = await issue(M1.id);
+  const h2 = await call('POST', `/api/v1/input-issues/${i2}/handover`, storekeeper, { note: 'Mkulima hana simu leo — amesaini daftari' });
+  assert.equal(h2.status, 200); assert.equal(h2.body.issue.handoverMethod, 'MANUAL');
+  assert.equal((await call('GET', '/api/v1/input-issues?handover=DONE&pageSize=50', storekeeper)).body.data.filter((x: any) => [i1, i2].includes(x.id)).length, 2);
+  // Kumbukumbu inaficha namba ya OTP
+  const logs = (await db.execute<{ message: string }>(sql`select message from sms_logs where kind = 'ISSUE_HANDOVER_OTP' and reference_type = 'OTP' order by created_at desc limit 1`)).rows;
+  assert.ok(logs[0].message.includes('******') && !logs[0].message.includes(code2));
+
+  // 3. Deni la kikundi kwa SMS (mara moja kwa saa 24)
+  const G1 = await newMember('Kundi'), G2 = await newMember('Kundi2');
+  const g = await call('POST', '/api/v1/groups', storekeeper, { name: 'SMS ' + RUN, memberIds: [G1.id, G2.id], leaderMemberId: G1.id });
+  await approve(g.body.group.id);
+  assert.equal((await call('POST', `/api/v1/sms/groups/${g.body.group.id}/debt`, storekeeper)).status, 403);
+  const gd = await call('POST', `/api/v1/sms/groups/${g.body.group.id}/debt`, accountant);
+  assert.equal(gd.status, 200, JSON.stringify(gd.body)); assert.equal(gd.body.queued, 2);
+  assert.equal((await call('POST', `/api/v1/sms/groups/${g.body.group.id}/debt`, manager)).status, 429);
+
+  // 4. Matangazo ya chama: hakiki, tuma, kikomo cha mwezi
+  const b0 = (await call('GET', '/api/v1/sms/broadcasts', manager)).body;
+  assert.equal(b0.quota.enabled, true); assert.equal(b0.quota.used, 0);
+  const body = { kind: 'MEETING', message: 'Kikao cha wanachama Jumamosi saa 4 asubuhi ofisini.', audience: { type: 'GROUP', groupId: g.body.group.id } };
+  assert.equal((await call('POST', '/api/v1/sms/broadcasts', storekeeper, body)).status, 403);
+  const pv = (await call('POST', '/api/v1/sms/broadcasts/preview', manager, body)).body;
+  assert.equal(pv.withPhone, 2); assert.equal(pv.segments, 1); assert.match(pv.text, /KIKAO/);
+  const sent = await call('POST', '/api/v1/sms/broadcasts', manager, body);
+  assert.equal(sent.status, 201, JSON.stringify(sent.body)); assert.equal(sent.body.queued, 2);
+  const b1 = (await call('GET', '/api/v1/sms/broadcasts', manager)).body;
+  assert.equal(b1.quota.used, 2); assert.equal(b1.data[0].recipients, 2);
+  const lim = (await call('GET', '/api/v1/owner/sms', owner)).body.limits;
+  assert.equal((await call('PUT', '/api/v1/owner/sms/limits', owner, { ...lim, broadcastPerMonth: 3, confirmPassword: OWNER_PW })).status, 200);
+  const over = await call('POST', '/api/v1/sms/broadcasts', manager, body);
+  assert.equal(over.status, 400); assert.equal(over.body.error.code, 'SMS_QUOTA');
+  assert.equal((await call('PUT', '/api/v1/owner/sms/limits', owner, { ...lim, confirmPassword: OWNER_PW })).status, 200);
+  const st = (await call('GET', '/api/v1/owner/sms', owner)).body;
+  assert.ok(st.kinds.find((k: any) => k.key === 'CHAMA_BROADCAST').month.queued + st.kinds.find((k: any) => k.key === 'CHAMA_BROADCAST').month.sent >= 2);
+  assert.ok((await call('GET', '/api/v1/owner/sms/logs?kind=MEMBER_PHONE_OTP', owner)).body.data.length >= 1);
+  assert.equal((await call('GET', '/api/v1/owner/sms', manager)).status, 403);
+});
+
+test('SMS: OTP ya kuingia (kifaa kinachoaminika) na umesahau nenosiri', async () => {
+  const phone = uniqPhone('25571'), pw = 'SmsOwner2026';
+  await db.execute(sql`insert into users (full_name, phone, role, password_hash, must_change_password) values ('Owner SMS Test', ${phone}, 'SUPER_ADMIN', ${await hashPassword(pw)}, false)`);
+  assert.equal((await call('POST', '/api/v1/auth/password/forgot', undefined, { phone })).status, 400, 'Huduma imezimwa');
+  assert.equal((await call('GET', '/api/v1/public/status')).body.sms.passwordReset, false);
+  try {
+    assert.equal((await call('PUT', '/api/v1/owner/sms/events', owner, { events: { LOGIN_OTP: true, PASSWORD_RESET_OTP: true }, confirmPassword: OWNER_PW })).status, 200);
+    const l1 = (await call('POST', '/api/v1/auth/login', undefined, { phone, password: pw })).body;
+    assert.equal(l1.otpRequired, true); assert.ok(!l1.token); assert.match(l1.phoneMasked, /\*/);
+    const code = lastCode(phone, /kuingia ni (\d{6})/);
+    assert.equal((await call('POST', '/api/v1/auth/login/otp', undefined, { challenge: l1.challenge, code: code === '000000' ? '111111' : '000000' })).status, 400);
+    const ok = (await call('POST', '/api/v1/auth/login/otp', undefined, { challenge: l1.challenge, code })).body;
+    assert.ok(ok.token && ok.deviceToken);
+    // Kifaa kinachoaminika: hakuna OTP tena
+    const l2 = (await call('POST', '/api/v1/auth/login', undefined, { phone, password: pw, deviceToken: ok.deviceToken })).body;
+    assert.ok(l2.token && !l2.otpRequired);
+    // Umesahau nenosiri
+    assert.equal((await call('GET', '/api/v1/public/status')).body.sms.passwordReset, true);
+    const unknown = await call('POST', '/api/v1/auth/password/forgot', undefined, { phone: uniqPhone('25571') });
+    assert.equal(unknown.status, 200, 'Jibu ni lilelile kwa namba isiyokuwepo');
+    assert.equal((await call('POST', '/api/v1/auth/password/forgot', undefined, { phone })).status, 200);
+    const rc = lastCode(phone, /nenosiri ni (\d{6})/);
+    assert.equal((await call('POST', '/api/v1/auth/password/reset', undefined, { phone, code: rc, newPassword: pw })).status, 400, 'Lisifanane na la zamani');
+    // Namba imeshatumika kwenye jaribio lililoshindwa? hapana — nenosiri hukaguliwa baada ya OTP, kwa hiyo tuma mpya
+    await db.execute(sql`update otp_codes set created_at = created_at - interval '2 minutes' where purpose = 'PASSWORD_RESET'`);
+    assert.equal((await call('POST', '/api/v1/auth/password/forgot', undefined, { phone })).status, 200);
+    const rc2 = lastCode(phone, /nenosiri ni (\d{6})/);
+    assert.equal((await call('POST', '/api/v1/auth/password/reset', undefined, { phone, code: rc2, newPassword: 'MpyaKabisa2026' })).status, 200);
+    assert.equal((await call('GET', '/api/v1/auth/me', l2.token)).status, 401, 'Vikao vya zamani vimefungwa');
+    const l3 = (await call('POST', '/api/v1/auth/login', undefined, { phone, password: 'MpyaKabisa2026', deviceToken: ok.deviceToken })).body;
+    assert.equal(l3.otpRequired, true, 'Vifaa vinavyoaminika vimefutwa baada ya kubadilisha nenosiri');
+  } finally {
+    await call('PUT', '/api/v1/owner/sms/events', owner, { events: { LOGIN_OTP: false, PASSWORD_RESET_OTP: false }, confirmPassword: OWNER_PW });
+  }
 });
 
 // v0.26 — LAZIMA liwe la mwisho: linafuta data yote ya chama cha majaribio -----------------------------

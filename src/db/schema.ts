@@ -72,7 +72,7 @@ export const settlementStatusEnum = pgEnum('settlement_status', ['DRAFT', 'APPRO
 export const paymentMethodEnum = pgEnum('payment_method', ['MOBILE_MONEY', 'BANK', 'CASH']);
 export const paymentStatusEnum = pgEnum('payment_status', ['PENDING', 'PROCESSING', 'SUCCESS', 'FAILED', 'CANCELLED']);
 export const paymentBatchStatusEnum = pgEnum('payment_batch_status', ['DRAFT', 'APPROVED', 'PROCESSING', 'COMPLETED', 'PARTIAL', 'CANCELLED']);
-export const smsStatusEnum = pgEnum('sms_status', ['QUEUED', 'SENT', 'DELIVERED', 'FAILED']);
+export const smsStatusEnum = pgEnum('sms_status', ['QUEUED', 'SENT', 'DELIVERED', 'FAILED', 'SKIPPED']);
 
 const id = () => uuid().primaryKey().defaultRandom();
 const createdAt = () => timestamp({ withTimezone: true }).notNull().defaultNow();
@@ -232,6 +232,7 @@ export const members = pgTable('members', {
   guarantorPhone: text(),
   // Jina la mkulima tofauti na jina la mobile money la namba yake (mf. namba ni ya mke) — linaidhinishwa na Meneja
   phoneOwnerName: text(),             // jina lililosajiliwa kwenye mobile money la namba hii
+  phoneVerifiedAt: timestamp({ withTimezone: true }), // namba ya simu imethibitishwa kwa OTP
   nameOverrideReason: text(),
   nameOverrideById: uuid(),           // Meneja aliyeidhinisha (null = linasubiri idhini)
   nameOverrideAt: timestamp({ withTimezone: true }),
@@ -355,6 +356,12 @@ export const inputIssues = pgTable('input_issues', {
   approvedById: uuid(),
   approvedAt: timestamp({ withTimezone: true }),
   groupId: uuid(), // kikundi cha dhamana cha mkulima wakati wa ugawaji
+  // Makabidhiano: mkulima amepokea mzigo (OTP kwenye simu yake, au bila OTP kwa sababu iliyoandikwa)
+  handedOverAt: timestamp({ withTimezone: true }),
+  handedOverById: uuid(),
+  handoverMethod: text(),              // OTP | MANUAL
+  handoverPhone: text(),
+  handoverNote: text(),
   currency: currencyEnum().notNull().default('TZS'),         // USD: deni ni la dola (totalUsd), totalAmount = TSh kwa fxRate
   fxRate: numeric({ precision: 12, scale: 4 }),
   totalUsd: numeric({ precision: 14, scale: 2 }),
@@ -627,8 +634,62 @@ export const smsLogs = pgTable('sms_logs', {
   provider: text(),
   providerRef: text(),
   error: text(),
+  kind: text(),                 // aina ya SMS (mf. ISSUE_HANDOVER_OTP, MEMBER_REGISTERED) — Owner anaiwasha/kuizima
+  memberId: uuid(),
+  userId: uuid(),
+  segments: integer().notNull().default(1), // SMS ngapi (herufi 160 kila moja)
+  referenceType: text(),
+  referenceId: uuid(),
+  sendAfter: timestamp({ withTimezone: true }), // taarifa za usiku zinasubiri asubuhi
+  attempts: integer().notNull().default(0),
+  sentAt: timestamp({ withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
+}, (t) => [index().on(t.amcosId, t.createdAt), index().on(t.status, t.createdAt), index().on(t.kind, t.createdAt)]);
+
+/**
+ * Namba za uthibitisho (OTP) zinazotumwa kwa SMS. Namba yenyewe haihifadhiwi — hash yake tu.
+ *  purpose: LOGIN · PASSWORD_RESET · PHONE_CHANGE · ISSUE_HANDOVER
+ */
+export const otpCodes = pgTable('otp_codes', {
+  id: id(),
+  purpose: text().notNull(),
+  subjectId: uuid().notNull(),         // mtumiaji / mkulima / ugawaji
+  amcosId: uuid(),
+  phone: text().notNull(),
+  codeHash: text().notNull(),
+  payload: jsonb(),                    // mf. namba mpya ya simu inayothibitishwa
+  attempts: integer().notNull().default(0),
+  expiresAt: timestamp({ withTimezone: true }).notNull(),
+  consumedAt: timestamp({ withTimezone: true }),   // imetumika AU imefutwa (namba mpya imetumwa)
+  verifiedAt: timestamp({ withTimezone: true }),   // imethibitishwa kwa namba sahihi
+  createdById: uuid(),
+  ip: text(),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.purpose, t.subjectId, t.createdAt)]);
+
+/** Vifaa vinavyoaminika (OTP ya kuingia haiulizwi tena kwa siku 30). Token yenyewe haihifadhiwi — hash yake tu. */
+export const trustedDevices = pgTable('trusted_devices', {
+  id: id(),
+  userId: uuid().notNull().references(() => users.id),
+  tokenHash: text().notNull().unique(),
+  label: text(),
+  lastUsedAt: timestamp({ withTimezone: true }),
+  expiresAt: timestamp({ withTimezone: true }).notNull(),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.userId)]);
+
+/** Matangazo na taarifa za vikao kwa wakulima kwa SMS (Meneja) */
+export const smsBroadcasts = pgTable('sms_broadcasts', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  kind: text().notNull(),              // MEETING | ANNOUNCEMENT
+  message: text().notNull(),
+  audience: jsonb().notNull(),         // { type: 'ALL' | 'VILLAGE' | 'GROUP', village?, groupId? }
+  recipients: integer().notNull().default(0),
+  segments: integer().notNull().default(1),
+  createdById: uuid(),
+  createdAt: createdAt(),
 }, (t) => [index().on(t.amcosId, t.createdAt)]);
 
 // Namba zinazofuatana — salama hata watumiaji wengi wakiandika kwa wakati mmoja

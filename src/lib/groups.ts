@@ -2,6 +2,7 @@
 //  VIKUNDI VYA WAKULIMA — usajili kwa idhini ya Meneja, kuongeza/kutoa mwanachama kwa idhini
 // =====================================================================
 import type { Request } from 'express';
+import { smsGroupMemberChange, smsGroupRegistered } from './sms-events';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { schema, type DbOrTx, type Tx } from '../db';
 import { badRequest, conflict } from './errors';
@@ -36,6 +37,7 @@ export async function onGroupRegistration(tx: Tx, req: Request, a: Approval, o: 
   if (!g || g.status !== 'PENDING') throw conflict('Kikundi hiki hakisubiri idhini');
   if (o === 'APPROVED') {
     await tx.update(G).set({ status: 'ACTIVE' }).where(eq(G.id, g.id));
+    await smsGroupRegistered(tx, g.id);
   } else {
     await tx.update(G).set({ status: 'REJECTED' }).where(eq(G.id, g.id));
     // wanachama wanaachiwa ili waweze kuunda/kujiunga na kikundi kingine
@@ -64,4 +66,5 @@ export async function onGroupChange(tx: Tx, req: Request, a: Approval, o: Outcom
     if (!r.length) throw conflict('Mkulima huyu hayupo kwenye kikundi hiki');
   }
   await audit(tx, req, { action: `GROUP_MEMBER_${p.action}`, entity: 'MemberGroup', entityId: g.id, amcosId: a.amcosId, after: { memberId: p.memberId, note } });
+  await smsGroupMemberChange(tx, g.id, p.memberId, p.action);
 }

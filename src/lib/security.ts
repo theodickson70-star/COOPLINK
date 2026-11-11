@@ -10,7 +10,7 @@ export interface TokenPayload {
   sub: string;  // user id
   tv: number;   // tokenVersion
   sid?: string; // session id (user_sessions) — tokens za zamani hazina
-  typ?: '2fa' | 'farmer';  // '2fa' = hatua ya pili ya kuingia; 'farmer' = portal ya mkulima (haitumiki kwa API ya watumishi)
+  typ?: '2fa' | 'sms' | 'farmer';  // '2fa' / 'sms' = hatua ya pili ya kuingia; 'farmer' = portal ya mkulima (haitumiki kwa API ya watumishi)
 }
 
 export const signToken = (p: TokenPayload) =>
@@ -18,6 +18,8 @@ export const signToken = (p: TokenPayload) =>
 
 /** Token fupi (dakika 5) ya kusubiri msimbo wa 2FA. */
 export const signChallenge = (sub: string, tv: number) => jwt.sign({ sub, tv, typ: '2fa' }, env.JWT_SECRET, { expiresIn: '5m' });
+/** Hatua ya pili ya kuingia kwa OTP ya SMS (dakika 15) */
+export const signSmsChallenge = (sub: string, tv: number) => jwt.sign({ sub, tv, typ: 'sms' }, env.JWT_SECRET, { expiresIn: '15m' });
 
 export const verifyToken = (token: string) => jwt.verify(token, env.JWT_SECRET) as TokenPayload & jwt.JwtPayload;
 

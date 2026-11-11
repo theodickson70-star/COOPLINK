@@ -98,8 +98,13 @@ export function GroupDetail() {
   const [add, setAdd] = useState(false);
   const [remove, setRemove] = useState<GMember | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const smsAct = useAction();
   if (!data) return <Loading />;
   const g = data.group;
+  const sendDebt = async () => {
+    const r = await smsAct.run(() => api<{ queued: number }>(`/sms/groups/${g.id}/debt`, { method: 'POST' }));
+    if (r) setOk(`SMS ${r.queued} za deni la kikundi zimepangwa kutumwa kwa wanakikundi.`);
+  };
   const current = data.members.filter((m) => !m.leftAt);
   const canEdit = may('members.write') && g.status === 'ACTIVE';
   const memberLink = (mid: string) => (may('members.read') ? `/members/${mid}` : `/farmer-debts/${mid}`);
@@ -107,9 +112,11 @@ export function GroupDetail() {
     <>
       <PageHead title={<>{g.name} <Badge status={g.status === 'PENDING' ? 'PENDING_APPROVAL' : g.status} label={G_STATUS[g.status]} /></>} sub={<>{g.groupNo}{g.village ? ` · ${g.village}` : ''}{g.leader ? ` · Kiongozi: ${g.leader}` : ''}</>}>
         <Link className="btn btn-secondary" to={may('members.read') ? '/groups' : '/farmer-debts?tab=groups'}>← Vikundi</Link>
+        {g.status === 'ACTIVE' && (may('members.approve') || may('finance.record')) && <Button variant="secondary" busy={smsAct.busy} onClick={sendDebt}>Tuma deni kwa SMS</Button>}
         {canEdit && <Button onClick={() => setAdd(true)}>+ Ongeza mwanachama</Button>}
       </PageHead>
       <Alert kind="ok">{ok}</Alert>
+      <Alert>{smsAct.error}</Alert>
       {data.pending.map((p) => <Alert key={p.id} kind="warn">{p.requestNo}: {p.title} — inasubiri idhini ya Meneja</Alert>)}
       <div className="grid grid-kpi">
         <Kpi tone="dark" label="Wanachama" value={current.length} />

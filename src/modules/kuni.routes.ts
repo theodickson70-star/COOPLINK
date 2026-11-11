@@ -7,6 +7,7 @@
 //   Deni la dola linakatwa sokoni kwa kiwango cha siku ya soko. Orodha za zamani za TSh zinaendelea kama zilivyo.
 // =====================================================================
 import { Router, type Request } from 'express';
+import { smsLoanSent } from '../lib/sms-events';
 import { z } from 'zod';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, schema } from '../db';
@@ -355,6 +356,7 @@ kuniRouter.post('/batches/:id/confirm', requireAmcosPerm('finance.record'), ah(a
         await recordUsd(tx, { amcosId: b.amcosId, memberId: m.id, seasonId: b.seasonId, kind: 'ISSUE', usd: D(l.amountUsd).plus(l.interestUsd ?? 0), tzs: D(l.amount).plus(l.interest), rate: b.fxRate,
           description: `${label} ${t.txnNo}`, referenceType: 'KUNI_LOAN', referenceId: l.id, createdById: req.auth!.userId });
       }
+      await smsLoanSent(tx, m, { loanId: l.id, label, amountUsd: l.amountUsd, amount: l.amount, interestUsd: l.interestUsd, interest: l.interest });
       await tx.update(KL).set({ status: 'SUCCESS', providerRef: body.reference, paidAt: new Date(), financeTxnId: t.id, failureReason: null }).where(eq(KL.id, l.id));
     }
     const all = await tx.select({ status: KL.status }).from(KL).where(eq(KL.batchId, id));

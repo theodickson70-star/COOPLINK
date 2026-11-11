@@ -50,7 +50,16 @@ export const isStaff = (r?: Role) => !!r && STAFF_ROLES.includes(r);
 /** Ukurasa wa kwanza baada ya kuingia. */
 export const homeFor = (u: User) => (isPlatform(u.role) ? '/owner' : '/');
 
-type LoginResult = { user: User } | { twoFactor: true; challenge: string };
+type LoginResult = { user: User } | { twoFactor: true; challenge: string } | { otp: true; challenge: string; phoneMasked: string; resendIn: number };
+
+// Kifaa kinachoaminika (baada ya OTP ya SMS): token inahifadhiwa kwa kila namba ya simu, siku 30
+const devKey = (phone: string) => `cl_dev_${phone.replace(/\D/g, '').slice(-9)}`;
+function deviceToken(phone: string, v?: string) {
+  try {
+    if (v) localStorage.setItem(devKey(phone), v);
+    return localStorage.getItem(devKey(phone)) ?? undefined;
+  } catch { return undefined; }
+}
 
 interface AuthState {
   user: User | null;
@@ -58,6 +67,7 @@ interface AuthState {
   loading: boolean;
   login: (phone: string, password: string) => Promise<LoginResult>;
   verify2fa: (challenge: string, code: string) => Promise<User>;
+  verifyOtp: (phone: string, challenge: string, code: string, remember: boolean) => Promise<User>;
   logout: () => void;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   refresh: () => Promise<void>;
@@ -118,13 +128,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const login = async (phone: string, password: string): Promise<LoginResult> => {
-    const r = await api<{ token?: string; twoFactorRequired?: boolean; challenge?: string }>('/auth/login', { method: 'POST', body: { phone, password } });
+    const r = await api<{ token?: string; twoFactorRequired?: boolean; otpRequired?: boolean; challenge?: string; phoneMasked?: string; resendIn?: number }>('/auth/login', { method: 'POST', body: { phone, password, deviceToken: deviceToken(phone) } });
     if (r.twoFactorRequired && r.challenge) return { twoFactor: true, challenge: r.challenge };
+    if (r.otpRequired && r.challenge) return { otp: true, challenge: r.challenge, phoneMasked: r.phoneMasked ?? '', resendIn: r.resendIn ?? 60 };
     return { user: await finish(r.token!) };
   };
 
   const verify2fa = async (challenge: string, code: string) => {
     const r = await api<{ token: string }>('/auth/2fa/verify', { method: 'POST', body: { challenge, code } });
+    return finish(r.token);
+  };
+
+  const verifyOtp = async (phone: string, challenge: string, code: string, remember: boolean) => {
+    const r = await api<{ token: string; deviceToken?: string }>('/auth/login/otp', { method: 'POST', body: { challenge, code, rememberDevice: remember } });
+    if (r.deviceToken) deviceToken(phone, r.deviceToken);
     return finish(r.token);
   };
 
@@ -138,7 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const has = (...perms: Permission[]) => !!user && perms.some((p) => user.permissions?.includes(p));
   const may = (...perms: AmcosPermission[]) => !!user && perms.some((p) => user.amcosPermissions?.includes(p));
 
-  return <Ctx.Provider value={{ user, amcos, loading, login, verify2fa, logout, changePassword, refresh, can, has, may }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ user, amcos, loading, login, verify2fa, verifyOtp, logout, changePassword, refresh, can, has, may }}>{children}</Ctx.Provider>;
 }
 
 export function useAuth() {

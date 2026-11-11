@@ -6,6 +6,7 @@
 //  Sheria: hakuna anayeidhinisha ombi alilolianzisha mwenyewe.
 // =====================================================================
 import type { Request } from 'express';
+import { smsMemberRegistered } from './sms-events';
 import { and, eq, sql } from 'drizzle-orm';
 import { schema, type Tx } from '../db';
 import { AppError, badRequest, conflict, forbidden, notFound } from './errors';
@@ -103,6 +104,7 @@ async function onMember(tx: Tx, req: Request, a: Approval, o: Outcome, note: str
     await tx.update(m).set({ nameOverrideById: req.auth!.userId, nameOverrideAt: new Date() }).where(eq(m.id, row.id));
   }
   await audit(tx, req, { action: o === 'APPROVED' ? 'MEMBER_CONFIRM' : 'MEMBER_REGISTRATION_REJECT', entity: 'Member', entityId: row.id, amcosId: a.amcosId, before: { status: 'PENDING' }, after: { status, note } });
+  if (o === 'APPROVED') await smsMemberRegistered(tx, row);
 }
 
 async function onFinanceTxn(tx: Tx, req: Request, a: Approval, o: Outcome, note: string) {

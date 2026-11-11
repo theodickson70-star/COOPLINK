@@ -68,6 +68,8 @@ export const RESET_STEPS: Step[] = [
   { key: 'period_locks', label: 'Vipindi vilivyofungwa', table: 'period_locks', where: own('period_locks') },
   { key: 'approval_requests', label: 'Maombi ya idhini', table: 'approval_requests', where: own('approval_requests') },
   { key: 'sms_logs', label: 'SMS zilizotumwa', table: 'sms_logs', where: own('sms_logs') },
+  { key: 'sms_broadcasts', label: 'Matangazo ya SMS', table: 'sms_broadcasts', where: own('sms_broadcasts') },
+  { key: 'otp_codes', label: 'Namba za uthibitisho (OTP)', table: 'otp_codes', where: own('otp_codes') },
   { key: 'counters', label: 'Namba (zinaanza upya)', table: 'counters', where: own('counters') },
   { key: 'audit_logs', label: 'Kumbukumbu (audit)', table: 'audit_logs', where: own('audit_logs') },
 ];

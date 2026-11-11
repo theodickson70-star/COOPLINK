@@ -1,4 +1,6 @@
 import fs from 'fs';
+import { smsRouter } from './modules/sms.routes';
+import { scheduleFlush } from './lib/sms';
 import path from 'path';
 import express from 'express';
 import helmet from 'helmet';
@@ -68,6 +70,8 @@ export function createApp() {
   // rawBody inahitajika kuhakiki saini za webhook (TeePay)
   app.use(express.json({ limit: '3mb', verify: (req, _res, buf) => { (req as { rawBody?: Buffer }).rawBody = buf; } }));
   if (env.NODE_ENV !== 'test') app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+  // SMS za taarifa ziko kwenye foleni ndani ya muamala; zinatumwa baada ya jibu (muamala umekamilika)
+  app.use((req, res, next) => { if (req.method !== 'GET') res.on('finish', () => scheduleFlush(300)); next(); });
 
   app.get('/health', async (_req, res) => {
     try {
@@ -102,6 +106,7 @@ export function createApp() {
   api.use('/seasons', seasonsRouter);
   api.use('/buyers', buyersRouter);
   api.use('/members', membersRouter);
+  api.use('/sms', smsRouter);                   // matangazo ya chama kwa SMS, deni la kikundi kwa SMS
   api.use('/kuni', kuniRouter);                 // Pesa ya kuni (mikopo ya fedha kwa wakulima)
   api.use('/groups', groupsRouter);              // Vikundi vya wakulima (dhamana ya pamoja)
   api.use('/estimates', estimatesRouter);

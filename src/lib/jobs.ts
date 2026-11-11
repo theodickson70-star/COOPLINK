@@ -1,6 +1,7 @@
 // Kazi za nyuma (background jobs). Zinaendeshwa ndani ya server, kila saa.
 // Kama kuna replicas zaidi ya moja, advisory lock inahakikisha moja tu inaendesha kazi.
 import { eq, sql } from 'drizzle-orm';
+import { flushSms } from './sms';
 import { db, pool, schema } from '../db';
 import { runSubscriptionSweep } from './subscriptions';
 import { runFeesSweep } from './fees';
@@ -76,6 +77,8 @@ export function startJobs() {
   // Ufuatiliaji: mara moja baada ya kuwaka (inagundua muda mfumo haukuwa hewani), kisha kila dakika 5
   setTimeout(() => { void runMonitor({ startup: true }); }, Math.min(first, 15_000)).unref();
   setInterval(() => { void runMonitor(); }, 5 * 60 * 1000).unref();
+  // Foleni ya SMS (taarifa zilizosubiri asubuhi, zilizoshindwa kujaribiwa tena)
+  setInterval(() => { void flushSms().catch((e) => console.error('[sms] foleni:', (e as Error).message)); }, 60 * 1000).unref();
 }
 
 export const latestJobRuns = () =>

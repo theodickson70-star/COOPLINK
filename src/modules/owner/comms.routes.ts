@@ -80,7 +80,7 @@ async function deliver(announcementId: string, targets: Target[], channels: stri
         bump('SKIPPED');
       }
       for (const ph of phones) {
-        const r: DeliveryResult = smsSent >= MAX_SMS ? { status: 'SKIPPED', error: `Kikomo cha SMS ${MAX_SMS} kwa tangazo moja` } : await sendSms(ph, message(t));
+        const r: DeliveryResult = smsSent >= MAX_SMS ? { status: 'SKIPPED', error: `Kikomo cha SMS ${MAX_SMS} kwa tangazo moja` } : await sendSms(ph, message(t), 'OWNER_ANNOUNCEMENT', { amcosId: t.id });
         if (r.status === 'SENT') smsSent++;
         await db.insert(DL).values({ announcementId, amcosId: t.id, channel: 'SMS', recipient: ph, status: r.status, providerRef: r.providerRef, error: r.error });
         bump(r.status);

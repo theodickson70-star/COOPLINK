@@ -101,6 +101,15 @@ const MARKERS: Record<string, string[]> = {
   '0017_rebrand_dukalangu': [
     "select not exists (select 1 from platform_settings where key = 'business.profile' and upper(trim(value->>'companyName')) in ('NAYA GROUP', 'NAYA'))",
   ],
+  '0030_sms_center': [
+    "select to_regclass('public.otp_codes') is not null",
+    "select to_regclass('public.trusted_devices') is not null",
+    "select to_regclass('public.sms_broadcasts') is not null",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'sms_logs' and column_name = 'send_after')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'input_issues' and column_name = 'handover_method')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'members' and column_name = 'phone_verified_at')",
+    "select exists (select 1 from pg_enum e join pg_type t on t.oid = e.enumtypid where t.typname = 'sms_status' and e.enumlabel = 'SKIPPED')",
+  ],
   '0029_training_reset': [
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'amcos' and column_name = 'training')",
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'amcos' and column_name = 'training_reset_at')",
