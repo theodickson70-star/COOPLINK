@@ -5,7 +5,7 @@ import { verifyPassword, verifyToken } from '../lib/security';
 import { AppError, forbidden, unauthorized } from '../lib/errors';
 import { effectivePermissions, isPlatformRole, isStaffRole, type Permission } from '../lib/permissions';
 import { getSetting } from '../lib/settings';
-import { hasAmcosPerm, type AmcosPermission } from '../lib/amcos-permissions';
+import { canAmcos, coverPermissions, type AmcosPermission, type CoverRole } from '../lib/amcos-permissions';
 import { decryptSecret, verifyTotp } from '../lib/totp';
 
 export type Role = (typeof schema.roleEnum.enumValues)[number];
@@ -18,6 +18,9 @@ export interface AuthContext {
   amcosId: string | null;
   permissions: Permission[];
   sessionId: string | null;
+  /** Meneja wa chama kisicho na Mhasibu/Stokipa: kazi za vyeo hivyo (tazama coverPermissions) */
+  amcosExtra?: AmcosPermission[];
+  covering?: CoverRole[];
 }
 
 // Makundi ya roles yanayotumika mara kwa mara
@@ -82,6 +85,10 @@ async function authenticateImpl(req: Request, _res: Response, next: NextFunction
       permissions: effectivePermissions(user.role, user.permissions),
       sessionId: payload.sid ?? null,
     };
+    if (user.role === 'AMCOS_ADMIN' && user.amcosId) {
+      const c = await coverPermissions(user.role, user.amcosId);
+      req.auth.amcosExtra = c.extra; req.auth.covering = c.covering;
+    }
     next();
   } catch (err) {
     next(err);
@@ -102,7 +109,7 @@ export const requireAmcosPerm =
   (...perms: AmcosPermission[]) =>
   (req: Request, _res: Response, next: NextFunction) => {
     if (!req.auth) return next(unauthorized());
-    if (!perms.some((p) => hasAmcosPerm(req.auth!.role, p))) return next(forbidden('Cheo chako hakiruhusiwi kufanya hivi'));
+    if (!perms.some((p) => canAmcos(req.auth!, p))) return next(forbidden('Cheo chako hakiruhusiwi kufanya hivi'));
     next();
   };
 

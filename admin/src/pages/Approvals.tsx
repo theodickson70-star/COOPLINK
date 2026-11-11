@@ -68,7 +68,7 @@ export function Approvals() {
                 <td style={{ minWidth: 240 }}>{a.title}{a.reason && <div className="muted" style={{ fontSize: 13 }}>Sababu: {a.reason}</div>}</td>
                 <td className="num">{a.amount ? tsh(a.amount) : '—'}</td>
                 <td>{a.requestedBy ?? '—'}<div className="muted" style={{ fontSize: 12 }}>{ROLE_LABEL[a.requestedRole] ?? a.requestedRole} · {dateTime(a.createdAt)}</div></td>
-                <td><Badge status={a.status === 'PENDING' ? 'DRAFT' : a.status} label={STATUS[a.status]} />
+                <td><Badge status={a.status === 'PENDING' ? 'DRAFT' : a.status} label={STATUS[a.status]} />{isSelf(a) && <> <SelfBadge /></>}
                   {a.decidedAt && <div className="muted" style={{ fontSize: 12 }}>{a.decidedBy} · {dateTime(a.decidedAt)}</div>}</td>
                 <td className="num"><Button size="sm" variant={a.status === 'PENDING' && decider ? 'primary' : 'secondary'} onClick={() => setSel(a)}>{a.status === 'PENDING' && decider ? 'Amua' : 'Fungua'}</Button></td>
               </tr>
@@ -82,6 +82,10 @@ export function Approvals() {
   );
 }
 
+const SELF_TAG = '[Imejiidhinisha — chama hakina Mhasibu/Stokipa]';
+const isSelf = (a: Approval) => a.status === 'APPROVED' && !!a.decisionNote?.startsWith(SELF_TAG);
+function SelfBadge() { const t = useT(); return <span className="badge badge-warn" title={t('Meneja ameidhinisha ombi alilolianzisha mwenyewe (chama hakina Mhasibu/Stokipa)')}>{t('Imejiidhinisha')}</span>; }
+
 export function DecideModal({ approval: a, onClose, onDone }: { approval: Approval; onClose: () => void; onDone: (msg: string) => void }) {
   const t = useT();
   const { user, may } = useAuth();
@@ -93,7 +97,10 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
   const [code, setCode] = useState('');
   const { busy, error, run } = useAction();
   const mine = a.requestedById === user?.id;
-  const canDecide = a.status === 'PENDING' && may('approvals.decide') && !mine;
+  // Chama chenye Meneja pekee: anaweza kujiidhinisha (nenosiri + maelezo ya angalau herufi 10), inaandikwa "Imejiidhinisha"
+  const selfOk = mine && user?.role === 'AMCOS_ADMIN' && !!user?.covering?.length;
+  const canDecide = a.status === 'PENDING' && may('approvals.decide') && (!mine || selfOk);
+  const minNote = selfOk ? 10 : 3;
   const canCancel = a.status === 'PENDING' && mine;
   const link = entityLink(a);
   const act = async (decision: 'APPROVED' | 'REJECTED' | 'CANCEL') => {
@@ -108,7 +115,7 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
     <Modal open title={`${a.requestNo} · ${a.typeLabel ?? APPROVAL_TYPE_LABEL[a.type]}`} onClose={onClose}
       footer={canDecide ? <>
         <Button variant="danger" busy={busy} disabled={note.trim().length < 3} onClick={() => act('REJECTED')}>{t('Kataa')}</Button>
-        <Button busy={busy} disabled={note.trim().length < 3 || !pw || (!!user?.totpEnabled && code.length !== 6)} onClick={() => act('APPROVED')}>{t('Idhinisha')}</Button>
+        <Button busy={busy} disabled={note.trim().length < minNote || !pw || (!!user?.totpEnabled && code.length !== 6)} onClick={() => act('APPROVED')}>{selfOk ? t('Jiidhinishe') : t('Idhinisha')}</Button>
       </> : canCancel ? <Button variant="danger" busy={busy} disabled={note.trim().length < 3} onClick={() => act('CANCEL')}>{t('Ondoa ombi')}</Button> : <Button variant="secondary" onClick={onClose}>{t('Funga')}</Button>}>
       <dl className="dl">
         <dt>{t('Ombi')}</dt><dd>{a.title}</dd>
@@ -116,7 +123,7 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
         {a.reason && <><dt>{t('Sababu')}</dt><dd>{a.reason}</dd></>}
         {p?.balanceAtRequest && <><dt>{t('Salio wakati wa ombi')}</dt><dd>{p.balanceAtRequest}</dd></>}
         <dt>{t('Aliyeomba')}</dt><dd>{a.requestedBy} ({ROLE_LABEL[a.requestedRole] ?? a.requestedRole}) · {dateTime(a.createdAt)}</dd>
-        {a.decidedAt && <><dt>{t('Uamuzi')}</dt><dd>{STATUS[a.status]} na {a.decidedBy} · {dateTime(a.decidedAt)}<div className="muted">"{a.decisionNote}"</div></dd></>}
+        {a.decidedAt && <><dt>{t('Uamuzi')}</dt><dd>{STATUS[a.status]} na {a.decidedBy} · {dateTime(a.decidedAt)}{isSelf(a) && <> <SelfBadge /></>}<div className="muted">"{(a.decisionNote ?? '').replace(SELF_TAG, '').trim()}"</div></dd></>}
       </dl>
       {a.type === 'JOURNAL' && p?.lines && (
         <div className="table-wrap"><table className="table fin-table">
@@ -171,7 +178,8 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
         <dl className="dl"><dt>{t('Wakulima')}</dt><dd>{p.totals.farmers} · kilo {Number(p.totals.kg).toLocaleString('en-US')}</dd><dt>{t('Mauzo')}</dt><dd>{tsh(p.totals.grossTzs)}</dd><dt>{t('Makato')}</dt><dd>{tsh(p.totals.deductions)}</dd><dt>{t('Malipo halisi')}</dt><dd><strong>{tsh(p.totals.netTzs)}</strong></dd></dl>
       )}
       {link && <p style={{ margin: 0 }}><Link to={link} onClick={onClose}>{t('Fungua rekodi inayohusika →')}</Link></p>}
-      {mine && a.status === 'PENDING' && may('approvals.decide') && <Alert kind="warn">{t('Huwezi kuidhinisha ombi ulilolianzisha mwenyewe.')}</Alert>}
+      {mine && !selfOk && a.status === 'PENDING' && may('approvals.decide') && <Alert kind="warn">{t('Huwezi kuidhinisha ombi ulilolianzisha mwenyewe.')}</Alert>}
+      {selfOk && a.status === 'PENDING' && <Alert kind="warn">{t('Ombi hili umeliandaa wewe. Kwa kuwa chama hakina Mhasibu/Stokipa, unaweza kujiidhinisha — idhini itaandikwa "Imejiidhinisha" na itaonekana kwa CoopLink na Chama Kikuu. Eleza kwa nini ombi ni sahihi.')}</Alert>}
       <Alert>{error}</Alert>
       {(canDecide || canCancel) && <TextField label={canDecide ? 'Maelezo ya uamuzi *' : 'Sababu ya kuondoa *'} placeholder={canDecide ? 'mf. Nimekagua risiti, gharama ni sahihi' : ''} value={note} onChange={setNote} />}
       {canDecide && (

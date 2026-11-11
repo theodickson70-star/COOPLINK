@@ -7,6 +7,7 @@ import { sql } from 'drizzle-orm';
 import { createApp } from '../src/app';
 import { db, pool } from '../src/db';
 import { hashPassword } from '../src/lib/security';
+import { clearStaffingCache } from '../src/lib/amcos-permissions';
 import { paye } from '../src/lib/payroll';
 
 let base = '';
@@ -770,4 +771,40 @@ test('Portal ya mkulima: Meneja anawasha, Mhasibu anatoa PIN, mkulima anaona taa
   const logs = await db.execute(sql`select after::text as a from audit_logs where entity_id = ${farmerA.id} and action like 'FARMER_PORTAL%'`);
   assert.ok(logs.rows.length >= 3);
   assert.ok(logs.rows.every((r: any) => !String(r.a ?? '').includes(re.body.pin)));
+});
+
+test('Chama chenye Meneja pekee: anapata kazi za Mhasibu/Stokipa na anajiidhinisha kwa alama; mtumishi akirudi, kinga ya watu wawili inarudi', async () => {
+  const staff = await db.execute(sql`select id from users where amcos_id = ${amcosId} and role in ('ACCOUNTANT', 'CLERK') and is_active = true`);
+  const ids = staff.rows.map((r: any) => r.id as string);
+  // Kawaida: Meneja hawezi kurekodi matumizi
+  assert.equal((await call('POST', '/api/v1/finance/expenses', manager, { category: 'OFFICE', amount: '1000', accountId: bank.id, description: 'Kalamu' })).status, 403);
+  try {
+    for (const id of ids) await db.execute(sql`update users set is_active = false where id = ${id}`);
+    clearStaffingCache();
+    const me = (await call('GET', '/api/v1/auth/me', manager)).body.user;
+    assert.deepEqual([...me.covering].sort(), ['ACCOUNTANT', 'CLERK']);
+    assert.ok(me.amcosPermissions.includes('finance.record') && me.amcosPermissions.includes('stock.receive'));
+    const ws = (await call('GET', '/api/v1/workspace/summary', manager)).body;
+    assert.equal(ws.covering.length, 2);
+
+    const e = await call('POST', '/api/v1/finance/expenses', manager, { category: 'OFFICE', amount: '1000', accountId: bank.id, description: 'Kalamu za ofisi' });
+    assert.equal(e.status, 201, JSON.stringify(e.body));
+    const ap = ((await call('GET', '/api/v1/approvals?status=PENDING&pageSize=100', manager)).body.data as any[]).find((x) => x.entityId === e.body.transaction.id);
+    assert.ok(ap);
+    // Maelezo mafupi au bila nenosiri: hapana
+    assert.equal((await call('POST', `/api/v1/approvals/${ap.id}/decide`, manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'Sawa' })).status, 400);
+    assert.equal((await call('POST', `/api/v1/approvals/${ap.id}/decide`, manager, { decision: 'APPROVED', note: 'Risiti ya duka ipo ofisini' })).status, 403);
+    const ok = await call('POST', `/api/v1/approvals/${ap.id}/decide`, manager, { confirmPassword: 'Staff12345', decision: 'APPROVED', note: 'Risiti ya duka ipo ofisini' });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.ok(ok.body.approval.decisionNote.startsWith('[Imejiidhinisha'));
+    const au = await db.execute(sql`select count(*)::int as n from audit_logs where action = 'APPROVAL_SELF_APPROVED' and entity_id = ${ap.id}`);
+    assert.equal((au.rows[0] as any).n, 1);
+  } finally {
+    for (const id of ids) await db.execute(sql`update users set is_active = true where id = ${id}`);
+    clearStaffingCache();
+  }
+  // Watumishi wamerudi: kazi za ziada zimeondoka, kujiidhinisha kumefungwa
+  const me2 = (await call('GET', '/api/v1/auth/me', manager)).body.user;
+  assert.deepEqual(me2.covering, []);
+  assert.equal((await call('POST', '/api/v1/finance/expenses', manager, { category: 'OFFICE', amount: '1000', accountId: bank.id, description: 'Kalamu' })).status, 403);
 });

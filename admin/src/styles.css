@@ -1222,3 +1222,10 @@ tr.row-msg.row-warn td { color: var(--warn-ink); }
 .sc-spark span.zero { background: var(--line); opacity: 1; }
 .sc-spark-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 4px; }
 .sc-int > .btn, .sc-job .btn, .sc-switch > .btn { justify-self: start; }
+
+/* Chama chenye Meneja pekee */
+.solo-card { display: flex; gap: 14px; align-items: center; padding: 14px 18px; border-left: 4px solid var(--gold); background: var(--tint-gold); flex-wrap: wrap; }
+.solo-card > div { flex: 1; min-width: 240px; }
+.solo-card strong { color: var(--head); }
+.solo-card p { margin: 3px 0 0; font-size: 13.5px; color: var(--ink); }
+.solo-ico { font-size: 26px; }

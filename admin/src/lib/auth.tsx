@@ -38,6 +38,8 @@ export interface User {
   totpEnabled: boolean;
   permissions: Permission[];
   amcosPermissions: AmcosPermission[];
+  /** Meneja wa chama kisicho na Mhasibu/Stokipa: vyeo anavyovifanyia kazi kwa muda */
+  covering?: ('ACCOUNTANT' | 'CLERK')[];
 }
 export interface Amcos { id: string; name: string; code: string; district?: string | null }
 

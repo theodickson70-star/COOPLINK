@@ -7,7 +7,7 @@ import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
 import { requireAmcosPerm, requireReauth } from '../middleware/auth';
 import { checkRows, MAX_IMPORT_ROWS } from '../lib/member-import';
 import { activeGroups } from '../lib/groups';
-import { hasAmcosPerm } from '../lib/amcos-permissions';
+import { canAmcos } from '../lib/amcos-permissions';
 import { createApproval } from '../lib/approvals';
 import { lookupNameOrNull, resolvePhoneName, splitName } from '../lib/name-lookup';
 import { amcosScope, readAmcosId, resolveWriteAmcosId } from '../middleware/tenant';
@@ -76,7 +76,7 @@ const local0 = (p: string) => (p.startsWith('255') ? '0' + p.slice(3) : p);
  * Mkulima asiye na simu: jina lake linaandikwa (hakuna namba ya kuthibitisha).
  */
 async function verifyMemberNames(req: Request, body: MemberNames, before?: MemberBefore) {
-  const confirmer = hasAmcosPerm(req.auth!.role, 'members.approve');
+  const confirmer = canAmcos(req.auth!, 'members.approve');
   const ph = body.phone !== undefined ? body.phone : before?.phone;
   const touchesName = body.phone !== undefined || body.firstName !== undefined || body.middleName !== undefined || body.lastName !== undefined || body.nameOverrideReason !== undefined;
   const reason = body.nameOverrideReason !== undefined ? body.nameOverrideReason : before?.nameOverrideReason ?? null;
@@ -153,7 +153,7 @@ membersRouter.get('/portal/summary', requireAmcosPerm('members.portal', 'members
     loggedIn: sql<number>`count(*) filter (where ${m.portalLastLoginAt} is not null and ${m.portalPinHash} is not null and ${m.status} in ('ACTIVE', 'SUSPENDED'))::int`,
     last7: sql<number>`count(*) filter (where ${m.portalLastLoginAt} > now() - interval '7 days' and ${m.portalPinHash} is not null)::int`,
   }).from(m).where(eq(m.amcosId, a.id));
-  res.json({ enabled: a.farmerPortal, ...r, canIssue: hasAmcosPerm(req.auth!.role, 'members.portal'), canToggle: ['AMCOS_ADMIN', 'SUPER_ADMIN'].includes(req.auth!.role) });
+  res.json({ enabled: a.farmerPortal, ...r, canIssue: canAmcos(req.auth!, 'members.portal'), canToggle: ['AMCOS_ADMIN', 'SUPER_ADMIN'].includes(req.auth!.role) });
 }));
 
 membersRouter.get('/:id/portal', requireAmcosPerm('members.portal', 'members.read'), ah(async (req, res) => {
@@ -163,7 +163,7 @@ membersRouter.get('/:id/portal', requireAmcosPerm('members.portal', 'members.rea
   if (row.amcosId !== a.id) throw notFound('Mwanachama');
   let issuedBy: string | null = null;
   if (row.portalPinIssuedById) issuedBy = (await db.query.users.findFirst({ where: eq(schema.users.id, row.portalPinIssuedById), columns: { fullName: true } }))?.fullName ?? null;
-  res.json({ enabled: a.farmerPortal, ...portalState(row), issuedBy, canIssue: hasAmcosPerm(req.auth!.role, 'members.portal') });
+  res.json({ enabled: a.farmerPortal, ...portalState(row), issuedBy, canIssue: canAmcos(req.auth!, 'members.portal') });
 }));
 
 /** PIN mpya ya tarakimu 6 (inaonyeshwa MARA MOJA tu; inahifadhiwa kama hash). Inafuta sessions zote za zamani za mkulima. */
@@ -311,7 +311,7 @@ membersRouter.post(
         const taken = await tx.select({ id: m.id }).from(m).where(and(eq(m.amcosId, amcosId), eq(m.memberNo, candidate)));
         if (!taken.length) memberNo = candidate;
       }
-      const confirmer = hasAmcosPerm(req.auth!.role, 'members.approve');
+      const confirmer = canAmcos(req.auth!, 'members.approve');
       const [row] = await tx
         .insert(m)
         .values({ ...data, amcosId, memberNo, createdById: req.auth!.userId, status: confirmer ? 'ACTIVE' : 'PENDING' })
@@ -338,7 +338,7 @@ membersRouter.get(
     const member = await findMemberScoped(req, id);
     const farms = await db.select().from(schema.farms).where(eq(schema.farms.memberId, id)).orderBy(asc(schema.farms.createdAt));
     // Stokipa haoni taarifa za fedha za mkulima
-    const balance = hasAmcosPerm(req.auth!.role, 'ledger.read') ? await memberBalance(db, member.amcosId, id) : null;
+    const balance = canAmcos(req.auth!, 'ledger.read') ? await memberBalance(db, member.amcosId, id) : null;
     const [photo] = await db.select({ updatedAt: schema.memberPhotos.updatedAt }).from(schema.memberPhotos).where(eq(schema.memberPhotos.memberId, id));
     const group = (await activeGroups(db, [member.id])).get(member.id) ?? null;
     res.json({ member, farms, balance, group, photo: photo ? { updatedAt: photo.updatedAt } : null });
@@ -354,7 +354,7 @@ membersRouter.patch(
     const before = await findMemberScoped(req, id);
     if (body.memberNo !== undefined && body.memberNo !== before.memberNo) {
       // Namba ya uanachama inabadilishwa na Meneja tu (inatumika kwenye risiti na ripoti)
-      if (!hasAmcosPerm(req.auth!.role, 'members.approve')) throw badRequest('Namba ya uanachama inabadilishwa na Meneja tu');
+      if (!canAmcos(req.auth!, 'members.approve')) throw badRequest('Namba ya uanachama inabadilishwa na Meneja tu');
       if (!body.memberNo) throw badRequest('Namba ya uanachama haiwezi kuwa tupu');
     }
     checkEntryFee(body, before);

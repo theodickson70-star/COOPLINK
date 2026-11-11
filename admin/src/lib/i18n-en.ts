@@ -865,6 +865,18 @@ export const EN: Record<string, string> = {
   'Ambatisha picha ya skrini ya tatizo.': 'Attach a screenshot of the problem.',
   'Taja ulikuwa ukifanya nini na ukurasa gani.': 'Say what you were doing and on which page.',
   'Tiketi moja kwa tatizo moja.': 'One ticket per problem.',
+  // ---------- Meneja pekee ----------
+  'Chama hakina Mhasibu wala Stokipa': 'The society has no Accountant or Storekeeper',
+  'Chama hakina Mhasibu': 'The society has no Accountant',
+  'Chama hakina Stokipa': 'The society has no Storekeeper',
+  'Kwa sasa unafanya kazi zao pia ({roles}). Maombi unayoyaandaa mwenyewe utayaidhinisha kwa nenosiri na maelezo — yanaandikwa "Imejiidhinisha" na yanaonekana kwa CoopLink na Chama Kikuu. Ukimuongeza mtumishi, kazi hizo zinarudi kwake zenyewe.': 'For now you also do their work ({roles}). Requests you prepare yourself are approved by you with your password and a note — they are marked "Self-approved" and are visible to CoopLink and the Union. When you add a staff member, those tasks move back to them automatically.',
+  'fedha, mauzo, mishahara': 'finance, sales, payroll',
+  'wakulima, stoo, ugawaji': 'farmers, stock, distribution',
+  '+ Ongeza mtumishi': '+ Add staff member',
+  'Jiidhinishe': 'Self-approve',
+  'Imejiidhinisha': 'Self-approved',
+  'Meneja ameidhinisha ombi alilolianzisha mwenyewe (chama hakina Mhasibu/Stokipa)': 'The Manager approved a request they created (the society has no Accountant/Storekeeper)',
+  'Ombi hili umeliandaa wewe. Kwa kuwa chama hakina Mhasibu/Stokipa, unaweza kujiidhinisha — idhini itaandikwa "Imejiidhinisha" na itaonekana kwa CoopLink na Chama Kikuu. Eleza kwa nini ombi ni sahihi.': 'You prepared this request. Because the society has no Accountant/Storekeeper, you may approve it yourself — it will be marked "Self-approved" and visible to CoopLink and the Union. Explain why the request is correct.',
 };
 
 /** Maandishi yenye sehemu inayobadilika (mf. "Ada ya msimu 2026/2027") */

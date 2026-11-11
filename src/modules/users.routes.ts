@@ -12,7 +12,10 @@ import { isPlatformRole, isStaffRole } from '../lib/permissions';
 import { verifiedName } from '../lib/name-lookup';
 import { assertSlotFree } from '../lib/amcos-staff';
 
+import { clearStaffingCache } from '../lib/amcos-permissions';
 export const usersRouter = Router();
+// Mtumishi akiongezwa/akibadilishwa: hali ya "Meneja pekee" inahesabiwa upya mara moja
+usersRouter.use((req, res, next) => { if (req.method !== 'GET') res.on('finish', clearStaffingCache); next(); });
 
 const UNION_ROLES: Role[] = ['UNION_ADMIN', 'UNION_VIEWER'];
 const AMCOS_ROLES: Role[] = ['AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK', 'AMCOS_VIEWER'];

@@ -5,7 +5,9 @@
 //   Stokipa (CLERK)       -> anasimamia stoo
 //  Zinakaguliwa KWENYE BACKEND kwa kila ombi (requireAmcosPerm). Menu ya frontend ni urahisi tu.
 // =====================================================================
+import { and, eq, inArray } from 'drizzle-orm';
 import type { Role } from '../middleware/auth';
+import { db, schema } from '../db';
 
 export const AMCOS_PERMISSIONS = {
   // Wakulima
@@ -91,3 +93,40 @@ export function amcosPermissions(role: Role): AmcosPermission[] {
   return [...(AMCOS_ROLE_PERMISSIONS[role] ?? [])];
 }
 export const hasAmcosPerm = (role: Role, p: AmcosPermission) => (AMCOS_ROLE_PERMISSIONS[role] ?? []).includes(p);
+
+// =====================================================================
+//  CHAMA CHENYE MENEJA PEKEE
+//  Chama kisicho na Mhasibu au Stokipa aliye hai: Meneja anapata kazi za cheo kisichokuwepo (kwa muda).
+//  Mhasibu/Stokipa akiongezwa (au akiwashwa), kazi hizo zinarudi kwake zenyewe.
+//  Kuidhinisha ombi alilolianzisha mwenyewe kunaruhusiwa TU katika hali hii (approvals.ts), kwa nenosiri + maelezo,
+//  na kunaonekana kama "Imejiidhinisha" kwa Owner na Chama Kikuu.
+// =====================================================================
+export type CoverRole = 'ACCOUNTANT' | 'CLERK';
+const staffCache = new Map<string, { at: number; missing: CoverRole[] }>();
+const STAFF_TTL = 20_000;
+export function clearStaffingCache() { staffCache.clear(); }
+
+/** Vyeo ambavyo chama hakina mtumishi hai kwa sasa */
+export async function missingRoles(amcosId: string): Promise<CoverRole[]> {
+  const c = staffCache.get(amcosId);
+  if (c && Date.now() - c.at < STAFF_TTL) return c.missing;
+  const rows = await db.selectDistinct({ role: schema.users.role }).from(schema.users)
+    .where(and(eq(schema.users.amcosId, amcosId), eq(schema.users.isActive, true), inArray(schema.users.role, ['ACCOUNTANT', 'CLERK'])));
+  const have = new Set(rows.map((r) => r.role));
+  const missing = (['ACCOUNTANT', 'CLERK'] as const).filter((r) => !have.has(r));
+  staffCache.set(amcosId, { at: Date.now(), missing });
+  return missing;
+}
+
+/** Ruhusa za ziada za Meneja kwa vyeo visivyokuwepo (tupu kwa wengine). */
+export async function coverPermissions(role: Role, amcosId: string | null): Promise<{ covering: CoverRole[]; extra: AmcosPermission[] }> {
+  if (role !== 'AMCOS_ADMIN' || !amcosId) return { covering: [], extra: [] };
+  const covering = await missingRoles(amcosId);
+  const own = new Set(AMCOS_ROLE_PERMISSIONS.AMCOS_ADMIN);
+  const extra = [...new Set(covering.flatMap((r) => AMCOS_ROLE_PERMISSIONS[r] ?? []))].filter((p) => !own.has(p));
+  return { covering, extra };
+}
+
+/** Ruhusa kamili ya mtumiaji aliyeingia (cheo + kazi za vyeo visivyokuwepo) */
+export const canAmcos = (auth: { role: Role; amcosExtra?: AmcosPermission[] }, p: AmcosPermission) =>
+  hasAmcosPerm(auth.role, p) || !!auth.amcosExtra?.includes(p);

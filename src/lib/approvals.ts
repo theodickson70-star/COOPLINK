@@ -10,6 +10,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { schema, type Tx } from '../db';
 import { AppError, badRequest, conflict, forbidden, notFound } from './errors';
 import { audit } from './audit';
+import { missingRoles } from './amcos-permissions';
 import { nextNumber, pad } from './counter';
 import { D, fmt2 } from './money';
 import * as ledger from './ledger';
@@ -327,11 +328,23 @@ const HANDLERS: Record<ApprovalType, (tx: Tx, req: Request, a: Approval, o: Outc
   KUNI_BATCH: onKuniBatch,
 };
 
+export const SELF_APPROVED_TAG = '[Imejiidhinisha — chama hakina Mhasibu/Stokipa]';
+
 /** Meneja anaidhinisha au anakataa. Lazima awe wa chama hicho na asiwe aliyeanzisha ombi. */
 export async function decideApproval(tx: Tx, req: Request, id: string, decision: 'APPROVED' | 'REJECTED', note: string, changes?: ReceiptChanges) {
   const a = await lockPending(tx, id);
   if (req.auth!.amcosId !== a.amcosId) throw notFound('Ombi');
-  if (a.requestedById === req.auth!.userId) throw forbidden('Huwezi kuidhinisha ombi ulilolianzisha mwenyewe');
+  if (a.requestedById === req.auth!.userId) {
+    // Chama chenye Meneja pekee (hakina Mhasibu au Stokipa): Meneja anaweza kujiidhinisha — kwa nenosiri (route)
+    // na maelezo; inaandikwa wazi kama "Imejiidhinisha" ili Owner na Chama Kikuu waione.
+    const covering = req.auth!.role === 'AMCOS_ADMIN' ? await missingRoles(a.amcosId) : [];
+    if (!covering.length) throw forbidden('Huwezi kuidhinisha ombi ulilolianzisha mwenyewe');
+    if (decision === 'APPROVED') {
+      if (note.trim().length < 10) throw badRequest('Unajiidhinisha mwenyewe: eleza kwa ufupi kwa nini ombi hili ni sahihi (angalau herufi 10)');
+      note = `${SELF_APPROVED_TAG} ${note}`;
+      await audit(tx, req, { action: 'APPROVAL_SELF_APPROVED', entity: 'ApprovalRequest', entityId: a.id, amcosId: a.amcosId, after: { type: a.type, amount: a.amount ?? null, covering } });
+    }
+  }
   if (changes && (changes.quantity || changes.unitPrice)) {
     if (a.type !== 'STOCK_RECEIPT') throw badRequest('Marekebisho yanaruhusiwa kwa mzigo wa pembejeo tu');
     if (decision !== 'APPROVED') throw badRequest('Marekebisho ni kwa kuidhinisha tu');

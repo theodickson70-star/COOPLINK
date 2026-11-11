@@ -15,7 +15,10 @@ import { AMCOS_STAFF_ROLES, STAFF_TITLE, type AmcosStaffRole } from '../../lib/a
 import { lookupNameOrNull, verifiedName } from '../../lib/name-lookup';
 import { assertSlotFree } from '../../lib/amcos-staff';
 
+import { clearStaffingCache, missingRoles } from '../../lib/amcos-permissions';
 export const ownerAmcosRouter = Router();
+// Watumishi wakiongezwa/wakizimwa: hali ya "Meneja pekee" inahesabiwa upya baada ya jibu
+ownerAmcosRouter.use((req, res, next) => { if (req.method !== 'GET') res.on('finish', clearStaffingCache); next(); });
 const A = schema.amcos;
 
 const body = z.object({
@@ -157,7 +160,10 @@ ownerAmcosRouter.get(
              (select max(last_login_at) from users where amcos_id = ${id}) as last_activity`)).rows as Record<string, unknown>[];
     const admins = await db.select({ fullName: schema.users.fullName, phone: schema.users.phone, email: schema.users.email, isActive: schema.users.isActive, role: schema.users.role })
       .from(schema.users).where(and(eq(schema.users.amcosId, id), eq(schema.users.isActive, true), inArray(schema.users.role, [...AMCOS_STAFF_ROLES])));
-    res.json({ amcos: a, union, subscriptions, payments, counts, admins });
+    // Meneja pekee: vyeo visivyokuwepo + idhini alizojiidhinisha (siku 90)
+    const covering = await missingRoles(a.id);
+    const [{ n: selfApprovals }] = (await db.execute<{ n: number }>(sql`select count(*)::int as n from audit_logs where amcos_id = ${a.id} and action = 'APPROVAL_SELF_APPROVED' and created_at > now() - interval '90 days'`)).rows;
+    res.json({ amcos: a, union, subscriptions, payments, counts, admins, staffing: { covering, selfApprovals90d: selfApprovals } });
   }),
 );
 

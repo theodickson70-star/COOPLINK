@@ -4,7 +4,7 @@ import { and, count, desc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle
 import { db, schema } from '../db';
 import { ah } from '../lib/http';
 import { amcosScope } from '../middleware/tenant';
-import { amcosPermissions, hasAmcosPerm, isAmcosStaff, STAFF_TITLE } from '../lib/amcos-permissions';
+import { amcosPermissions, canAmcos, hasAmcosPerm, isAmcosStaff, STAFF_TITLE } from '../lib/amcos-permissions';
 import { D, fmt2 } from '../lib/money';
 import { currentSeason } from './seasons.routes';
 import { APPROVAL_LABEL } from '../lib/approvals';
@@ -14,11 +14,11 @@ export const workspaceRouter = Router();
 
 workspaceRouter.get('/summary', ah(async (req, res) => {
   const role = req.auth!.role;
-  const can = (p: Parameters<typeof hasAmcosPerm>[1]) => hasAmcosPerm(role, p);
+  const can = (p: Parameters<typeof hasAmcosPerm>[1]) => canAmcos(req.auth!, p);
   const season = await currentSeason();
   const m = schema.members, A = schema.approvalRequests, T = schema.financeTransactions, mv = schema.stockMovements;
   const out: Record<string, unknown> = {
-    role, title: isAmcosStaff(role) ? STAFF_TITLE[role] : null, permissions: amcosPermissions(role),
+    role, title: isAmcosStaff(role) ? STAFF_TITLE[role] : null, permissions: [...amcosPermissions(role), ...(req.auth!.amcosExtra ?? [])], covering: req.auth!.covering ?? [],
     season: season ? { id: season.id, name: season.name, status: season.status } : null,
   };
 

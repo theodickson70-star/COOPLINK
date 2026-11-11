@@ -7,7 +7,7 @@ import { ah, decimalSchema, paged, paginationQuery, uuidParam } from '../lib/htt
 import { notFound } from '../lib/errors';
 import { requireAmcosPerm, requireReauth } from '../middleware/auth';
 import { amcosScope } from '../middleware/tenant';
-import { hasAmcosPerm } from '../lib/amcos-permissions';
+import { canAmcos } from '../lib/amcos-permissions';
 import { APPROVAL_LABEL, cancelApproval, decideApproval } from '../lib/approvals';
 
 export const approvalsRouter = Router();
@@ -17,7 +17,7 @@ const decider = aliasedTable(schema.users, 'decider');
 
 function visible(req: Parameters<typeof amcosScope>[0]): SQL | undefined {
   // Asiye na mamlaka ya kuamua anaona maombi aliyoyaanzisha tu
-  return hasAmcosPerm(req.auth!.role, 'approvals.decide') || !req.auth!.amcosId ? undefined : eq(A.requestedById, req.auth!.userId);
+  return canAmcos(req.auth!, 'approvals.decide') || !req.auth!.amcosId ? undefined : eq(A.requestedById, req.auth!.userId);
 }
 
 const cols = {

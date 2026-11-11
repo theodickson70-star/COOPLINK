@@ -13,6 +13,7 @@ import { AccountingHome } from './Accounting';
 
 interface Summary {
   role: string; title: string | null;
+  covering?: ('ACCOUNTANT' | 'CLERK')[];
   season: { id: string; name: string; status: string } | null;
   members: { total: number; active: number; pending: number; female: number };
   production?: { approvedKg: string; draft: number; acres: string; inputsIssuedValue: string; farmersWithInputs: number; pendingIssues: number };
@@ -106,6 +107,16 @@ function Manager({ d }: { d: Summary }) {
   const f = d.finance, s = d.stock, p = d.production;
   return (
     <div className="stack">
+      {!!d.covering?.length && (
+        <section className="card solo-card">
+          <span className="solo-ico" aria-hidden="true">🧑‍💼</span>
+          <div>
+            <strong>{d.covering.length === 2 ? t('Chama hakina Mhasibu wala Stokipa') : d.covering[0] === 'ACCOUNTANT' ? t('Chama hakina Mhasibu') : t('Chama hakina Stokipa')}</strong>
+            <p>{t('Kwa sasa unafanya kazi zao pia ({roles}). Maombi unayoyaandaa mwenyewe utayaidhinisha kwa nenosiri na maelezo — yanaandikwa "Imejiidhinisha" na yanaonekana kwa CoopLink na Chama Kikuu. Ukimuongeza mtumishi, kazi hizo zinarudi kwake zenyewe.', { roles: d.covering.map((r) => (r === 'ACCOUNTANT' ? t('fedha, mauzo, mishahara') : t('wakulima, stoo, ugawaji'))).join(' · ') })}</p>
+          </div>
+          <Link className="btn btn-secondary btn-sm" to="/users">{t('+ Ongeza mtumishi')}</Link>
+        </section>
+      )}
       <FinanceAlerts />
       <div className="grid grid-kpi">
         <Kpi tone={d.approvals?.total ? 'gold' : 'dark'} label={t('Maombi yanayosubiri idhini')} value={num(d.approvals?.total)} hint={d.approvals?.total ? t('Bofya "Idhini" kuamua') : t('Hakuna kinachosubiri')} />

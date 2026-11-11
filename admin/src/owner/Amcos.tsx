@@ -181,6 +181,7 @@ interface Detail {
   payments: { id: string; invoiceNo: string; amount: string; status: string; method: string; paidAt: string; category: string }[];
   counts: { users: number; active_users: number; members: number; last_activity: string | null };
   admins: { fullName: string; phone: string; email: string | null; isActive: boolean }[];
+  staffing?: { covering: ('ACCOUNTANT' | 'CLERK')[]; selfApprovals90d: number };
 }
 
 export function OwnerAmcosDetail() {
@@ -212,6 +213,10 @@ export function OwnerAmcosDetail() {
         {a.status === 'ACTIVE' && has('amcos.suspend') && <Button variant="danger" onClick={() => setModal('suspend')}>Sitisha</Button>}
         {(a.status === 'SUSPENDED' || (a.status === 'REJECTED' && has('amcos.approve'))) && has('amcos.suspend') && <Button onClick={() => setModal('reactivate')}>Washa tena</Button>}
       </PageHead>
+      {!!data.staffing?.covering.length && (
+        <Alert kind="warn"><strong>Meneja pekee:</strong> chama hakina {data.staffing.covering.map((r) => (r === 'ACCOUNTANT' ? 'Mhasibu' : 'Stokipa')).join(' wala ')} — Meneja anafanya kazi zao na anajiidhinisha maombi yake.
+          {' '}Idhini alizojiidhinisha (siku 90): <strong>{data.staffing.selfApprovals90d}</strong>.</Alert>
+      )}
       {created && (
         <div style={{ marginBottom: 16 }}>
           <Alert kind="ok">

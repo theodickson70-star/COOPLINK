@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { amcosPermissions } from '../lib/amcos-permissions';
+import { amcosPermissions, coverPermissions } from '../lib/amcos-permissions';
 import { Router, type Request } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
@@ -33,9 +33,10 @@ const loginLimiter = rateLimit({
 
 type User = typeof schema.users.$inferSelect;
 
-function publicUser(u: User) {
+async function publicUser(u: User) {
   const { passwordHash, tokenVersion, totpSecret, permissions, ...rest } = u;
-  return { ...rest, permissions: effectivePermissions(u.role, permissions), amcosPermissions: amcosPermissions(u.role), termsRequired: u.termsVersion !== LEGAL_VERSION, legalVersion: LEGAL_VERSION };
+  const cover = await coverPermissions(u.role, u.amcosId);
+  return { ...rest, permissions: effectivePermissions(u.role, permissions), amcosPermissions: [...amcosPermissions(u.role), ...cover.extra], covering: cover.covering, termsRequired: u.termsVersion !== LEGAL_VERSION, legalVersion: LEGAL_VERSION };
 }
 
 const ua = (req: Request) => req.headers['user-agent']?.slice(0, 300) ?? null;
@@ -78,7 +79,7 @@ async function completeLogin(req: Request, user: User) {
   if (suspicious) {
     void sendSms(user.phone, `CoopLink: akaunti yako imeingiwa kutoka kifaa/mtandao mpya (${req.ip ?? '?'}). Kama si wewe, badilisha nenosiri mara moja.`);
   }
-  return { token, user: publicUser(user) };
+  return { token, user: await publicUser(user) };
 }
 
 authRouter.post(
@@ -153,7 +154,7 @@ authRouter.get(
   ah(async (req, res) => {
     const user = await db.query.users.findFirst({ where: eq(schema.users.id, req.auth!.userId) });
     const amcos = user?.amcosId ? await db.query.amcos.findFirst({ where: eq(schema.amcos.id, user.amcosId) }) : null;
-    res.json({ user: publicUser(user!), amcos });
+    res.json({ user: await publicUser(user!), amcos });
   }),
 );
 
@@ -169,7 +170,7 @@ authRouter.patch(
       await audit(tx, req, { action: 'PROFILE_UPDATE', entity: 'User', entityId: req.auth!.userId, before: { fullName: before?.fullName, email: before?.email }, after: body });
       return r;
     });
-    res.json({ user: publicUser(u) });
+    res.json({ user: await publicUser(u) });
   }),
 );
 
@@ -185,7 +186,7 @@ authRouter.post(
       await audit(tx, req, { action: 'TERMS_ACCEPT', entity: 'User', entityId: req.auth!.userId, after: { version: LEGAL_VERSION, ip: req.ip ?? null, userAgent: ua(req) } });
       return r;
     });
-    res.json({ user: publicUser(u) });
+    res.json({ user: await publicUser(u) });
   }),
 );
 
@@ -214,7 +215,7 @@ authRouter.post(
       // Vikao vyote vya zamani vinafutwa; kipya kinaanzishwa kwa kifaa hiki
       await tx.update(schema.userSessions).set({ revokedAt: new Date(), revokedById: user.id }).where(activeSessionsWhere(user.id));
       await audit(tx, req, { action: 'PASSWORD_CHANGE', entity: 'User', entityId: user.id });
-      return { token: await startSession(tx, req, updated), user: publicUser(updated) };
+      return { token: await startSession(tx, req, updated), user: await publicUser(updated) };
     });
     res.json(result);
   }),
