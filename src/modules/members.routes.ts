@@ -30,6 +30,7 @@ const memberBody = z.object({
   middleName: opt(z.string().trim()),
   lastName: z.string().trim().min(2),
   gender: z.enum(schema.genderEnum.enumValues),
+  maritalStatus: opt(z.enum(schema.maritalStatusEnum.enumValues)),
   dateOfBirth: opt(dateStr),
   // Namba ya uanachama aliyopewa na chama zamani. Ikiachwa wazi, mfumo unaitoa (mf. USOKE-000001).
   memberNo: opt(z.string().trim().toUpperCase().regex(/^[A-Z0-9][A-Z0-9/.\- ]{0,29}$/, 'Namba ya uanachama iwe herufi/namba (inaweza kuwa na / au -), hadi herufi 30')),
@@ -81,7 +82,7 @@ async function verifyMemberNames(req: Request, body: MemberNames, before?: Membe
   const touchesName = body.phone !== undefined || body.firstName !== undefined || body.middleName !== undefined || body.lastName !== undefined || body.nameOverrideReason !== undefined;
   const reason = body.nameOverrideReason !== undefined ? body.nameOverrideReason : before?.nameOverrideReason ?? null;
   const typed = fullOf({ firstName: body.firstName ?? before?.firstName, middleName: body.middleName !== undefined ? body.middleName : before?.middleName, lastName: body.lastName ?? before?.lastName });
-  // Jina tofauti lililokwisha idhinishwa, na halijaguswa -> libaki kama lilivyo (mf. Stokipa anabadilisha kijiji tu)
+  // Jina tofauti lililokwisha idhinishwa, na halijaguswa -> libaki kama lilivyo (mf. Storekeeper anabadilisha kijiji tu)
   const unchanged = !!before?.nameOverrideById && ph === before.phone && reason === before.nameOverrideReason && norm(typed) === norm(fullOf(before));
   if (ph && touchesName && !unchanged) {
     const r = await resolvePhoneName(ph);
@@ -90,7 +91,7 @@ async function verifyMemberNames(req: Request, body: MemberNames, before?: Membe
       if (!confirmer && before && before.status !== 'PENDING') throw forbidden('Jina la mkulima tofauti na la mwenye namba linaidhinishwa na Meneja. Mwombe Meneja afanye mabadiliko haya.');
       body.nameOverrideReason = reason;
       body.phoneOwnerName = r.status === 'FOUND' ? r.name : null;
-      body.nameOverrideById = confirmer ? req.auth!.userId : null; // Stokipa akisajili: Meneja anaidhinisha pamoja na usajili
+      body.nameOverrideById = confirmer ? req.auth!.userId : null; // Storekeeper akisajili: Meneja anaidhinisha pamoja na usajili
       body.nameOverrideAt = confirmer ? new Date() : null;
     } else if (r.status === 'NOT_FOUND') {
       throw badRequest(`Simu ya mkulima ${local0(r.phone)} haijasajiliwa kwenye mobile money, kwa hiyo jina haliwezi kuthibitishwa. Hakikisha namba ni sahihi, au chagua "Namba si ya mkulima" na ueleze sababu (Meneja ataidhinisha).`);
@@ -132,7 +133,7 @@ export async function findMemberScoped(req: Request, id: string) {
 }
 
 // ---------------------------------------------------------------------
-//  PORTAL YA MKULIMA (upande wa ofisi): Mhasibu na Stokipa wanatoa/kufuta PIN; Meneja anaona tu na kuwasha portal.
+//  PORTAL YA MKULIMA (upande wa ofisi): Mhasibu na Storekeeper wanatoa/kufuta PIN; Meneja anaona tu na kuwasha portal.
 // ---------------------------------------------------------------------
 async function portalAmcos(req: Request) {
   const amcosId = await readAmcosId(req);
@@ -337,7 +338,7 @@ membersRouter.get(
     const { id } = uuidParam.parse(req.params);
     const member = await findMemberScoped(req, id);
     const farms = await db.select().from(schema.farms).where(eq(schema.farms.memberId, id)).orderBy(asc(schema.farms.createdAt));
-    // Stokipa haoni taarifa za fedha za mkulima
+    // Storekeeper haoni taarifa za fedha za mkulima
     const balance = canAmcos(req.auth!, 'ledger.read') ? await memberBalance(db, member.amcosId, id) : null;
     const [photo] = await db.select({ updatedAt: schema.memberPhotos.updatedAt }).from(schema.memberPhotos).where(eq(schema.memberPhotos.memberId, id));
     const group = (await activeGroups(db, [member.id])).get(member.id) ?? null;

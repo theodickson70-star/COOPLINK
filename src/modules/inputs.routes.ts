@@ -217,7 +217,7 @@ const stockBody = z.object({
 
 // =====================================================================
 //  KUINGIZA PEMBEJEO STOO — NJIA MOJA TU
-//   Stokipa anaingiza mzigo (bidhaa iliyopo AU mpya; wa kawaida AU wa ombi la manunuzi lililoidhinishwa)
+//   Storekeeper anaingiza mzigo (bidhaa iliyopo AU mpya; wa kawaida AU wa ombi la manunuzi lililoidhinishwa)
 //   pamoja na idadi na bei ya kumkopesha mkulima -> Meneja anaidhinisha idadi na bei
 //   -> ndipo stoo inaongezeka na pembejeo zinaweza kutolewa kwa wakulima.
 // =====================================================================
@@ -329,7 +329,7 @@ inputsRouter.post(
 
 
 
-// Marekebisho ya stoo: Stokipa ANAOMBA, Meneja anaidhinisha. Stoo HAIBADILIKI kabla ya idhini.
+// Marekebisho ya stoo: Storekeeper ANAOMBA, Meneja anaidhinisha. Stoo HAIBADILIKI kabla ya idhini.
 //   kind: ADJUSTMENT (hesabu), DAMAGE (zimeharibika), EXPIRY (muda umeisha)
 const ADJ_LABEL = { ADJUSTMENT: 'Marekebisho', DAMAGE: 'Zimeharibika', EXPIRY: 'Muda umeisha' } as const;
 inputsRouter.post(
@@ -406,7 +406,7 @@ inputIssuesRouter.get(
   }),
 );
 
-// Stokipa anaandaa ugawaji -> unasubiri idhini ya Meneja. Stoo na deni la mkulima vinabadilika BAADA ya idhini.
+// Storekeeper anaandaa ugawaji -> unasubiri idhini ya Meneja. Stoo na deni la mkulima vinabadilika BAADA ya idhini.
 inputIssuesRouter.post(
   '/',
   requireAmcosPerm('issues.request'),

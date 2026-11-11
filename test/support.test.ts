@@ -66,7 +66,7 @@ before(async () => {
 after(async () => { server.close(); await pool.end(); });
 
 test('Tiketi za msaada: kufungua, kuonekana kwa wanaostahili, majibu, maelezo ya ndani, SLA na kufunga', async () => {
-  // Stokipa anafungua tiketi yenye picha ya skrini
+  // Storekeeper anafungua tiketi yenye picha ya skrini
   const c = await call('POST', '/api/v1/support/tickets', clerk, {
     category: 'BUG', priority: 'HIGH', subject: 'Ukurasa wa stoo haufunguki', body: 'Nikifungua Bidhaa na Stoo inaonyesha kosa.',
     context: { page: '/store', version: '0.13.0' }, attachments: [{ mimeType: 'image/png', data: PNG }],
@@ -77,7 +77,7 @@ test('Tiketi za msaada: kufungua, kuonekana kwa wanaostahili, majibu, maelezo ya
   const hrs = (new Date(c.body.ticket.dueAt).getTime() - new Date(c.body.ticket.createdAt).getTime()) / 3_600_000;
   assert.equal(Math.round(hrs), 8, 'Kubwa = saa 8');
 
-  // Meneja anaona tiketi za chama; Mhasibu haoni ya Stokipa; chama kingine hakioni kabisa
+  // Meneja anaona tiketi za chama; Mhasibu haoni ya Storekeeper; chama kingine hakioni kabisa
   assert.ok((await call('GET', '/api/v1/support/tickets', manager)).body.data.some((t: any) => t.id === id));
   assert.ok(!(await call('GET', '/api/v1/support/tickets', accountant)).body.data.some((t: any) => t.id === id));
   assert.equal((await call('GET', `/api/v1/support/tickets/${id}`, accountant)).status, 404);
@@ -101,7 +101,7 @@ test('Tiketi za msaada: kufungua, kuonekana kwa wanaostahili, majibu, maelezo ya
   assert.ok(od.ticket.firstResponseAt);
   assert.equal(od.ticket.assignedToId, supportId, 'aliyejibu kwanza anapewa tiketi');
   assert.equal(od.messages.length, 3);
-  assert.equal((await call('GET', '/api/v1/support/unread', clerk)).body.count, 1, 'Stokipa anaona jibu jipya');
+  assert.equal((await call('GET', '/api/v1/support/unread', clerk)).body.count, 1, 'Storekeeper anaona jibu jipya');
   d = (await call('GET', `/api/v1/support/tickets/${id}`, clerk)).body;
   assert.equal(d.messages.length, 2);
   assert.match(d.messages[1].author, /Timu ya CoopLink/);

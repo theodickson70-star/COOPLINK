@@ -1,6 +1,6 @@
 // =====================================================================
-//  STOO (Stokipa) — wazabuni, maombi ya manunuzi, kupokea mzigo, hesabu ya stoo, ripoti
-//   Manunuzi: Stokipa anaomba -> Meneja anaidhinisha -> Mhasibu analipa -> Stokipa anapokea -> stoo inaongezeka
+//  STOO (Storekeeper) — wazabuni, maombi ya manunuzi, kupokea mzigo, hesabu ya stoo, ripoti
+//   Manunuzi: Storekeeper anaomba -> Meneja anaidhinisha -> Mhasibu analipa -> Storekeeper anapokea -> stoo inaongezeka
 // =====================================================================
 import { Router, type Request } from 'express';
 import { z } from 'zod';
@@ -165,7 +165,7 @@ storeRouter.post('/purchases', requireAmcosPerm('purchases.request'), ah(async (
 
 
 // ------------------------------ HESABU YA STOO (RECONCILIATION) ------------------------------
-/** Stokipa anaingiza hesabu halisi; tofauti zinakuwa maombi ya marekebisho kwa Meneja. Stoo haibadiliki sasa. */
+/** Storekeeper anaingiza hesabu halisi; tofauti zinakuwa maombi ya marekebisho kwa Meneja. Stoo haibadiliki sasa. */
 storeRouter.post('/stock-count', requireAmcosPerm('stock.adjust.request'), ah(async (req, res) => {
   const body = z.object({
     notes: z.string().trim().min(3),

@@ -19,7 +19,7 @@ usersRouter.use((req, res, next) => { if (req.method !== 'GET') res.on('finish',
 
 const UNION_ROLES: Role[] = ['UNION_ADMIN', 'UNION_VIEWER'];
 const AMCOS_ROLES: Role[] = ['AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK', 'AMCOS_VIEWER'];
-// Watumishi wa AMCOS (Meneja, Mhasibu, Stokipa) wanasimamiwa na Owner wa CoopLink tu — nafasi moja kwa kila cheo.
+// Watumishi wa AMCOS (Meneja, Mhasibu, Storekeeper) wanasimamiwa na Owner wa CoopLink tu — nafasi moja kwa kila cheo.
 
 const userCols = {
   id: schema.users.id, fullName: schema.users.fullName, phone: schema.users.phone, email: schema.users.email,
@@ -111,7 +111,7 @@ usersRouter.post(
       body.amcosId = undefined;
     }
     await assertCanManage(req, body);
-    if (body.role === 'AMCOS_VIEWER') throw badRequest('AMCOS ina watumishi watatu tu: Meneja, Mhasibu na Stokipa');
+    if (body.role === 'AMCOS_VIEWER') throw badRequest('AMCOS ina watumishi watatu tu: Meneja, Mhasibu na Storekeeper');
     if (body.amcosId) await assertSlotFree(db, body.amcosId, body.role);
 
     const password = tempPassword();
@@ -159,7 +159,7 @@ usersRouter.patch(
         req.auth!.role === 'SUPER_ADMIN';
       if (!sameKind) throw badRequest('Role mpya hailingani na aina ya mtumiaji');
       await assertCanManage(req, { ...existing, role: body.role });
-      if (body.role === 'AMCOS_VIEWER') throw badRequest('AMCOS ina watumishi watatu tu: Meneja, Mhasibu na Stokipa');
+      if (body.role === 'AMCOS_VIEWER') throw badRequest('AMCOS ina watumishi watatu tu: Meneja, Mhasibu na Storekeeper');
     }
     const willBeActive = body.isActive ?? existing.isActive;
     if (existing.amcosId && willBeActive) await assertSlotFree(db, existing.amcosId, body.role ?? existing.role, existing.id);

@@ -101,6 +101,10 @@ const MARKERS: Record<string, string[]> = {
   '0017_rebrand_dukalangu': [
     "select not exists (select 1 from platform_settings where key = 'business.profile' and upper(trim(value->>'companyName')) in ('NAYA GROUP', 'NAYA'))",
   ],
+  '0027_marital_status': [
+    "select exists (select 1 from pg_type where typname = 'marital_status')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'members' and column_name = 'marital_status')",
+  ],
   '0026_estimate_sheet': [
     "select to_regclass('public.estimate_inputs') is not null",
     "select exists (select 1 from pg_enum e join pg_type t on t.oid = e.enumtypid where t.typname = 'input_unit' and e.enumlabel = 'METRE')",

@@ -105,7 +105,7 @@ function FarmerLogin({ notice, onDone }: { notice: string | null; onDone: () => 
       </div>
       <Alert>{err}</Alert>
       <Button type="submit" busy={busy} disabled={!memberNo.trim() || pin.length < 4}>{t('Ingia')}</Button>
-      <p className="fp-help">{t('Huna PIN au umeisahau? Nenda ofisi ya chama chako — Mhasibu au Stokipa atakupa PIN mpya.')}</p>
+      <p className="fp-help">{t('Huna PIN au umeisahau? Nenda ofisi ya chama chako — Mhasibu au Storekeeper atakupa PIN mpya.')}</p>
     </form>
   );
 }

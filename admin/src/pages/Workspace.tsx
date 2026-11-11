@@ -1,4 +1,4 @@
-// Dashibodi za watumishi: Meneja, Mhasibu, Stokipa — kila mmoja anaona kazi zake
+// Dashibodi za watumishi: Meneja, Mhasibu, Storekeeper — kila mmoja anaona kazi zake
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useFetch } from '../lib/hooks';
@@ -111,7 +111,7 @@ function Manager({ d }: { d: Summary }) {
         <section className="card solo-card">
           <span className="solo-ico" aria-hidden="true">🧑‍💼</span>
           <div>
-            <strong>{d.covering.length === 2 ? t('Chama hakina Mhasibu wala Stokipa') : d.covering[0] === 'ACCOUNTANT' ? t('Chama hakina Mhasibu') : t('Chama hakina Stokipa')}</strong>
+            <strong>{d.covering.length === 2 ? t('Chama hakina Mhasibu wala Storekeeper') : d.covering[0] === 'ACCOUNTANT' ? t('Chama hakina Mhasibu') : t('Chama hakina Storekeeper')}</strong>
             <p>{t('Kwa sasa unafanya kazi zao pia ({roles}). Maombi unayoyaandaa mwenyewe utayaidhinisha kwa nenosiri na maelezo — yanaandikwa "Imejiidhinisha" na yanaonekana kwa CoopLink na Chama Kikuu. Ukimuongeza mtumishi, kazi hizo zinarudi kwake zenyewe.', { roles: d.covering.map((r) => (r === 'ACCOUNTANT' ? t('fedha, mauzo, mishahara') : t('wakulima, stoo, ugawaji'))).join(' · ') })}</p>
           </div>
           <Link className="btn btn-secondary btn-sm" to="/users">{t('+ Ongeza mtumishi')}</Link>

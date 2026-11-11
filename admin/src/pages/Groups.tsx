@@ -1,6 +1,6 @@
 // =====================================================================
 //  VIKUNDI VYA WAKULIMA (dhamana ya pamoja)
-//   Stokipa anaunda kikundi -> Meneja anaidhinisha. Kila mkulima ana deni lake; kikundi kinadhamini:
+//   Storekeeper anaunda kikundi -> Meneja anaidhinisha. Kila mkulima ana deni lake; kikundi kinadhamini:
 //   mwanachama akishindwa kumaliza deni kwenye mauzo, wenzake wanakatwa kwa uwiano wa malipo yao.
 // =====================================================================
 import { useState } from 'react';

@@ -272,7 +272,7 @@ const staffCols = {
   mustChangePassword: U.mustChangePassword, lastLoginAt: U.lastLoginAt, createdAt: U.createdAt, updatedAt: U.updatedAt,
 };
 
-/** Nafasi tatu (Meneja, Mhasibu, Stokipa) na historia ya waliowahi kushika nafasi hizo. */
+/** Nafasi tatu (Meneja, Mhasibu, Storekeeper) na historia ya waliowahi kushika nafasi hizo. */
 ownerAmcosRouter.get('/:id/staff', requirePermission('amcos.read'), ah(async (req, res) => {
   const { id } = uuidParam.parse(req.params);
   await findAmcos(id);
@@ -346,7 +346,7 @@ ownerAmcosRouter.post('/:id/staff/:userId/active', requirePermission('amcos.staf
   if (u.isActive === isActive) throw badRequest(isActive ? 'Akaunti tayari iko hai' : 'Akaunti tayari imezimwa');
   if (!isActive) await requireReauth(req);
   if (isActive) {
-    if (u.role === 'AMCOS_VIEWER') throw badRequest('AMCOS ina watumishi watatu tu: Meneja, Mhasibu na Stokipa');
+    if (u.role === 'AMCOS_VIEWER') throw badRequest('AMCOS ina watumishi watatu tu: Meneja, Mhasibu na Storekeeper');
     await assertSlotFree(db, id, u.role, u.id);
   }
   const user = await db.transaction(async (tx) => {

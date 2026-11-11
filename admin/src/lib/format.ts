@@ -20,7 +20,7 @@ export const ROLE_LABEL: Record<string, string> = {
   UNION_VIEWER: 'Mtazamaji wa Union',
   AMCOS_ADMIN: 'Meneja',
   ACCOUNTANT: 'Mhasibu',
-  CLERK: 'Stokipa',
+  CLERK: 'Storekeeper',
   AMCOS_VIEWER: 'Mtazamaji (amezimwa)',
   FINANCE_MANAGER: 'Meneja wa Fedha',
   TECH_SUPPORT: 'Msaada wa Kiufundi',
@@ -54,7 +54,7 @@ export const MOVE_LABEL: Record<string, string> = {
   RECEIPT: 'Kupokea', ISSUE: 'Kutoa', RETURN: 'Kurudishwa', ADJUSTMENT: 'Marekebisho', DAMAGE: 'Zimeharibika', EXPIRY: 'Muda umeisha',
 };
 
-export const STAFF_TITLE: Record<string, string> = { AMCOS_ADMIN: 'Meneja', ACCOUNTANT: 'Mhasibu', CLERK: 'Stokipa' };
+export const STAFF_TITLE: Record<string, string> = { AMCOS_ADMIN: 'Meneja', ACCOUNTANT: 'Mhasibu', CLERK: 'Storekeeper' };
 export const STAFF_DUTY: Record<string, string> = {
   AMCOS_ADMIN: 'Anaidhinisha matumizi, malipo, mauzo, mishahara, journal, manunuzi na ugawaji wa pembejeo; anaona ripoti za fedha',
   ACCOUNTANT: 'Anasimamia daftari kuu, mauzo ya tumbaku na makato, vocha na benki, mishahara, mali za chama na ripoti za fedha',

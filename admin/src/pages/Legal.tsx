@@ -101,7 +101,7 @@ function terms(i: LegalInfo | null, en: boolean): Doc {
       { h: '1. Tafsiri', b: [{ list: [
         '"CoopLink" au "Mfumo": programu ya mtandaoni na huduma zinazohusiana nayo zinazotolewa na Kampuni.',
         '"Chama": chama cha msingi cha ushirika (AMCOS) chenye akaunti kwenye CoopLink.',
-        '"Mtumiaji": yeyote aliyepewa akaunti ya CoopLink, wakiwemo Meneja, Mhasibu, Stokipa na wafanyakazi wa Kampuni.',
+        '"Mtumiaji": yeyote aliyepewa akaunti ya CoopLink, wakiwemo Meneja, Mhasibu, Storekeeper na wafanyakazi wa Kampuni.',
         '"Data ya Chama": taarifa zote zinazoingizwa kwenye CoopLink na chama au kwa niaba yake, zikiwemo wakulima, makisio, pembejeo, mauzo, madeni, malipo na hesabu.',
       ] }] },
       { h: '2. Akaunti na usalama', b: [{ list: [

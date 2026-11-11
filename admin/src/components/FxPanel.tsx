@@ -64,7 +64,7 @@ export function FxPanel() {
               <button type="button" className={d.currency === 'USD' ? 'on' : ''} disabled={cur.busy} onClick={() => d.currency !== 'USD' && switchTo('USD')}>Dola (USD)</button>
               <button type="button" className={d.currency === 'TZS' ? 'on' : ''} disabled={cur.busy} onClick={() => d.currency !== 'TZS' && switchTo('TZS')}>Shilingi (TSh)</button>
             </div>
-            {d.currency === 'USD' && <p className="muted" style={{ fontSize: 13 }}>Kumbuka: Meneja/Stokipa waweke bei za dola kwa kila pembejeo (Bidhaa na Stoo).</p>}
+            {d.currency === 'USD' && <p className="muted" style={{ fontSize: 13 }}>Kumbuka: Meneja/Storekeeper waweke bei za dola kwa kila pembejeo (Bidhaa na Stoo).</p>}
             {!d.rate && <p className="muted" style={{ fontSize: 13 }}>Weka kiwango kwanza ndipo uchague dola.</p>}
           </Section>
         </div>

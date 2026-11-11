@@ -52,7 +52,7 @@ export function ReceiveInputsModal({ itemId: initialItem, purchaseId: initialPr,
 
   // Chama kisicho na bidhaa bado: fomu inaanza na bidhaa mpya
   useEffect(() => { if (items.data && !initialItem && !items.data.data.some((i) => i.isActive)) setKind('new'); }, [items.data]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Bei ya sasa inajazwa yenyewe (Stokipa anaweza kupendekeza mpya)
+  // Bei ya sasa inajazwa yenyewe (Storekeeper anaweza kupendekeza mpya)
   useEffect(() => { setPrice(current ? String(Number(current)) : ''); }, [current]);
   useEffect(() => { if (line) { setQty(String(Number(line.quantity) - Number(line.receivedQty))); setCost(String(Number(U && line.unitCostUsd ? line.unitCostUsd : line.unitCost))); } }, [line?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (openLines.length === 1 && !lineId) setLineId(openLines[0].id); }, [openLines.length]); // eslint-disable-line react-hooks/exhaustive-deps

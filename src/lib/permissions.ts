@@ -12,7 +12,7 @@ export const PERMISSIONS = {
   'amcos.read': 'Kuona vyama (biashara)',
   'amcos.create': 'Kusajili vyama',
   'amcos.approve': 'Kuidhinisha / kukataa vyama',
-  'amcos.staff': 'Kusimamia watumishi wa vyama (Meneja, Mhasibu, Stokipa)',
+  'amcos.staff': 'Kusimamia watumishi wa vyama (Meneja, Mhasibu, Storekeeper)',
   'amcos.suspend': 'Kusitisha / kuwasha vyama',
   'subscriptions.read': 'Kuona subscriptions',
   'subscriptions.manage': 'Kusimamia mipango na subscriptions',

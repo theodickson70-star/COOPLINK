@@ -1,6 +1,6 @@
 // =====================================================================
 //  VIKUNDI VYA WAKULIMA (dhamana ya pamoja)
-//   Stokipa anaunda kikundi na kupanga wanachama -> Meneja anaidhinisha
+//   Storekeeper anaunda kikundi na kupanga wanachama -> Meneja anaidhinisha
 //   Kuongeza / kutoa mwanachama kwenye kikundi hai -> idhini ya Meneja (mwenye deni hatoki)
 // =====================================================================
 import { Router, type Request } from 'express';
@@ -34,7 +34,7 @@ const groupStats = {
   leader: sql<string | null>`(select m.first_name || ' ' || m.last_name from members m where m.id = "member_groups"."leader_member_id")`,
 };
 
-/** Orodha ya vikundi (Stokipa, Meneja na Mhasibu). Mhasibu anaona deni tu, si taarifa binafsi. */
+/** Orodha ya vikundi (Storekeeper, Meneja na Mhasibu). Mhasibu anaona deni tu, si taarifa binafsi. */
 groupsRouter.get('/', requireAmcosPerm('members.read', 'finance.read'), ah(async (req, res) => {
   const { status } = z.object({ status: z.enum(schema.groupStatusEnum.enumValues).optional() }).parse(req.query);
   const rows = await db.select({ g: G, ...groupStats }).from(G).where(and(amcosScope(req, G.amcosId), status ? eq(G.status, status) : undefined)).orderBy(asc(G.status), asc(G.name));

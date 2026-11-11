@@ -111,7 +111,7 @@ export function createApp() {
   api.use('/audit-logs', auditRouter);
   api.use('/approvals', approvalsRouter);       // Idhini za Meneja
   api.use('/finance', financeRouter);           // Fedha za chama (Mhasibu)
-  api.use('/store', storeRouter);               // Stoo, manunuzi, wazabuni (Stokipa)
+  api.use('/store', storeRouter);               // Stoo, manunuzi, wazabuni (Storekeeper)
   api.use('/accounting', accountingRouter);     // Daftari kuu na ripoti kuu (Mhasibu)
   api.use('/bank', bankRouter);                 // Uhamisho, usuluhishi wa benki, vocha
   api.use('/sales', salesRouter);               // Mauzo ya tumbaku na makato

@@ -18,7 +18,7 @@ export interface AuthContext {
   amcosId: string | null;
   permissions: Permission[];
   sessionId: string | null;
-  /** Meneja wa chama kisicho na Mhasibu/Stokipa: kazi za vyeo hivyo (tazama coverPermissions) */
+  /** Meneja wa chama kisicho na Mhasibu/Storekeeper: kazi za vyeo hivyo (tazama coverPermissions) */
   amcosExtra?: AmcosPermission[];
   covering?: CoverRole[];
 }
@@ -104,7 +104,7 @@ export const requireRole =
     next();
   };
 
-/** Ruhusa ya ndani ya chama (Meneja/Mhasibu/Stokipa). Inahitaji angalau moja kati ya hizi. */
+/** Ruhusa ya ndani ya chama (Meneja/Mhasibu/Storekeeper). Inahitaji angalau moja kati ya hizi. */
 export const requireAmcosPerm =
   (...perms: AmcosPermission[]) =>
   (req: Request, _res: Response, next: NextFunction) => {

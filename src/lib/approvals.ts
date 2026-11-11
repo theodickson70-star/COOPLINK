@@ -274,7 +274,7 @@ async function onStockReceipt(tx: Tx, req: Request, a: Approval, o: Outcome, not
   if (!item && p.newItem) {
     // Bidhaa mpya inasajiliwa sasa (Meneja ameidhinisha)
     const [ex] = await tx.select().from(schema.inputItems).where(and(eq(schema.inputItems.amcosId, a.amcosId), sql`lower(${schema.inputItems.name}) = lower(${p.newItem.name})`));
-    if (ex) throw conflict(`Bidhaa "${p.newItem.name}" tayari imesajiliwa — Stokipa aingize mzigo kwa bidhaa iliyopo`);
+    if (ex) throw conflict(`Bidhaa "${p.newItem.name}" tayari imesajiliwa — Storekeeper aingize mzigo kwa bidhaa iliyopo`);
     [item] = await tx.insert(schema.inputItems).values({ amcosId: a.amcosId, name: p.newItem.name, category: p.newItem.category, unit: p.newItem.unit, reorderLevel: p.newItem.reorderLevel ?? null }).returning();
     await audit(tx, req, { action: 'INPUT_ITEM_CREATE', entity: 'InputItem', entityId: item.id, amcosId: a.amcosId, after: { ...item, approval: a.requestNo } });
   }
@@ -343,14 +343,14 @@ const HANDLERS: Record<ApprovalType, (tx: Tx, req: Request, a: Approval, o: Outc
   KUNI_BATCH: onKuniBatch,
 };
 
-export const SELF_APPROVED_TAG = '[Imejiidhinisha — chama hakina Mhasibu/Stokipa]';
+export const SELF_APPROVED_TAG = '[Imejiidhinisha — chama hakina Mhasibu/Storekeeper]';
 
 /** Meneja anaidhinisha au anakataa. Lazima awe wa chama hicho na asiwe aliyeanzisha ombi. */
 export async function decideApproval(tx: Tx, req: Request, id: string, decision: 'APPROVED' | 'REJECTED', note: string, changes?: ReceiptChanges) {
   const a = await lockPending(tx, id);
   if (req.auth!.amcosId !== a.amcosId) throw notFound('Ombi');
   if (a.requestedById === req.auth!.userId) {
-    // Chama chenye Meneja pekee (hakina Mhasibu au Stokipa): Meneja anaweza kujiidhinisha — kwa nenosiri (route)
+    // Chama chenye Meneja pekee (hakina Mhasibu au Storekeeper): Meneja anaweza kujiidhinisha — kwa nenosiri (route)
     // na maelezo; inaandikwa wazi kama "Imejiidhinisha" ili Owner na Chama Kikuu waione.
     const covering = req.auth!.role === 'AMCOS_ADMIN' ? await missingRoles(a.amcosId) : [];
     if (!covering.length) throw forbidden('Huwezi kuidhinisha ombi ulilolianzisha mwenyewe');

@@ -1,4 +1,4 @@
-// Majaribio ya watumishi watatu wa AMCOS (Meneja, Mhasibu, Stokipa), idhini, fedha na stoo — v0.3.0
+// Majaribio ya watumishi watatu wa AMCOS (Meneja, Mhasibu, Storekeeper), idhini, fedha na stoo — v0.3.0
 // Yanathibitisha masharti ya sehemu ya 11 ya spec "AMCOS STAFF ROLES & PERMISSIONS".
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -39,7 +39,7 @@ async function setupAmcos(code: string): Promise<Amcos> {
   assert.equal((await call('POST', `/api/v1/owner/amcos/${id}/approve`, owner, {})).status, 200);
   const tokens: Record<string, string> = {};
   let managerId = '';
-  for (const [role, name] of [['AMCOS_ADMIN', 'Meneja'], ['ACCOUNTANT', 'Mhasibu'], ['CLERK', 'Stokipa']] as const) {
+  for (const [role, name] of [['AMCOS_ADMIN', 'Meneja'], ['ACCOUNTANT', 'Mhasibu'], ['CLERK', 'Storekeeper']] as const) {
     const phone = uniqPhone('25576');
     const r = await call('POST', `/api/v1/owner/amcos/${id}/staff`, owner, { role, fullName: `${name} ${code}`, phone });
     assert.equal(r.status, 201, JSON.stringify(r.body));
@@ -86,7 +86,7 @@ test('AMCOS moja haiwezi kuwa na zaidi ya watumishi watatu (mmoja kwa kila cheo)
   // Akaunti ya nne (mtazamaji) haiwezi kuundwa
   const viewer = await call('POST', '/api/v1/users', owner, { fullName: 'Mtazamaji Bodi', phone: uniqPhone('25578'), role: 'AMCOS_VIEWER', amcosId: A.id });
   assert.equal(viewer.status, 400);
-  const dup2 = await call('POST', '/api/v1/users', owner, { fullName: 'Stokipa wa Pili', phone: uniqPhone('25578'), role: 'CLERK', amcosId: A.id });
+  const dup2 = await call('POST', '/api/v1/users', owner, { fullName: 'Storekeeper wa Pili', phone: uniqPhone('25578'), role: 'CLERK', amcosId: A.id });
   assert.equal(dup2.status, 409);
   // Hata database yenyewe inazuia
   await assert.rejects(
@@ -100,13 +100,13 @@ test('AMCOS moja haiwezi kuwa na zaidi ya watumishi watatu (mmoja kwa kila cheo)
   assert.ok(staff.body.data.every((u: any) => u.amcosId === A.id));
 
   // Kubadilisha mtumishi: inahitaji nenosiri la Owner; wa zamani anazimwa (hafutwi) na token yake inakufa
-  const noAuth = await call('POST', `/api/v1/owner/amcos/${A.id}/staff`, owner, { role: 'CLERK', fullName: 'Stokipa Mpya', phone: uniqPhone('25577'), replace: true });
+  const noAuth = await call('POST', `/api/v1/owner/amcos/${A.id}/staff`, owner, { role: 'CLERK', fullName: 'Storekeeper Mpya', phone: uniqPhone('25577'), replace: true });
   assert.equal(noAuth.status, 403);
   const oldClerkId = slots.find((s) => s.role === 'CLERK').holder.id;
   const phone = uniqPhone('25577');
-  const rep = await call('POST', `/api/v1/owner/amcos/${A.id}/staff`, owner, { role: 'CLERK', fullName: 'Stokipa Mpya', phone, replace: true, confirmPassword: OWNER_PW });
+  const rep = await call('POST', `/api/v1/owner/amcos/${A.id}/staff`, owner, { role: 'CLERK', fullName: 'Storekeeper Mpya', phone, replace: true, confirmPassword: OWNER_PW });
   assert.equal(rep.status, 201, JSON.stringify(rep.body));
-  assert.equal((await call('GET', '/api/v1/members', A.storekeeper)).status, 401, 'Stokipa wa zamani hawezi kuendelea');
+  assert.equal((await call('GET', '/api/v1/members', A.storekeeper)).status, 401, 'Storekeeper wa zamani hawezi kuendelea');
   const after = (await call('GET', `/api/v1/owner/amcos/${A.id}/staff`, owner)).body;
   assert.ok(after.history.some((h: any) => h.id === oldClerkId && !h.isActive), 'Rekodi ya mtumishi wa zamani inabaki');
   const audits = await db.execute<{ action: string }>(sql`select action from audit_logs where entity_id = ${oldClerkId} and action = 'AMCOS_STAFF_REPLACED'`);
@@ -126,7 +126,7 @@ test('Kila cheo kina ruhusa zake tu (backend)', async () => {
   assert.ok((await me(A.accountant)).includes('finance.record'));
   assert.ok(!(await me(A.storekeeper)).includes('finance.read'));
 
-  // Stokipa hagusi fedha
+  // Storekeeper hagusi fedha
   for (const p of ['/api/v1/finance/accounts', '/api/v1/finance/transactions', '/api/v1/finance/reports/summary', '/api/v1/reports/member-balances']) {
     assert.equal((await call('GET', p, A.storekeeper)).status, 403, p);
   }
@@ -149,7 +149,7 @@ test('Kila cheo kina ruhusa zake tu (backend)', async () => {
   const [m, a, s] = [await ws(A.manager), await ws(A.accountant), await ws(A.storekeeper)];
   assert.equal(m.title, 'Meneja'); assert.ok(m.finance && m.stock && m.approvals);
   assert.equal(a.title, 'Mhasibu'); assert.ok(a.finance); assert.equal(a.stock, undefined, 'Mhasibu haoni stoo');
-  assert.equal(s.title, 'Stokipa'); assert.equal(s.finance, undefined); assert.ok(s.stock);
+  assert.equal(s.title, 'Storekeeper'); assert.equal(s.finance, undefined); assert.ok(s.stock);
 });
 
 let itemId: string, cashId: string;
@@ -194,9 +194,9 @@ test('Mhasibu hawezi kuidhinisha ombi lake; hakuna anayeidhinisha ombi alilolian
 });
 
 // 4 & 6 --------------------------------------------------------------
-test('Stokipa hawezi kuidhinisha marekebisho; stoo haibadiliki kabla ya idhini', async () => {
+test('Storekeeper hawezi kuidhinisha marekebisho; stoo haibadiliki kabla ya idhini', async () => {
   itemId = (await call('GET', '/api/v1/inputs/items', A.storekeeper)).body.data.find((i: any) => i.name === 'NPK ' + RUN).id;
-  // Mzigo: Stokipa anaingiza idadi na bei -> Meneja anaidhinisha (na anaweza kurekebisha) -> ndipo stoo inaongezeka
+  // Mzigo: Storekeeper anaingiza idadi na bei -> Meneja anaidhinisha (na anaweza kurekebisha) -> ndipo stoo inaongezeka
   assert.equal((await call('POST', '/api/v1/inputs/stock/receipts', A.storekeeper, { inputItemId: itemId, quantity: 40, reference: 'DN-' + RUN })).status, 400, 'Bei inahitajika');
   const rc = await call('POST', '/api/v1/inputs/stock/receipts', A.storekeeper, { inputItemId: itemId, quantity: 45, unitPrice: '85000', unitCost: '70000', source: 'Chama Kikuu', reference: 'DN-' + RUN, expiryDate: '2027-06-30', batchNo: 'B1' });
   assert.equal(rc.status, 202, JSON.stringify(rc.body));
@@ -247,7 +247,7 @@ test('Stokipa hawezi kuidhinisha marekebisho; stoo haibadiliki kabla ya idhini',
 });
 
 // 5 ------------------------------------------------------------------
-test('Manunuzi: Stokipa anaomba -> Meneja anaidhinisha -> Mhasibu analipa -> Stokipa anapokea', async () => {
+test('Manunuzi: Storekeeper anaomba -> Meneja anaidhinisha -> Mhasibu analipa -> Storekeeper anapokea', async () => {
   const sup = await call('POST', '/api/v1/store/suppliers', A.storekeeper, { name: 'Mbolea Ltd ' + RUN, phone: '0755123456' });
   assert.equal(sup.status, 201);
   const pr = await call('POST', '/api/v1/store/purchases', A.storekeeper, {
@@ -275,7 +275,7 @@ test('Manunuzi: Stokipa anaomba -> Meneja anaidhinisha -> Mhasibu analipa -> Sto
   assert.equal(over.status, 400, 'Hawezi kulipa zaidi ya thamani ya ombi');
   assert.equal((await call('POST', `/api/v1/finance/transactions/${pay.body.transaction.id}/post`, A.accountant, {})).status, 200);
 
-  // Stokipa anaingiza mzigo wa manunuzi kwa awamu kupitia "Ingiza pembejeo" -> Meneja anaidhinisha
+  // Storekeeper anaingiza mzigo wa manunuzi kwa awamu kupitia "Ingiza pembejeo" -> Meneja anaidhinisha
   assert.equal((await call('POST', '/store/purchases/x/receive'.replace(/^/, '/api/v1'), A.storekeeper, {})).status, 404, 'Njia ya zamani imeondolewa');
   const rec = await call('POST', '/api/v1/inputs/stock/receipts', A.storekeeper, { purchaseLineId: lineId, quantity: 12, reference: 'DN-P1', batchNo: 'B2' });
   assert.equal(rec.status, 202, JSON.stringify(rec.body));
@@ -380,8 +380,8 @@ test('Kusajili chama: code inatolewa na mfumo; Meneja anaundwa na nenosiri la Ow
   // Audit haina nenosiri
   const logs = await db.execute<{ after: unknown }>(sql`select after from audit_logs where amcos_id = ${r.body.amcos.id}`);
   assert.ok(!JSON.stringify(logs.rows).includes('Kuanzia2026'));
-  // Kuweka Stokipa kwa nenosiri la Owner (bila nenosiri la muda kurudishwa)
-  const st = await call('POST', `/api/v1/owner/amcos/${r.body.amcos.id}/staff`, owner, { role: 'CLERK', fullName: 'Stokipa Kasisi', phone: uniqPhone('25574'), password: 'Stoo2026a' });
+  // Kuweka Storekeeper kwa nenosiri la Owner (bila nenosiri la muda kurudishwa)
+  const st = await call('POST', `/api/v1/owner/amcos/${r.body.amcos.id}/staff`, owner, { role: 'CLERK', fullName: 'Storekeeper Kasisi', phone: uniqPhone('25574'), password: 'Stoo2026a' });
   assert.equal(st.status, 201);
   assert.equal(st.body.temporaryPassword, null);
 });

@@ -16,6 +16,7 @@ const COLS: [key: string, header: string, aliases: string[], example: string][] 
   ['middleName', 'Jina la kati', ['jina la kati', 'middle name', 'middlename'], 'Hamisi'],
   ['lastName', 'Jina la ukoo', ['jina la ukoo', 'jina la mwisho', 'last name', 'lastname', 'surname', 'ukoo'], 'Juma'],
   ['gender', 'Jinsia (ME/KE)', ['jinsia', 'gender', 'sex', 'jinsia (me/ke)'], 'KE'],
+  ['maritalStatus', 'Hali ya ndoa (Ameoa/Ameolewa/Hajaoa)', ['hali ya ndoa', 'ndoa', 'marital status', 'hali ya ndoa (ameoa/ameolewa/hajaoa)'], 'Ameolewa'],
   ['phone', 'Simu', ['simu', 'namba ya simu', 'phone', 'mobile', 'simu ya mkulima'], '0754123456'],
   ['village', 'Kijiji', ['kijiji', 'village'], 'Usoke'],
   ['hamlet', 'Kitongoji', ['kitongoji', 'hamlet'], 'Mlimani'],

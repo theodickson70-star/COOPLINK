@@ -2,7 +2,7 @@
 //  RUHUSA ZA WATUMISHI WA AMCOS (ndani ya chama)
 //   Meneja  (AMCOS_ADMIN) -> anaidhinisha
 //   Mhasibu (ACCOUNTANT)  -> anasimamia fedha
-//   Stokipa (CLERK)       -> anasimamia stoo
+//   Storekeeper (CLERK)       -> anasimamia stoo
 //  Zinakaguliwa KWENYE BACKEND kwa kila ombi (requireAmcosPerm). Menu ya frontend ni urahisi tu.
 // =====================================================================
 import { and, eq, inArray } from 'drizzle-orm';
@@ -56,7 +56,7 @@ export type AmcosPermission = keyof typeof AMCOS_PERMISSIONS;
 /** Majina rasmi ya vyeo vitatu (role za database hazibadilishwi ili data ya zamani ibaki salama). */
 export const AMCOS_STAFF_ROLES = ['AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK'] as const satisfies readonly Role[];
 export type AmcosStaffRole = (typeof AMCOS_STAFF_ROLES)[number];
-export const STAFF_TITLE: Record<AmcosStaffRole, string> = { AMCOS_ADMIN: 'Meneja', ACCOUNTANT: 'Mhasibu', CLERK: 'Stokipa' };
+export const STAFF_TITLE: Record<AmcosStaffRole, string> = { AMCOS_ADMIN: 'Meneja', ACCOUNTANT: 'Mhasibu', CLERK: 'Storekeeper' };
 export const isAmcosStaff = (r: Role): r is AmcosStaffRole => (AMCOS_STAFF_ROLES as readonly Role[]).includes(r);
 
 const READ: AmcosPermission[] = ['members.read', 'members.lookup', 'ledger.read', 'stock.read', 'finance.read', 'approvals.read', 'staff.read', 'reports.finance', 'reports.stock', 'accounting.read', 'sales.read', 'payroll.read'];
@@ -96,8 +96,8 @@ export const hasAmcosPerm = (role: Role, p: AmcosPermission) => (AMCOS_ROLE_PERM
 
 // =====================================================================
 //  CHAMA CHENYE MENEJA PEKEE
-//  Chama kisicho na Mhasibu au Stokipa aliye hai: Meneja anapata kazi za cheo kisichokuwepo (kwa muda).
-//  Mhasibu/Stokipa akiongezwa (au akiwashwa), kazi hizo zinarudi kwake zenyewe.
+//  Chama kisicho na Mhasibu au Storekeeper aliye hai: Meneja anapata kazi za cheo kisichokuwepo (kwa muda).
+//  Mhasibu/Storekeeper akiongezwa (au akiwashwa), kazi hizo zinarudi kwake zenyewe.
 //  Kuidhinisha ombi alilolianzisha mwenyewe kunaruhusiwa TU katika hali hii (approvals.ts), kwa nenosiri + maelezo,
 //  na kunaonekana kama "Imejiidhinisha" kwa Owner na Chama Kikuu.
 // =====================================================================

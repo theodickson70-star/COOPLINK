@@ -13,7 +13,7 @@ export const MAX_IMPORT_ROWS = 2000;
 
 export type RawRow = Record<string, unknown>;
 export interface CleanRow {
-  memberNo: string | null; firstName: string; middleName: string | null; lastName: string; gender: 'MALE' | 'FEMALE';
+  memberNo: string | null; firstName: string; middleName: string | null; lastName: string; gender: 'MALE' | 'FEMALE'; maritalStatus: 'MARRIED' | 'SINGLE' | null;
   phone: string | null; village: string | null; hamlet: string | null; nidaNumber: string | null; voterIdNumber: string | null;
   dateOfBirth: string | null; joinedAt: string | undefined; sharesCount: number;
   mobileMoneyNumber: string | null; mobileMoneyProvider: (typeof schema.mobileMoneyProviderEnum.enumValues)[number] | null;
@@ -31,6 +31,14 @@ function gender(v: unknown): 'MALE' | 'FEMALE' | null {
   if (['M', 'ME', 'MALE', 'MWANAUME', 'MUME'].includes(g)) return 'MALE';
   if (['F', 'KE', 'FEMALE', 'MWANAMKE', 'MKE'].includes(g)) return 'FEMALE';
   return null;
+}
+/** Hali ya ndoa: ameoa / ameolewa -> MARRIED; hajaoa / hajaolewa / sijaoa -> SINGLE */
+function marital(v: unknown): 'MARRIED' | 'SINGLE' | null | undefined {
+  const m = str(v).toUpperCase().replace(/\s+/g, '');
+  if (!m) return null;
+  if (['MARRIED', 'AMEOA', 'AMEOLEWA', 'NIMEOA', 'NIMEOLEWA', 'NDOA', 'ND'].includes(m)) return 'MARRIED';
+  if (['SINGLE', 'HAJAOA', 'HAJAOLEWA', 'SIJAOA', 'SIJAOLEWA', 'HAPANA'].includes(m)) return 'SINGLE';
+  return undefined;
 }
 function provider(v: unknown): CleanRow['mobileMoneyProvider'] {
   const p = str(v).toUpperCase().replace(/[\s-]/g, '');
@@ -85,6 +93,8 @@ export async function checkRows(amcosId: string, raw: RawRow[]): Promise<Checked
     } else if (errors.length === 0 && (firstName.length < 2 || lastName.length < 2)) errors.push(`Majina kamili "${full}" si sahihi`);
     const g = gender(r.gender);
     if (!g) errors.push(`Jinsia "${str(r.gender) || '—'}" haieleweki (tumia M/F au ME/KE)`);
+    const ms = marital(r.maritalStatus);
+    if (ms === undefined) warnings.push(`Hali ya ndoa "${str(r.maritalStatus)}" haieleweki (Ameoa/Ameolewa/Hajaoa) — imeachwa wazi`);
     const memberNo = opt(r.memberNo)?.toUpperCase() ?? null;
     if (memberNo && !/^[A-Z0-9][A-Z0-9/.\- ]{0,29}$/.test(memberNo)) errors.push(`Namba ya uanachama "${memberNo}" si sahihi`);
     let phone: string | null = null;
@@ -108,7 +118,7 @@ export async function checkRows(amcosId: string, raw: RawRow[]): Promise<Checked
     const preferred: CleanRow['preferredPayment'] = mm ? 'MOBILE_MONEY' : bankAcc ? 'BANK' : 'CASH';
     if (!str(r.phone)) warnings.push('Hana simu');
     const data: CleanRow | null = errors.length ? null : {
-      memberNo, firstName, middleName, lastName, gender: g!, phone, village: opt(r.village) ? titleCase(str(r.village)) : null, hamlet: opt(r.hamlet) ? titleCase(str(r.hamlet)) : null,
+      memberNo, firstName, middleName, lastName, gender: g!, maritalStatus: ms ?? null, phone, village: opt(r.village) ? titleCase(str(r.village)) : null, hamlet: opt(r.hamlet) ? titleCase(str(r.hamlet)) : null,
       nidaNumber: nida, voterIdNumber: voter, dateOfBirth: dob && dob !== 'BAD' ? dob : null, joinedAt: joined && joined !== 'BAD' ? joined : undefined, sharesCount: shares,
       mobileMoneyNumber: mm, mobileMoneyProvider: mm ? prov : null, bankName: opt(r.bankName), bankAccountNumber: bankAcc, bankAccountName: opt(r.bankAccountName) ? titleCase(str(r.bankAccountName)) : null,
       preferredPayment: preferred,

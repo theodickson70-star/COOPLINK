@@ -315,7 +315,7 @@ function Sheet() {
           </table></div>
         )}
         <div className="doc-sign" style={{ marginTop: 28 }}>
-          {['Ameandaa (Stokipa / Afisa ugani)', 'Ameidhinisha (Meneja)', 'Mwenyekiti wa Bodi'].map((s) => <div key={s}><span />{t(s)}</div>)}
+          {['Ameandaa (Storekeeper / Afisa ugani)', 'Ameidhinisha (Meneja)', 'Mwenyekiti wa Bodi'].map((s) => <div key={s}><span />{t(s)}</div>)}
         </div>
       </section>
     </>

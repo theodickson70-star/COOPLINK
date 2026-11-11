@@ -1,6 +1,6 @@
 // =====================================================================
 //  PORTAL YA MKULIMA — mkulima anaona taarifa zake mwenyewe (kusoma tu).
-//   - Anaingia kwa namba ya uanachama + PIN (tarakimu 4–6). PIN ya kwanza inatolewa ofisini (Mhasibu/Stokipa)
+//   - Anaingia kwa namba ya uanachama + PIN (tarakimu 4–6). PIN ya kwanza inatolewa ofisini (Mhasibu/Storekeeper)
 //     na lazima aibadilishe akiingia mara ya kwanza.
 //   - Token yake ina typ:'farmer' — haikubaliwi na API ya watumishi, na token ya mtumishi haikubaliwi hapa.
 //   - Anaona rekodi ZAKE tu, zilizoidhinishwa tu. Hakuna kitu anachoweza kubadilisha isipokuwa PIN yake.

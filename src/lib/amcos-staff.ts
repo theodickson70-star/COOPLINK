@@ -1,4 +1,4 @@
-// Watumishi watatu wa AMCOS: nafasi moja tu kwa kila cheo (Meneja, Mhasibu, Stokipa)
+// Watumishi watatu wa AMCOS: nafasi moja tu kwa kila cheo (Meneja, Mhasibu, Storekeeper)
 import { and, eq, ne } from 'drizzle-orm';
 import { schema, type DbOrTx } from '../db';
 import { conflict } from './errors';

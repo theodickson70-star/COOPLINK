@@ -25,7 +25,7 @@ const GUIDES: Record<string, Partial<Record<Role, Guide>>> = {
       'Ada ya CoopLink inalipwa na wewe kwenye ukurasa wa "Ada ya CoopLink".',
       'Tahadhari za fedha zinaonekana juu ya dashibodi yako.',
     ] },
-    CLERK: { title: 'Karibu, Stokipa', steps: [
+    CLERK: { title: 'Karibu, Storekeeper', steps: [
       'Wewe unasajili wakulima, unapokea pembejeo stoo na kuzigawa kwa wakulima.',
       'Ugawaji unaanza kama ombi; Meneja akiidhinisha, stoo inapungua na deni linaingia kwa mkulima.',
       'Tumia kitufe cha "Pata msaada" juu kama kuna jambo hulielewi.',

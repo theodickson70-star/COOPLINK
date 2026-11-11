@@ -83,9 +83,9 @@ export function Approvals() {
   );
 }
 
-const SELF_TAG = '[Imejiidhinisha — chama hakina Mhasibu/Stokipa]';
+const SELF_TAG = '[Imejiidhinisha — chama hakina Mhasibu/Storekeeper]';
 const isSelf = (a: Approval) => a.status === 'APPROVED' && !!a.decisionNote?.startsWith(SELF_TAG);
-function SelfBadge() { const t = useT(); return <span className="badge badge-warn" title={t('Meneja ameidhinisha ombi alilolianzisha mwenyewe (chama hakina Mhasibu/Stokipa)')}>{t('Imejiidhinisha')}</span>; }
+function SelfBadge() { const t = useT(); return <span className="badge badge-warn" title={t('Meneja ameidhinisha ombi alilolianzisha mwenyewe (chama hakina Mhasibu/Storekeeper)')}>{t('Imejiidhinisha')}</span>; }
 
 export function DecideModal({ approval: a, onClose, onDone }: { approval: Approval; onClose: () => void; onDone: (msg: string) => void }) {
   const t = useT();
@@ -194,7 +194,7 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
       )}
       {link && <p style={{ margin: 0 }}><Link to={link} onClick={onClose}>{t('Fungua rekodi inayohusika →')}</Link></p>}
       {mine && !selfOk && a.status === 'PENDING' && may('approvals.decide') && <Alert kind="warn">{t('Huwezi kuidhinisha ombi ulilolianzisha mwenyewe.')}</Alert>}
-      {selfOk && a.status === 'PENDING' && <Alert kind="warn">{t('Ombi hili umeliandaa wewe. Kwa kuwa chama hakina Mhasibu/Stokipa, unaweza kujiidhinisha — idhini itaandikwa "Imejiidhinisha" na itaonekana kwa CoopLink na Chama Kikuu. Eleza kwa nini ombi ni sahihi.')}</Alert>}
+      {selfOk && a.status === 'PENDING' && <Alert kind="warn">{t('Ombi hili umeliandaa wewe. Kwa kuwa chama hakina Mhasibu/Storekeeper, unaweza kujiidhinisha — idhini itaandikwa "Imejiidhinisha" na itaonekana kwa CoopLink na Chama Kikuu. Eleza kwa nini ombi ni sahihi.')}</Alert>}
       <Alert>{error}</Alert>
       {(canDecide || canCancel) && <TextField label={canDecide ? 'Maelezo ya uamuzi *' : 'Sababu ya kuondoa *'} placeholder={canDecide ? 'mf. Nimekagua risiti, gharama ni sahihi' : ''} value={note} onChange={setNote} />}
       {canDecide && (

@@ -38,7 +38,7 @@ export interface User {
   totpEnabled: boolean;
   permissions: Permission[];
   amcosPermissions: AmcosPermission[];
-  /** Meneja wa chama kisicho na Mhasibu/Stokipa: vyeo anavyovifanyia kazi kwa muda */
+  /** Meneja wa chama kisicho na Mhasibu/Storekeeper: vyeo anavyovifanyia kazi kwa muda */
   covering?: ('ACCOUNTANT' | 'CLERK')[];
 }
 export interface Amcos { id: string; name: string; code: string; district?: string | null }
@@ -63,7 +63,7 @@ interface AuthState {
   refresh: () => Promise<void>;
   can: (...roles: Role[]) => boolean;
   has: (...perms: Permission[]) => boolean;
-  /** Ruhusa ya ndani ya chama (Meneja / Mhasibu / Stokipa). */
+  /** Ruhusa ya ndani ya chama (Meneja / Mhasibu / Storekeeper). */
   may: (...perms: AmcosPermission[]) => boolean;
 }
 

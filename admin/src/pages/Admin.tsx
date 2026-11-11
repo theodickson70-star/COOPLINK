@@ -54,7 +54,7 @@ export function Balances() {
 // ------------------------------ WATUMIAJI ------------------------------
 interface UserRow { id: string; fullName: string; phone: string; email: string | null; role: Role; amcosId: string | null; unionId: string | null; isActive: boolean; mustChangePassword: boolean; lastLoginAt: string | null }
 
-// Watumishi wa AMCOS (Meneja, Mhasibu, Stokipa) wanaundwa na Owner kwenye AMCOS Management — mmoja kwa kila cheo.
+// Watumishi wa AMCOS (Meneja, Mhasibu, Storekeeper) wanaundwa na Owner kwenye AMCOS Management — mmoja kwa kila cheo.
 const CREATABLE: Record<string, Role[]> = {
   SUPER_ADMIN: ['UNION_ADMIN', 'UNION_VIEWER'],
   UNION_ADMIN: ['UNION_ADMIN', 'UNION_VIEWER'],
@@ -82,7 +82,7 @@ export function Users() {
 
   return (
     <>
-      <PageHead title={manage ? 'Watumiaji' : 'Watumishi wa chama'} sub={manage ? 'Watumiaji wa Chama Kikuu' : 'Meneja, Mhasibu na Stokipa. Akaunti zinasimamiwa na CoopLink (Owner) — wasiliana nao kubadilisha mtumishi au nenosiri.'}>
+      <PageHead title={manage ? 'Watumiaji' : 'Watumishi wa chama'} sub={manage ? 'Watumiaji wa Chama Kikuu' : 'Meneja, Mhasibu na Storekeeper. Akaunti zinasimamiwa na CoopLink (Owner) — wasiliana nao kubadilisha mtumishi au nenosiri.'}>
         {manage && <Button onClick={() => setOpen(true)}>+ Mtumiaji mpya</Button>}
       </PageHead>
       <Alert>{error ?? act.error}</Alert>

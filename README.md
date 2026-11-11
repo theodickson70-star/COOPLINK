@@ -102,7 +102,7 @@ Kila AMCOS ina watumishi **watatu tu**, mmoja kwa kila cheo (database inazuia wa
 |---|---|---|
 | **Meneja** | `AMCOS_ADMIN` | Anaidhinisha: usajili wa wakulima, matumizi, malipo, manunuzi, marekebisho ya stoo, ugawaji wa pembejeo, reversal |
 | **Mhasibu** | `ACCOUNTANT` | Mapato, kuandaa matumizi/malipo, kukamilisha malipo yaliyoidhinishwa, akaunti, cashbook, bajeti, ripoti |
-| **Stokipa** | `CLERK` | Bidhaa, kupokea mzigo, maombi ya marekebisho, ugawaji wa pembejeo, wazabuni, maombi ya manunuzi, hesabu ya stoo |
+| **Storekeeper** | `CLERK` | Bidhaa, kupokea mzigo, maombi ya marekebisho, ugawaji wa pembejeo, wazabuni, maombi ya manunuzi, hesabu ya stoo |
 
 - **Kusajili chama (v0.3.2):** code inatolewa na mfumo kutoka jina (mf. Usoke AMCOS → USOKE; ikiwepo → USOKE2). Owner anaweza kuunda Meneja hapo hapo kwa nenosiri la kuanzia; Meneja analazimishwa kuweka lake akiingia mara ya kwanza.
 - Owner anaweka/kubadilisha/kuzima watumishi kwenye **Owner → AMCOS Management → (chama) → Watumishi (3)**. Akaunti ya zamani inazimwa, haifutwi.

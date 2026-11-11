@@ -218,7 +218,7 @@ export function OwnerAmcosDetail() {
         {(a.status === 'SUSPENDED' || (a.status === 'REJECTED' && has('amcos.approve'))) && has('amcos.suspend') && <Button onClick={() => setModal('reactivate')}>Washa tena</Button>}
       </PageHead>
       {!!data.staffing?.covering.length && (
-        <Alert kind="warn"><strong>Meneja pekee:</strong> chama hakina {data.staffing.covering.map((r) => (r === 'ACCOUNTANT' ? 'Mhasibu' : 'Stokipa')).join(' wala ')} — Meneja anafanya kazi zao na anajiidhinisha maombi yake.
+        <Alert kind="warn"><strong>Meneja pekee:</strong> chama hakina {data.staffing.covering.map((r) => (r === 'ACCOUNTANT' ? 'Mhasibu' : 'Storekeeper')).join(' wala ')} — Meneja anafanya kazi zao na anajiidhinisha maombi yake.
           {' '}Idhini alizojiidhinisha (siku 90): <strong>{data.staffing.selfApprovals90d}</strong>.</Alert>
       )}
       {created && (
@@ -385,7 +385,7 @@ function StaffSlots({ amcosId, disabled }: { amcosId: string; disabled: boolean 
   );
 }
 
-const STAFF_TITLE_OF = (r: string) => ({ AMCOS_ADMIN: 'Meneja', ACCOUNTANT: 'Mhasibu', CLERK: 'Stokipa', AMCOS_VIEWER: 'Mtazamaji' } as Record<string, string>)[r] ?? r;
+const STAFF_TITLE_OF = (r: string) => ({ AMCOS_ADMIN: 'Meneja', ACCOUNTANT: 'Mhasibu', CLERK: 'Storekeeper', AMCOS_VIEWER: 'Mtazamaji' } as Record<string, string>)[r] ?? r;
 
 function AssignStaff({ amcosId, slot, onClose, onDone }: { amcosId: string; slot: Slot; onClose: () => void; onDone: (s: { name: string; phone: string; password: string | null }) => void }) {
   const [fullName, setFullName] = useState('');

@@ -176,7 +176,7 @@ function Prepare({ type, settings, rate, onDone }: { type: LoanType; settings: S
         <div className="grow" />
         <span className="muted">Wakulima wenye makisio yaliyoidhinishwa tu</span>
       </div>
-      {!el.data ? <Loading /> : rows.length === 0 ? <Empty>Hakuna mkulima mwenye makisio yaliyoidhinishwa msimu huu. Makisio yanaingizwa na Stokipa na kuidhinishwa na Meneja.</Empty> : (
+      {!el.data ? <Loading /> : rows.length === 0 ? <Empty>Hakuna mkulima mwenye makisio yaliyoidhinishwa msimu huu. Makisio yanaingizwa na Storekeeper na kuidhinishwa na Meneja.</Empty> : (
         <div className="table-wrap"><table className="table">
           <thead><tr><th style={{ width: 36 }}><input type="checkbox" aria-label="Chagua wote" onChange={(e) => setPicked(e.target.checked ? new Set(rows.filter((r) => Number(r.available) > 0).map((r) => r.memberId)) : new Set())} /></th>
             <th>Mkulima</th><th className="num">{isTrees ? (settings.areaUnit !== 'ACRE' ? 'Hekta za miti' : 'Ekari za miti') : settings.limitBasis === 'TRIP' ? 'Trip za kuni' : settings.limitBasis === 'ESTIMATE' ? 'Grading (makisio)' : 'Ekari'}</th><th className="num">Kikomo</th><th className="num">Amekopa</th><th className="num">Deni la dola sasa</th><th>{isTrees ? 'Miti ya kutoa' : 'Kiasi cha kutoa (USD)'}</th><th>Atalipwa kupitia</th></tr></thead>
@@ -314,7 +314,7 @@ function Debts() {
               <tr className="row-total"><td colSpan={2}>{t('Jumla')} ({data.farmers.length})</td>{cols(data.totals)}</tr></tbody>
             </table></div>
           )
-        ) : data.groups.length === 0 ? <Empty>Hakuna kikundi chenye deni. Vikundi vinaundwa na Stokipa na kuidhinishwa na Meneja.</Empty> : (
+        ) : data.groups.length === 0 ? <Empty>Hakuna kikundi chenye deni. Vikundi vinaundwa na Storekeeper na kuidhinishwa na Meneja.</Empty> : (
           <div className="table-wrap"><table className="table">
             <thead><tr><th>Kikundi</th><th className="num">Wanachama</th>{head}</tr></thead>
             <tbody>{data.groups.map((g) => {

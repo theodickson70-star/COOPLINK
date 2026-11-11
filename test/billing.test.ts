@@ -137,7 +137,7 @@ before(async () => {
   const t = (await login(mPhone, 'Meneja#2026x')).body.token;
   manager = (await call('POST', '/api/v1/auth/change-password', t, { currentPassword: 'Meneja#2026x', newPassword: 'Staff12345' })).body.token;
   clerkPhone = uniqPhone('25576');
-  const r = await call('POST', `/api/v1/owner/amcos/${amcosId}/staff`, owner, { role: 'CLERK', fullName: `Stokipa ${RUN}`, phone: clerkPhone });
+  const r = await call('POST', `/api/v1/owner/amcos/${amcosId}/staff`, owner, { role: 'CLERK', fullName: `Storekeeper ${RUN}`, phone: clerkPhone });
   const ct = (await login(clerkPhone, r.body.temporaryPassword)).body.token;
   await call('POST', '/api/v1/auth/change-password', ct, { currentPassword: r.body.temporaryPassword, newPassword: 'Staff12345' });
 });
@@ -161,7 +161,7 @@ test('Kingilio: kinadaiwa chama kikifunguliwa, chama kinafungwa baada ya siku 3,
 
   // Ruhusa: Meneja pekee
   const clerk = (await login(clerkPhone, 'Staff12345')).body.token;
-  assert.equal((await call('GET', '/api/v1/billing', clerk)).status, 403, 'Stokipa hagusi ada');
+  assert.equal((await call('GET', '/api/v1/billing', clerk)).status, 403, 'Storekeeper hagusi ada');
   assert.equal((await call('GET', '/api/v1/billing', owner)).status, 403);
 
   // Siku 3 zimepita bila malipo -> chama kizima kimefungwa
@@ -460,7 +460,7 @@ test('Jina tofauti na mwenye namba: kwa sababu maalum, Meneja anaidhinisha', asy
   const clerk = (await login(clerkPhone, 'Staff12345')).body.token;
   const ph = () => '07' + String(Date.now() + Math.floor(Math.random() * 1000)).slice(-8);
 
-  // Stokipa anasajili: namba ni ya mume (John Juma Doe), mkulima ni Mariam
+  // Storekeeper anasajili: namba ni ya mume (John Juma Doe), mkulima ni Mariam
   const p1 = ph();
   const c = await call('POST', '/api/v1/members', clerk, { firstName: 'Mariam', lastName: 'Juma', gender: 'FEMALE', phone: p1, nameOverrideReason: 'Namba ni ya mke / mume wake' });
   assert.equal(c.status, 201, JSON.stringify(c.body));
@@ -475,10 +475,10 @@ test('Jina tofauti na mwenye namba: kwa sababu maalum, Meneja anaidhinisha', asy
   mem = (await call('GET', `/api/v1/members/${mem.id}`, manager)).body.member;
   assert.equal(mem.status, 'ACTIVE'); assert.ok(mem.nameOverrideById, 'Meneja ameidhinisha jina');
 
-  // Stokipa anabadilisha kijiji tu -> jina lililoidhinishwa linabaki
+  // Storekeeper anabadilisha kijiji tu -> jina lililoidhinishwa linabaki
   const e1 = await call('PATCH', `/api/v1/members/${mem.id}`, clerk, { firstName: 'Mariam', middleName: null, lastName: 'Juma', phone: p1, nameOverrideReason: 'Namba ni ya mke / mume wake', village: 'Usoke' });
   assert.equal(e1.status, 200, JSON.stringify(e1.body)); assert.equal(e1.body.member.firstName, 'Mariam'); assert.ok(e1.body.member.nameOverrideById);
-  // Stokipa hawezi kubadilisha jina tofauti kwenye mkulima aliye hai
+  // Storekeeper hawezi kubadilisha jina tofauti kwenye mkulima aliye hai
   assert.equal((await call('PATCH', `/api/v1/members/${mem.id}`, clerk, { firstName: 'Mwanaidi', lastName: 'Juma', phone: p1, nameOverrideReason: 'Namba ni ya mke / mume wake' })).status, 403);
 
   // Bila sababu: jina lililoandikwa linapuuzwa (linatoka mobile money)
@@ -558,7 +558,7 @@ test('Kupakia wakulima wengi (CSV) na hatua za kuanza', async () => {
   const step = (k: string) => st.body.steps.find((s: any) => s.key === k);
   assert.equal(step('members').done, true); assert.equal(step('staff').done, true); assert.equal(step('fee').done, true);
   assert.ok(st.body.total >= 7);
-  assert.deepEqual((await call('GET', '/api/v1/workspace/setup', clerk)).body.steps, [], 'Si kwa Stokipa');
+  assert.deepEqual((await call('GET', '/api/v1/workspace/setup', clerk)).body.steps, [], 'Si kwa Storekeeper');
 });
 
 test('Mhasibu ndiye analipa ada ya CoopLink; chama kikifungwa, Mhasibu pekee anaingia (hata Meneja anazuiwa)', async () => {
@@ -598,7 +598,7 @@ test('Mhasibu ndiye analipa ada ya CoopLink; chama kikifungwa, Mhasibu pekee ana
   const mp = await call('POST', `/api/v1/billing/fees/${fee.id}/pay`, manager, { ...PAYER, amount: '350000' });
   assert.equal(mp.status, 403); assert.equal(mp.body.error?.code ?? mp.body.code, 'FEE_PAYER_ONLY');
 
-  // Tarehe imepita -> chama kimefungwa: Mhasibu anaingia (ukurasa wa ada tu), Meneja na Stokipa hawaingii
+  // Tarehe imepita -> chama kimefungwa: Mhasibu anaingia (ukurasa wa ada tu), Meneja na Storekeeper hawaingii
   await setDue(fee.id, addDays(today, -37));
   assert.equal((await login(managerPhone, 'Meneja#2026y')).status, 403, 'Meneja anazuiwa kuingia');
   assert.equal((await call('GET', '/api/v1/billing', manager)).status, 402, 'Token ya zamani ya Meneja inazuiwa hata kwenye ada');

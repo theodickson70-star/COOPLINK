@@ -55,7 +55,7 @@ export function Inputs() {
 
       {tab === 'stock' && (
         <section className="card">
-          {items.data?.data.length === 0 ? <Empty>Bado hakuna pembejeo stoo. {may('stock.receive') ? 'Bonyeza "+ Ingiza pembejeo" — unaweza kuandika bidhaa mpya moja kwa moja kwenye fomu.' : 'Stokipa ndiye anaingiza pembejeo.'}</Empty> : (
+          {items.data?.data.length === 0 ? <Empty>Bado hakuna pembejeo stoo. {may('stock.receive') ? 'Bonyeza "+ Ingiza pembejeo" — unaweza kuandika bidhaa mpya moja kwa moja kwenye fomu.' : 'Storekeeper ndiye anaingiza pembejeo.'}</Empty> : (
             <div className="table-wrap">
               <table className="table">
                 <thead><tr><th>Bidhaa</th><th className="num">Bei</th><th className="num">Zilizoingia</th><th className="num">Zilizotoka</th><th className="num">Zilizoharibika / muda</th><th className="num">Salio</th><th /></tr></thead>

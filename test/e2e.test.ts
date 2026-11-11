@@ -117,7 +117,7 @@ test('wanachama: usajili, namba ya simu, NIDA, hali', async () => {
   assert.equal(r.status, 201);
   assert.equal(r.body.member.phone, '255754123456');
   assert.match(r.body.member.memberNo, /^DEMO1-\d{6}$/);
-  assert.equal(r.body.member.status, 'PENDING', 'Stokipa akisajili, mkulima anasubiri uthibitisho wa Meneja');
+  assert.equal(r.body.member.status, 'PENDING', 'Storekeeper akisajili, mkulima anasubiri uthibitisho wa Meneja');
   memberId = r.body.member.id;
   assert.equal((await decideFor(memberId)).status, 200);
 
@@ -170,7 +170,7 @@ test('pembejeo: mkopo -> ledger, stoo, idempotency, kufuta kwa REVERSAL', async 
   assert.equal(again.body.duplicate, true);
   assert.equal(again.body.issue.id, r.body.issue.id, 'App ya offline ikituma mara mbili, inarekodiwa mara moja');
 
-  assert.equal((await call('GET', `/api/v1/members/${memberId}`, clerk)).body.balance, null, 'Stokipa haoni fedha za mkulima');
+  assert.equal((await call('GET', `/api/v1/members/${memberId}`, clerk)).body.balance, null, 'Storekeeper haoni fedha za mkulima');
   let bal = (await call('GET', `/api/v1/members/${memberId}`, katibu)).body.balance;
   assert.equal(bal.amountOwed, '168000.00');
   const stockAfter = (await call('GET', '/api/v1/inputs/stock', clerk)).body.data.find((s: any) => s.inputItemId === npk.id).balance;

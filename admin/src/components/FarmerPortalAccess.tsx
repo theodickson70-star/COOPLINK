@@ -1,6 +1,6 @@
 // =====================================================================
 //  PORTAL YA MKULIMA — upande wa ofisi
-//   PortalAccess: hali ya mkulima mmoja + kutoa/kufuta PIN (Mhasibu na Stokipa; Meneja anaona tu)
+//   PortalAccess: hali ya mkulima mmoja + kutoa/kufuta PIN (Mhasibu na Storekeeper; Meneja anaona tu)
 //   PortalSummary: idadi ya wakulima wenye PIN na kitufe cha Meneja cha kuwasha/kuzima portal
 // =====================================================================
 import { useState } from 'react';
@@ -61,7 +61,7 @@ export function PortalAccess({ memberId, memberName }: { memberId: string; membe
                 : <Button size="sm" onClick={issue} busy={act.busy}>{t('Toa PIN')}</Button>}
             </div>
           )}
-          {!data.canIssue && <p className="muted" style={{ fontSize: 13 }}>{t('PIN inatolewa na Mhasibu au Stokipa.')}</p>}
+          {!data.canIssue && <p className="muted" style={{ fontSize: 13 }}>{t('PIN inatolewa na Mhasibu au Storekeeper.')}</p>}
         </>
       )}
     </section>
@@ -127,7 +127,7 @@ export function PortalSummary() {
         {data.enabled
           ? <p>{t('Wakulima wote watashindwa kuingia mpaka uiwashe tena. PIN zao zitabaki.')}</p>
           : <ul className="portal-list">
-              <li>{t('Mhasibu au Stokipa atampa kila mkulima PIN ofisini (kwenye ukurasa wa mkulima).')}</li>
+              <li>{t('Mhasibu au Storekeeper atampa kila mkulima PIN ofisini (kwenye ukurasa wa mkulima).')}</li>
               <li>{t('Mkulima ataona taarifa zake mwenyewe tu, zilizoidhinishwa tu. Hawezi kubadilisha chochote.')}</li>
               <li>{t('Unaweza kuizima wakati wowote.')}</li>
             </ul>}

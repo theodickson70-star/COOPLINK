@@ -92,14 +92,14 @@ after(async () => {
 });
 
 // 1 ------------------------------------------------------------------
-test('Ruhusa: Mhasibu ndiye anaandika uhasibu; Meneja ripoti na idhini tu; Stokipa haoni', async () => {
+test('Ruhusa: Mhasibu ndiye anaandika uhasibu; Meneja ripoti na idhini tu; Storekeeper haoni', async () => {
   const chart = await call('GET', '/api/v1/accounting/chart', accountant);
   assert.equal(chart.status, 200);
   assert.ok(chart.body.data.length >= 45, 'Chati ya akaunti imeundwa yenyewe');
   assert.ok(chart.body.data.some((a: any) => a.name === 'NMB Akaunti ya chama' && a.code === '1101'), 'Akaunti ya benki ina akaunti yake kwenye daftari kuu');
 
   assert.equal((await call('GET', '/api/v1/accounting/reports/balance-sheet', manager)).status, 200, 'Meneja anaona ripoti');
-  assert.equal((await call('GET', '/api/v1/accounting/chart', storekeeper)).status, 403, 'Stokipa haoni daftari kuu');
+  assert.equal((await call('GET', '/api/v1/accounting/chart', storekeeper)).status, 403, 'Storekeeper haoni daftari kuu');
   const a = chart.body.data.find((x: any) => x.code === '5990').id, b = chart.body.data.find((x: any) => x.code === '3200').id;
   const j = { date: today, description: 'Marekebisho ya majaribio', lines: [{ glAccountId: a, debit: '1000' }, { glAccountId: b, credit: '1000' }] };
   assert.equal((await call('POST', '/api/v1/accounting/journals', manager, j)).status, 403, 'Meneja haandiki journal');
@@ -649,7 +649,7 @@ test('Taarifa ya mkulima kwa msimu: salio la kuanzia + mwendo = salio; mauzo yan
 test('Portal ya mkulima: Meneja anawasha, Mhasibu anatoa PIN, mkulima anaona taarifa zake tu', async () => {
   const F = '/api/v1/farmer';
   const no = farmerA.memberNo as string;
-  // Portal bado imezimwa: PIN haitolewi. Meneja hatoi PIN; Stokipa hawashi portal.
+  // Portal bado imezimwa: PIN haitolewi. Meneja hatoi PIN; Storekeeper hawashi portal.
   assert.equal((await call('POST', `/api/v1/members/${farmerA.id}/portal/pin`, accountant)).status, 400);
   assert.equal((await call('POST', `/api/v1/members/${farmerA.id}/portal/pin`, manager)).status, 403);
   assert.equal((await call('PATCH', `/api/v1/amcos/${amcosId}`, storekeeper, { farmerPortal: true })).status, 403);
@@ -718,7 +718,7 @@ test('Portal ya mkulima: Meneja anawasha, Mhasibu anatoa PIN, mkulima anaona taa
   assert.ok(logs.rows.every((r: any) => !String(r.a ?? '').includes(re.body.pin)));
 });
 
-test('Chama chenye Meneja pekee: anapata kazi za Mhasibu/Stokipa na anajiidhinisha kwa alama; mtumishi akirudi, kinga ya watu wawili inarudi', async () => {
+test('Chama chenye Meneja pekee: anapata kazi za Mhasibu/Storekeeper na anajiidhinisha kwa alama; mtumishi akirudi, kinga ya watu wawili inarudi', async () => {
   const staff = await db.execute(sql`select id from users where amcos_id = ${amcosId} and role in ('ACCOUNTANT', 'CLERK') and is_active = true`);
   const ids = staff.rows.map((r: any) => r.id as string);
   // Kawaida: Meneja hawezi kurekodi matumizi
@@ -933,7 +933,7 @@ test('Mikopo: kuni na grading kwa dola — kikomo kwa ekari kila aina, riba yake
   assert.equal((await call('GET', `/api/v1/groups/${grp.body.group.id}`, accountant)).body.group.owingUsd, '229.00');
   const stmt = (await call('GET', `/api/v1/finance/farmers/${F.id}`, accountant)).body;
   assert.equal(stmt.usd.breakdown.gradingUsd, '42.00'); assert.equal(stmt.usd.debtUsd, '130.00');
-  assert.equal((await call('GET', '/api/v1/kuni/debts', storekeeper)).status, 403, 'Stokipa haoni madeni ya fedha');
+  assert.equal((await call('GET', '/api/v1/kuni/debts', storekeeper)).status, 403, 'Storekeeper haoni madeni ya fedha');
   await assertBooksBalance();
 
   // Kusahihisha malipo ya kuni ya F: mkopo, riba na deni la dola vinaondolewa; mkopo unarudi "umeshindwa"
@@ -1048,4 +1048,21 @@ test('Makisio kamili: TTB, mabani, kilo @560, mahindi, miti, pembejeo za chama, 
   assert.equal((await call('POST', '/api/v1/kuni/batches', accountant, { loanType: 'GRADING', loans: [{ memberId: W.id, amountUsd: '40' }] })).status, 201);
   await assertBooksBalance();
   assert.equal((await call('PUT', '/api/v1/finance/fx/currency', accountant, { currency: 'TZS' })).status, 200);
+});
+
+// v0.23 -----------------------------------------------------------------
+test('Mkulima: hali ya ndoa (ameoa / ameolewa / hajaoa) kwenye usajili, kubadilisha na kupakia Excel', async () => {
+  const m = await call('POST', '/api/v1/members', storekeeper, { firstName: 'Mariamu', lastName: 'Ndoa' + RUN, gender: 'FEMALE', maritalStatus: 'MARRIED' });
+  assert.equal(m.status, 201, JSON.stringify(m.body));
+  assert.equal(m.body.member.maritalStatus, 'MARRIED');
+  assert.equal((await call('POST', '/api/v1/members', storekeeper, { firstName: 'Bad', lastName: 'Ndoa' + RUN, gender: 'MALE', maritalStatus: 'WIDOW' })).status, 400);
+  const chk = await call('POST', '/api/v1/members/import', manager, { dryRun: true, rows: [
+    { firstName: 'Saidi', lastName: 'Ndoa' + RUN, gender: 'ME', maritalStatus: 'Hajaoa' },
+    { firstName: 'Zuhura', lastName: 'Ndoa' + RUN, gender: 'KE', maritalStatus: 'ameolewa' },
+    { firstName: 'Musa', lastName: 'Ndoa' + RUN, gender: 'ME', maritalStatus: 'xyz' },
+  ] });
+  assert.equal(chk.status, 200, JSON.stringify(chk.body));
+  const rows = chk.body.rows as any[];
+  assert.equal(rows[0].ok, true); assert.ok(!rows[1].warnings.some((w: string) => /Hali ya ndoa/.test(w)), 'ameolewa inaeleweka');
+  assert.ok(rows[2].warnings.some((w: string) => /Hali ya ndoa/.test(w)), 'Isiyoeleweka inaachwa wazi kwa tahadhari');
 });

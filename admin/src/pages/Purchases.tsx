@@ -24,7 +24,7 @@ export function Purchases() {
   const nav = useNavigate();
   return (
     <>
-      <PageHead title="Manunuzi na Wazabuni" sub="Stokipa anaomba → Meneja anaidhinisha → Mhasibu analipa → Stokipa anapokea mzigo">
+      <PageHead title="Manunuzi na Wazabuni" sub="Storekeeper anaomba → Meneja anaidhinisha → Mhasibu analipa → Storekeeper anapokea mzigo">
         {tab === 'purchases' && may('purchases.request') && <Button onClick={() => setOpen(true)}>+ Ombi la manunuzi</Button>}
       </PageHead>
       <Tabs value={tab} onChange={setTab} items={[['purchases', 'Maombi ya manunuzi'], ['suppliers', 'Wazabuni']]} />

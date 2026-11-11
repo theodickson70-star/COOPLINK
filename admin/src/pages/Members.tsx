@@ -10,7 +10,7 @@ import { NameNote, PhoneNameFields, usePhoneName } from '../components/PhoneName
 import { Alert, Badge, Button, Empty, Input, Loading, PageHead, Pager, Select, SelectField, TextField } from '../components/ui';
 
 export interface Member {
-  id: string; memberNo: string; firstName: string; middleName: string | null; lastName: string; gender: 'MALE' | 'FEMALE';
+  id: string; memberNo: string; firstName: string; middleName: string | null; lastName: string; gender: 'MALE' | 'FEMALE'; maritalStatus?: 'MARRIED' | 'SINGLE' | null;
   dateOfBirth: string | null; nidaNumber: string | null; voterIdNumber: string | null; phone: string | null; village: string | null; hamlet: string | null;
   status: string; joinedAt: string; mobileMoneyNumber: string | null; mobileMoneyProvider: string | null; mobileMoneyName: string | null;
   bankName: string | null; bankAccountName: string | null; bankAccountNumber: string | null; preferredPayment: string;
@@ -77,13 +77,18 @@ export function Members() {
 const REASONS = ['Namba ni ya mke / mume wake', 'Namba ni ya mzazi wake', 'Namba ni ya mtoto wake', 'Namba ni ya ndugu yake', 'Namba haijasajiliwa kwenye mobile money', 'Jina kwenye mobile money limekosewa'];
 
 const EMPTY = {
-  memberNo: '', firstName: '', middleName: '', lastName: '', gender: 'MALE', dateOfBirth: '', nidaNumber: '', voterIdNumber: '', phone: '', village: '', hamlet: '',
+  memberNo: '', firstName: '', middleName: '', lastName: '', gender: 'MALE', maritalStatus: '', dateOfBirth: '', nidaNumber: '', voterIdNumber: '', phone: '', village: '', hamlet: '',
   mobileMoneyNumber: '', mobileMoneyProvider: 'MPESA', mobileMoneyName: '', bankName: '', bankAccountName: '', bankAccountNumber: '',
   preferredPayment: 'MOBILE_MONEY', sharesCount: '0', nextOfKinName: '', nextOfKinPhone: '', nextOfKinRelation: '',
   entryFee: '', entryFeePaid: 'no', entryFeePaidAt: '', entryFeeReference: '', guarantorName: '', guarantorPhone: '',
   nameOverrideReason: '',
 };
 type Form = typeof EMPTY;
+
+/** Hali ya ndoa kulingana na jinsia: mwanaume ameoa / hajaoa; mwanamke ameolewa / hajaolewa */
+export const maritalLabel = (s: string | null | undefined, gender: string) =>
+  s === 'MARRIED' ? (gender === 'FEMALE' ? 'Ameolewa' : 'Ameoa') : s === 'SINGLE' ? (gender === 'FEMALE' ? 'Hajaolewa' : 'Hajaoa') : '';
+const maritalOptions = (gender: string) => [{ value: 'MARRIED', label: maritalLabel('MARRIED', gender) }, { value: 'SINGLE', label: maritalLabel('SINGLE', gender) }];
 type IdType = 'NIDA' | 'VOTER' | 'NONE';
 
 export function toPayload(f: Form, idType: IdType = 'NIDA') {
@@ -298,6 +303,7 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
             <div className={namesLocked ? 'locked-field' : undefined}><TextField label="Jina la kati" value={f.middleName} onChange={set('middleName')} readOnly={namesLocked} tabIndex={namesLocked ? -1 : undefined} /></div>
             <div className={namesLocked ? 'locked-field' : undefined}><TextField label="Jina la ukoo *" value={f.lastName} onChange={set('lastName')} readOnly={namesLocked} tabIndex={namesLocked ? -1 : undefined} /></div>
             <SelectField label="Jinsia *" value={f.gender} onChange={set('gender')} options={[{ value: 'MALE', label: 'Mwanaume' }, { value: 'FEMALE', label: 'Mwanamke' }]} />
+            <SelectField label="Hali ya ndoa" value={f.maritalStatus} onChange={set('maritalStatus')} placeholder="Chagua…" options={maritalOptions(f.gender)} />
             <TextField label="Tarehe ya kuzaliwa" type="date" value={f.dateOfBirth} onChange={set('dateOfBirth')} />
             <SelectField label="Aina ya kitambulisho" value={idType} onChange={(v) => setIdType(v as IdType)}
               options={[{ value: 'NIDA', label: 'NIDA' }, { value: 'VOTER', label: 'Kadi ya mpiga kura' }, { value: 'NONE', label: 'Hana kitambulisho kwa sasa' }]} />
@@ -372,6 +378,7 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
                 <div className="review-title"><strong>{t('Taarifa binafsi')}</strong><button type="button" className="link-btn" onClick={() => go(0)}>{t('Badilisha')}</button></div>
                 <dl className="dl">
                   <R k="Jinsia" v={f.gender === 'FEMALE' ? 'Mwanamke' : 'Mwanaume'} />
+                  <R k="Hali ya ndoa" v={maritalLabel(f.maritalStatus, f.gender)} />
                   <R k="Tarehe ya kuzaliwa" v={f.dateOfBirth ? date(f.dateOfBirth) : ''} />
                   <R k="Simu" v={f.phone} />
                   <R k="Kitambulisho" v={idType === 'NIDA' ? (f.nidaNumber ? `NIDA · ${f.nidaNumber}` : '') : idType === 'VOTER' ? (f.voterIdNumber ? `Mpiga kura · ${f.voterIdNumber}` : '') : 'Hana kwa sasa'} />

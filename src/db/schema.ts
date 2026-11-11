@@ -38,6 +38,8 @@ export const roleEnum = pgEnum('role', [
 ]);
 export const amcosStatusEnum = pgEnum('amcos_status', ['PENDING', 'ACTIVE', 'SUSPENDED', 'REJECTED']);
 export const genderEnum = pgEnum('gender', ['MALE', 'FEMALE']);
+/** Hali ya ndoa: MARRIED = ameoa (mwanaume) / ameolewa (mwanamke); SINGLE = hajaoa / hajaolewa */
+export const maritalStatusEnum = pgEnum('marital_status', ['MARRIED', 'SINGLE']);
 export const memberStatusEnum = pgEnum('member_status', ['ACTIVE', 'SUSPENDED', 'EXITED', 'DECEASED', 'PENDING']); // PENDING = anasubiri uthibitisho wa Meneja
 export const mobileMoneyProviderEnum = pgEnum('mobile_money_provider', ['MPESA', 'AIRTEL_MONEY', 'MIXX_BY_YAS', 'HALOPESA', 'TPESA']);
 export const seasonStatusEnum = pgEnum('season_status', ['PLANNING', 'ACTIVE', 'MARKETING', 'CLOSED']);
@@ -151,7 +153,7 @@ export const users = pgTable('users', {
   updatedAt: updatedAt(),
 }, (t) => [
   index().on(t.amcosId), index().on(t.unionId), index().on(t.role),
-  // Kila AMCOS: Meneja mmoja, Mhasibu mmoja, Stokipa mmoja (walio hai)
+  // Kila AMCOS: Meneja mmoja, Mhasibu mmoja, Storekeeper mmoja (walio hai)
   uniqueIndex('users_one_staff_per_role').on(t.amcosId, t.role)
     .where(sql`is_active and role in ('AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK')`),
 ]);
@@ -192,6 +194,7 @@ export const members = pgTable('members', {
   middleName: text(),
   lastName: text().notNull(),
   gender: genderEnum().notNull(),
+  maritalStatus: maritalStatusEnum(),
   dateOfBirth: date(),
   nidaNumber: text(),
   voterIdNumber: text(), // Kadi ya mpiga kura (kwa wasio na NIDA)
@@ -228,7 +231,7 @@ export const members = pgTable('members', {
   nameOverrideReason: text(),
   nameOverrideById: uuid(),           // Meneja aliyeidhinisha (null = linasubiri idhini)
   nameOverrideAt: timestamp({ withTimezone: true }),
-  // Portal ya mkulima: anaingia kwa namba ya uanachama + PIN (bcrypt). PIN inatolewa ofisini na Mhasibu au Stokipa.
+  // Portal ya mkulima: anaingia kwa namba ya uanachama + PIN (bcrypt). PIN inatolewa ofisini na Mhasibu au Storekeeper.
   portalPinHash: text(),
   portalMustChange: boolean().notNull().default(true),   // PIN ya ofisi lazima ibadilishwe akiingia mara ya kwanza
   portalTokenVersion: integer().notNull().default(0),    // inaongezeka PIN ikitolewa upya au kufutwa -> sessions za zamani zinakufa
@@ -636,7 +639,7 @@ export const auditLogs = pgTable('audit_logs', {
 
 
 // =====================================================================
-//  WATUMISHI WA AMCOS: Meneja (AMCOS_ADMIN), Mhasibu (ACCOUNTANT), Stokipa (CLERK)
+//  WATUMISHI WA AMCOS: Meneja (AMCOS_ADMIN), Mhasibu (ACCOUNTANT), Storekeeper (CLERK)
 //  Idhini, fedha za chama na manunuzi. Fedha za chama HAZICHANGANYWI na za CoopLink.
 // =====================================================================
 export const approvalTypeEnum = pgEnum('approval_type', [
