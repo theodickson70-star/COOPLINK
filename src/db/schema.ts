@@ -114,6 +114,10 @@ export const amcos = pgTable('amcos', {
   inputCurrency: currencyEnum().notNull().default('TZS'),
   kgPerAcre: numeric({ precision: 10, scale: 2 }).notNull().default('560'), // makisio: kilo za tumbaku kwa ekari (mf. @560)
   postalAddress: text(),                                                      // mf. S.L.P 149 Urambo (kwa fomu zilizochapishwa)
+  // Chama cha mafunzo: Owner anaweza kufuta data yote ya mafunzo mara moja (watumishi wanabaki); kisha kinakuwa hai
+  training: boolean().notNull().default(false),
+  trainingResetAt: timestamp({ withTimezone: true }),
+  trainingResetById: uuid(),
   // Biashara ya CoopLink (Owner)
   status: amcosStatusEnum().notNull().default('ACTIVE'),
   statusReason: text(),

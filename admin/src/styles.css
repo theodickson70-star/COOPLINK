@@ -1337,3 +1337,6 @@ tr.row-msg.row-warn td { color: var(--warn-ink); }
   .apv-cats { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
   .apv-cats button { flex: none; }
 }
+.training-strip { background: #fff4d6; color: #7a5300; border-bottom: 1px solid #f0d58a; padding: 8px 28px; font-size: 13.5px; font-weight: 600; }
+@media (max-width: 900px) { .training-strip { padding: 8px 16px; } }
+[data-theme="dark"] .training-strip { background: #3a2f12; color: #f3d48a; border-color: #5a4718; }

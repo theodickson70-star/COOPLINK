@@ -101,6 +101,13 @@ const MARKERS: Record<string, string[]> = {
   '0017_rebrand_dukalangu': [
     "select not exists (select 1 from platform_settings where key = 'business.profile' and upper(trim(value->>'companyName')) in ('NAYA GROUP', 'NAYA'))",
   ],
+  '0029_training_reset': [
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'amcos' and column_name = 'training')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'amcos' and column_name = 'training_reset_at')",
+    "select position('training_reset' in pg_get_functiondef('prevent_change'::regproc)) > 0",
+    "select position('training_reset' in pg_get_functiondef('approval_guard'::regproc)) > 0",
+    "select position('training_reset' in pg_get_functiondef('finance_txn_guard'::regproc)) > 0",
+  ],
   '0028_grade_prices': [
     "select to_regclass('public.grade_prices') is not null",
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'grade_prices' and column_name = 'sort_order')",

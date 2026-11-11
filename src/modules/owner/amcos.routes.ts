@@ -14,6 +14,7 @@ import { generateAmcosCode } from '../../lib/amcos-code';
 import { AMCOS_STAFF_ROLES, STAFF_TITLE, type AmcosStaffRole } from '../../lib/amcos-permissions';
 import { lookupNameOrNull, verifiedName } from '../../lib/name-lookup';
 import { assertSlotFree } from '../../lib/amcos-staff';
+import { PREVIEW_GROUPS, resetBackup, resetCounts, runTrainingReset } from '../../lib/training-reset';
 
 import { clearStaffingCache, missingRoles } from '../../lib/amcos-permissions';
 export const ownerAmcosRouter = Router();
@@ -66,7 +67,7 @@ ownerAmcosRouter.get(
     );
     const rows = await db.select({
       id: A.id, name: A.name, code: A.code, region: A.region, district: A.district, status: A.status,
-      statusReason: A.statusReason, createdAt: A.createdAt, approvedAt: A.approvedAt,
+      statusReason: A.statusReason, createdAt: A.createdAt, approvedAt: A.approvedAt, training: A.training,
       sub: sql<{ status: string; endDate: string; cycle: string; plan: string } | null>`(
         select json_build_object('status', s.status, 'endDate', s.end_date, 'cycle', s.cycle, 'plan', p.name)
         from subscriptions s join subscription_plans p on p.id = s.plan_id
@@ -264,6 +265,74 @@ ownerAmcosRouter.post(
   }),
 );
 
+
+// ------------------------------ CHAMA CHA MAFUNZO: KUFUTA DATA NA KUANZA UPYA (Owner pekee) ------------------------------
+const ownerOnly = (req: Parameters<typeof requireReauth>[0]) => { if (req.auth!.role !== 'SUPER_ADMIN') throw forbidden('Owner pekee ndiye anaweza kufanya hili'); };
+
+/** Owner anakiwekea chama alama ya "Mafunzo" (au kuiondoa). Ni chama cha mafunzo tu kinachoweza kufutiwa data. */
+ownerAmcosRouter.put('/:id/training', requirePermission('amcos.suspend'), ah(async (req, res) => {
+  ownerOnly(req);
+  const { id } = uuidParam.parse(req.params);
+  const { training } = z.object({ training: z.boolean() }).passthrough().parse(req.body);
+  await requireReauth(req);
+  const before = await findAmcos(id);
+  if (training && before.trainingResetAt) throw conflict('Data ya mafunzo ya chama hiki ilishafutwa — chama sasa kinatumika kwa kweli na hakiwezi kurudishwa kwenye mafunzo');
+  const row = await db.transaction(async (tx) => {
+    const [a] = await tx.update(A).set({ training }).where(eq(A.id, id)).returning();
+    await audit(tx, req, { action: training ? 'AMCOS_TRAINING_ON' : 'AMCOS_TRAINING_OFF', entity: 'Amcos', entityId: id, amcosId: id, before: { training: before.training }, after: { training } });
+    return a;
+  });
+  res.json({ amcos: row });
+}));
+
+/** Kitakachofutwa (idadi) kabla ya kufuta */
+ownerAmcosRouter.get('/:id/training-reset', requirePermission('amcos.read'), ah(async (req, res) => {
+  ownerOnly(req);
+  const { id } = uuidParam.parse(req.params);
+  const a = await findAmcos(id);
+  const counts = await resetCounts(db, id);
+  const staff = await db.select({ n: count() }).from(schema.users).where(eq(schema.users.amcosId, id));
+  res.json({
+    amcos: { id: a.id, name: a.name, code: a.code, training: a.training, trainingResetAt: a.trainingResetAt },
+    groups: PREVIEW_GROUPS.map((g) => ({ label: g.label, count: g.keys.reduce((t, k) => t + (counts[k] ?? 0), 0) })),
+    total: Object.values(counts).reduce((t, n) => t + n, 0), staffKept: staff[0].n,
+  });
+}));
+
+/** Nakala (JSON) ya data yote itakayofutwa — Owner anaipakua kwanza */
+ownerAmcosRouter.get('/:id/training-reset/backup', requirePermission('amcos.read'), ah(async (req, res) => {
+  ownerOnly(req);
+  const { id } = uuidParam.parse(req.params);
+  const a = await findAmcos(id);
+  const data = await resetBackup(db, id);
+  await audit(db, req, { action: 'AMCOS_TRAINING_BACKUP', entity: 'Amcos', entityId: id, amcosId: id });
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="mafunzo-${a.code}-${today()}.json"`);
+  res.send(JSON.stringify({ amcos: { id: a.id, name: a.name, code: a.code }, exportedAt: new Date().toISOString(), tables: data }));
+}));
+
+/**
+ * Kufuta data ya mafunzo: chama cha "Mafunzo" tu, Owner pekee, code ya chama + nenosiri (+2FA).
+ * Watumishi, chama, ada/subscription za CoopLink na chati ya GL vinabaki. Baada ya hapo chama kinakuwa hai (si mafunzo).
+ */
+ownerAmcosRouter.post('/:id/training-reset', requirePermission('amcos.suspend'), ah(async (req, res) => {
+  ownerOnly(req);
+  const { id } = uuidParam.parse(req.params);
+  const { confirmAmcosCode } = z.object({ confirmAmcosCode: z.string().trim() }).passthrough().parse(req.body);
+  const a = await findAmcos(id);
+  if (!a.training) throw conflict('Chama hiki hakina alama ya "Mafunzo" — data yake haiwezi kufutwa');
+  if (confirmAmcosCode.toUpperCase() !== a.code.toUpperCase()) throw badRequest(`Andika code ya chama (${a.code}) kuthibitisha`);
+  await requireReauth(req);
+  const out = await db.transaction(async (tx) => {
+    await tx.execute(sql`select 1 from amcos where id = ${id} for update`);
+    const deleted = await runTrainingReset(tx, id);
+    const total = Object.values(deleted).reduce((t, n) => t + n, 0);
+    await tx.update(A).set({ training: false, trainingResetAt: new Date(), trainingResetById: req.auth!.userId }).where(eq(A.id, id));
+    await audit(tx, req, { action: 'AMCOS_TRAINING_RESET', entity: 'Amcos', entityId: id, amcosId: id, after: { total, deleted: Object.fromEntries(Object.entries(deleted).filter(([, n]) => n > 0)) } });
+    return { total, deleted };
+  });
+  res.json({ ok: true, total: out.total, groups: PREVIEW_GROUPS.map((g) => ({ label: g.label, count: g.keys.reduce((t, k) => t + (out.deleted[k] ?? 0), 0) })) });
+}));
 
 // ------------------------------ WATUMISHI WA AMCOS (nafasi 3) ------------------------------
 const U = schema.users;

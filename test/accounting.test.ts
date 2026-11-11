@@ -1102,3 +1102,40 @@ test('Bei za madaraja ya msimu (TTB): orodha ya chama, belo kwa daraja -> bei in
   assert.equal(Number(det.bales.find((b: any) => b.baleNo.startsWith('GP1-')).priceUsd), 3.16);
   assert.equal((await call('GET', '/api/v1/sales/grade-prices', accountant)).body.count, 2, 'C3O imeondolewa');
 });
+
+// v0.26 — LAZIMA liwe la mwisho: linafuta data yote ya chama cha majaribio -----------------------------
+test('Chama cha mafunzo: Owner pekee anafuta data yote, watumishi wanabaki, namba zinaanza upya, kinga zinabaki', async () => {
+  const path = `/api/v1/owner/amcos/${amcosId}`;
+  const code = (await call('GET', path, owner)).body.amcos.code;
+  assert.equal((await call('POST', `${path}/training-reset`, owner, { confirmAmcosCode: code, confirmPassword: OWNER_PW })).status, 409, 'Si chama cha mafunzo');
+  assert.equal((await call('PUT', `${path}/training`, manager, { training: true, confirmPassword: 'Staff12345' })).status, 403, 'Meneja hawezi');
+  assert.equal((await call('PUT', `${path}/training`, owner, { training: true, confirmPassword: OWNER_PW })).status, 200);
+  const pv = (await call('GET', `${path}/training-reset`, owner)).body;
+  assert.ok(pv.total > 100); assert.equal(pv.staffKept, 3);
+  assert.ok(pv.groups.find((g: any) => g.label === 'Wakulima').count > 5);
+  const bk = await call('GET', `${path}/training-reset/backup`, owner);
+  assert.equal(bk.status, 200); assert.ok(bk.body.tables.members.length > 5 && bk.body.tables.member_ledger_entries.length > 5);
+  assert.equal((await call('POST', `${path}/training-reset`, owner, { confirmAmcosCode: 'XXX', confirmPassword: OWNER_PW })).status, 400, 'Code ya chama si sahihi');
+  assert.equal((await call('POST', `${path}/training-reset`, owner, { confirmAmcosCode: code, confirmPassword: 'kosa-kosa' })).status, 403, 'Nenosiri si sahihi');
+  const r = await call('POST', `${path}/training-reset`, owner, { confirmAmcosCode: code.toLowerCase(), confirmPassword: OWNER_PW });
+  assert.equal(r.status, 200, JSON.stringify(r.body)); assert.ok(r.body.total > 100);
+  // Watumishi wanaingia kama kawaida; data yote imeondoka
+  assert.equal((await call('GET', '/api/v1/members?pageSize=5', manager)).body.data.length, 0);
+  assert.equal((await call('GET', '/api/v1/finance/accounts', accountant)).body.data.length, 0);
+  assert.equal((await call('GET', '/api/v1/approvals?pageSize=5', manager)).body.data.length, 0);
+  assert.equal((await call('GET', '/api/v1/inputs/items', storekeeper)).body.data.length, 0);
+  assert.equal((await call('GET', '/api/v1/sales/grade-prices', accountant)).body.count, 0);
+  const chart = (await call('GET', '/api/v1/accounting/chart', accountant)).body.data;
+  assert.ok(chart.length >= 40 && chart.every((g: any) => g.code !== '1101'), 'Chati ya mfumo inabaki, akaunti za mafunzo zimeondoka');
+  // Namba zinaanza upya
+  const m = await call('POST', '/api/v1/members', storekeeper, { firstName: 'Mpya', lastName: 'Kabisa', gender: 'MALE' });
+  assert.equal(m.status, 201, JSON.stringify(m.body)); assert.match(m.body.member.memberNo, /-000001$/);
+  // Chama si cha mafunzo tena; hakiwezi kurudishwa
+  const after = (await call('GET', path, owner)).body.amcos;
+  assert.equal(after.training, false); assert.ok(after.trainingResetAt);
+  assert.equal((await call('PUT', `${path}/training`, owner, { training: true, confirmPassword: OWNER_PW })).status, 409);
+  // Kinga za database zinabaki nje ya operesheni hii
+  const why = (e: any) => String(e?.cause?.message ?? e?.message);
+  await assert.rejects(db.execute(sql`delete from audit_logs where id = (select id from audit_logs limit 1)`), (e) => /IMMUTABLE_RECORD/.test(why(e)));
+  await assert.rejects(db.execute(sql`delete from approval_requests where id = (select id from approval_requests limit 1)`), (e) => /haliwezi kufutwa/.test(why(e)));
+});

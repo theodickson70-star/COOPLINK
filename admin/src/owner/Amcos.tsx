@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { api, type Paged } from '../lib/api';
+import { api, apiDownload, type Paged } from '../lib/api';
 import { useAction, useDebounced, useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
 import { date, dateTime, phone, STAFF_DUTY } from '../lib/format';
@@ -12,7 +12,7 @@ import { PhoneNameFields } from '../components/PhoneName';
 import { RecordPaymentModal } from './Finance';
 
 interface Row {
-  id: string; name: string; code: string; region: string | null; district: string | null; status: string; statusReason: string | null;
+  id: string; name: string; code: string; region: string | null; district: string | null; status: string; statusReason: string | null; training?: boolean;
   createdAt: string; approvedAt: string | null; users: number; members: number;
   sub: { status: string; endDate: string; cycle: string; plan: string } | null;
 }
@@ -57,7 +57,7 @@ export function OwnerAmcos() {
                   <tr key={a.id} onClick={() => nav(`/owner/amcos/${a.id}`)} style={{ cursor: 'pointer' }}>
                     <td><Link className="row-link" to={`/owner/amcos/${a.id}`} onClick={(e) => e.stopPropagation()}>{a.name}</Link><div className="muted" style={{ fontSize: 13 }}>{a.code}</div></td>
                     <td>{[a.district, a.region].filter(Boolean).join(', ') || '—'}</td>
-                    <td><Pill value={a.status} /></td>
+                    <td><Pill value={a.status} />{a.training && <> <span className="badge badge-warn">Mafunzo</span></>}</td>
                     <td>{a.sub ? <>{a.sub.plan} <Pill value={a.sub.status} /></> : <span className="muted">Hakuna</span>}</td>
                     <td>{a.sub ? date(a.sub.endDate) : '—'}</td>
                     <td className="num">{nfmt(a.users)}</td>
@@ -80,6 +80,7 @@ interface AmcosFull {
   id: string; name: string; code: string; regNumber: string | null; region: string | null; district: string | null; ward: string | null; village: string | null;
   phone: string | null; email: string | null; contactName: string | null; contactPhone: string | null; status: string; statusReason: string | null;
   createdAt: string; approvedAt: string | null; unionId: string | null;
+  training?: boolean; trainingResetAt?: string | null;
 }
 
 export interface Created { code: string; manager: { fullName: string; phone: string } | null; active: boolean }
@@ -209,7 +210,7 @@ export function OwnerAmcosDetail() {
 
   return (
     <>
-      <PageHead title={a.name} sub={<>{a.code} · <Pill value={a.status} />{a.statusReason ? <span className="muted"> · {a.statusReason === 'SUBSCRIPTION_EXPIRED' ? 'Subscription imeisha' : a.statusReason}</span> : null}</>}>
+      <PageHead title={a.name} sub={<>{a.code} · <Pill value={a.status} />{a.training && <> · <span className="badge badge-warn">Mafunzo</span></>}{a.statusReason ? <span className="muted"> · {a.statusReason === 'SUBSCRIPTION_EXPIRED' ? 'Subscription imeisha' : a.statusReason}</span> : null}</>}>
         <Link className="btn btn-secondary" to="/owner/amcos">← Orodha</Link>
         {has('support.read') && <Link className="btn btn-secondary" to={`/owner/support?amcosId=${a.id}`}>Tiketi za msaada</Link>}
         {has('amcos.create') && <Button variant="secondary" onClick={() => setModal('edit')}>Hariri</Button>}
@@ -255,6 +256,8 @@ export function OwnerAmcosDetail() {
         </Section>
         <StaffSlots amcosId={a.id} disabled={a.status === 'REJECTED'} />
       </div>
+
+      <TrainingSection a={a} onChanged={reload} />
 
       {has('subscriptions.read') && a.status !== 'PENDING' && a.status !== 'REJECTED' && (
         <div style={{ marginBottom: 16 }}><AmcosFeesSection amcosId={a.id} active={a.status === 'ACTIVE' || a.status === 'SUSPENDED'} /></div>
@@ -321,6 +324,72 @@ export function OwnerAmcosDetail() {
   );
 }
 
+
+// ------------------------------ CHAMA CHA MAFUNZO (Owner pekee) ------------------------------
+interface ResetPreview { amcos: { code: string; training: boolean; trainingResetAt: string | null }; groups: { label: string; count: number }[]; total: number; staffKept: number }
+
+/**
+ * Chama kilichotumika kufundishia: Owner anakiwekea alama ya "Mafunzo", kisha akiwa tayari anafuta data yote
+ * ya mafunzo (watumishi na nenosiri zao wanabaki). Baada ya kufuta chama kinakuwa hai na hakiwezi kufutiwa tena.
+ */
+function TrainingSection({ a, onChanged }: { a: AmcosFull; onChanged: () => void }) {
+  const { user } = useAuth();
+  const [mode, setMode] = useState<null | 'on' | 'off' | 'reset'>(null);
+  const [typed, setTyped] = useState('');
+  const [backedUp, setBackedUp] = useState(false);
+  const [result, setResult] = useState<{ total: number; groups: { label: string; count: number }[] } | null>(null);
+  const pv = useFetch<ResetPreview>(user?.role === 'SUPER_ADMIN' && a.training ? `/owner/amcos/${a.id}/training-reset` : null);
+  const dl = useAction();
+  if (user?.role !== 'SUPER_ADMIN') return null;
+  const close = () => { setMode(null); setTyped(''); };
+  return (
+    <div style={{ marginBottom: 16 }}>
+      {result && <Alert kind="ok">Data ya mafunzo imefutwa: rekodi {nfmt(result.total)}. Chama sasa kiko hai — watumishi wanaingia kwa akaunti zao zilezile na kuanza kujaza upya.</Alert>}
+      <Section title="Chama cha mafunzo" actions={!a.training && !a.trainingResetAt && a.status !== 'REJECTED'
+        ? <Button size="sm" variant="secondary" onClick={() => setMode('on')}>Weka alama ya "Mafunzo"</Button>
+        : a.training ? <Button size="sm" variant="ghost" onClick={() => setMode('off')}>Ondoa alama</Button> : null}>
+        {a.trainingResetAt ? (
+          <p className="muted" style={{ margin: 0 }}>Data ya mafunzo ilifutwa {dateTime(a.trainingResetAt)}. Chama kinatumika kwa kweli — hakiwezi kufutiwa data tena.</p>
+        ) : !a.training ? (
+          <p className="muted" style={{ margin: 0 }}>Kama chama hiki kilitumika kufundishia, kiwekee alama ya "Mafunzo". Ukiwa tayari, utaweza kufuta data yote ya mafunzo bila kufungua akaunti mpya: watumishi na nenosiri zao wanabaki.</p>
+        ) : (
+          <div className="stack">
+            <Alert kind="warn"><strong>Chama hiki kiko kwenye mafunzo.</strong> Ukifuta, kila kitu kilichojazwa kinafutwa kabisa: wakulima, pembejeo, fedha, mauzo, mikopo, mishahara, mali, mipangilio ya chama, idhini, kumbukumbu na tiketi za msaada. Namba zote zinaanza upya.
+              {' '}<strong>Kinachobaki:</strong> chama, watumishi {pv.data ? `(${pv.data.staffKept})` : ''} na nenosiri zao, na ada/subscription za CoopLink.</Alert>
+            {!pv.data ? <Loading /> : (
+              <div className="table-wrap"><table className="table">
+                <tbody>{pv.data.groups.filter((g) => g.count > 0).map((g) => <tr key={g.label}><td>{g.label}</td><td className="num"><strong>{nfmt(g.count)}</strong></td></tr>)}
+                  <tr className="row-total"><td>Jumla ya rekodi zitakazofutwa</td><td className="num">{nfmt(pv.data.total)}</td></tr></tbody>
+              </table></div>
+            )}
+            <Alert>{dl.error}</Alert>
+            <div className="actions">
+              <Button variant="secondary" busy={dl.busy} onClick={async () => { if (await dl.run(async () => { await apiDownload(`/owner/amcos/${a.id}/training-reset/backup`, { filename: `mafunzo-${a.code}.json` }); return true; })) setBackedUp(true); }}>
+                1. Pakua nakala (backup){backedUp ? ' ✓' : ''}</Button>
+              <Button variant="danger" disabled={!backedUp || !pv.data} onClick={() => setMode('reset')}>2. Futa data ya mafunzo — anza upya</Button>
+            </div>
+            {!backedUp && <p className="muted" style={{ margin: 0, fontSize: 13 }}>Pakua nakala kwanza — kitufe cha kufuta kinawaka baada ya hapo.</p>}
+          </div>
+        )}
+      </Section>
+      <ConfirmDialog open={mode === 'on'} title={`${a.name}: chama cha mafunzo?`} confirmLabel="Weka alama"
+        message="Chama chenye alama hii tu ndicho kinachoweza kufutiwa data ya mafunzo. Usiweke alama hii kwa chama kinachotumika kwa kweli." onClose={close}
+        onConfirm={async (c) => { await api(`/owner/amcos/${a.id}/training`, { method: 'PUT', body: { training: true, ...c } }); close(); onChanged(); }} />
+      <ConfirmDialog open={mode === 'off'} title="Ondoa alama ya mafunzo?" confirmLabel="Ondoa"
+        message="Data iliyopo itabaki kama ilivyo na haitaweza kufutwa kwa njia hii." onClose={close}
+        onConfirm={async (c) => { await api(`/owner/amcos/${a.id}/training`, { method: 'PUT', body: { training: false, ...c } }); close(); onChanged(); }} />
+      <ConfirmDialog open={mode === 'reset'} danger title={`Futa data yote ya mafunzo ya ${a.name}?`} confirmLabel="Futa kabisa"
+        message={<>Rekodi <strong>{nfmt(pv.data?.total ?? 0)}</strong> zitafutwa kabisa na hazirudi. Watumishi wanabaki. Andika code ya chama <strong>{a.code}</strong> kuthibitisha.</>} onClose={close}
+        onConfirm={async (c) => {
+          if (typed.trim().toUpperCase() !== a.code.toUpperCase()) throw new Error(`Andika code ya chama (${a.code}) kuthibitisha`);
+          const r = await api<{ total: number; groups: { label: string; count: number }[] }>(`/owner/amcos/${a.id}/training-reset`, { method: 'POST', body: { confirmAmcosCode: typed, ...c } });
+          setResult(r); close(); setBackedUp(false); onChanged();
+        }}>
+        <TextField label={`Code ya chama (${a.code}) *`} value={typed} onChange={setTyped} />
+      </ConfirmDialog>
+    </div>
+  );
+}
 
 // ------------------------------ WATUMISHI WATATU WA AMCOS ------------------------------
 interface StaffUser { id: string; fullName: string; phone: string; email: string | null; role: string; isActive: boolean; mustChangePassword: boolean; lastLoginAt: string | null; updatedAt: string }

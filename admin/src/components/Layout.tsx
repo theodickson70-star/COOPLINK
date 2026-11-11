@@ -207,6 +207,7 @@ export function Layout() {
           <Button variant="ghost" size="sm" onClick={logout}>{t('Toka')}</Button>
         </header>
         <SystemBanner />
+        {amcos?.training && user.amcosId && <div className="training-strip" role="status">🎓 {t('Hali ya mafunzo: data ya chama hiki ni ya mazoezi na itafutwa yote kabla ya kuanza matumizi halisi. Akaunti zenu zitabaki.')}</div>}
         <main className="content">
           {user.amcosId && <AnnouncementBar />}
           {due && !loc.pathname.startsWith('/billing') && (

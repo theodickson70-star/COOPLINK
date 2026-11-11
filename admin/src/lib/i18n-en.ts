@@ -897,6 +897,7 @@ export const EN: Record<string, string> = {
   'Ameolewa': 'Married',
   'Hajaoa': 'Single',
   'Hajaolewa': 'Single',
+  'Hali ya mafunzo: data ya chama hiki ni ya mazoezi na itafutwa yote kabla ya kuanza matumizi halisi. Akaunti zenu zitabaki.': 'Training mode: this society\'s data is practice data and will all be deleted before real use starts. Your accounts will be kept.',
   // v0.25 — Idhini
   'Maombi yanasubiri uamuzi wako': 'Requests awaiting your decision',
   'Maombi yako yanasubiri Meneja': 'Your requests awaiting the Manager',

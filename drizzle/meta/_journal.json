@@ -204,6 +204,13 @@
       "when": 1794419677973,
       "tag": "0028_grade_prices",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1794423102610,
+      "tag": "0029_training_reset",
+      "breakpoints": true
     }
   ]
 }
