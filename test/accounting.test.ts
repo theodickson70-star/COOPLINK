@@ -886,3 +886,35 @@ test('Pembejeo kwa dola: bei USD, ugawaji, marejesho kwa kiwango kipya, makato y
   // Rudisha chama kwenye TSh (majaribio mengine)
   assert.equal((await call('PUT', '/api/v1/finance/fx/currency', accountant, { currency: 'TZS' })).status, 200);
 });
+
+test('Mbolea ya vitalu kwa kilo: bei ya kilo = bei ya mfuko / kilo za mfuko, stoo inapungua sehemu ya mfuko, kilo nzima tu', async () => {
+  await call('POST', '/api/v1/finance/fx', accountant, { usdToTzs: '2500' });
+  assert.equal((await call('PUT', '/api/v1/finance/fx/currency', accountant, { currency: 'USD' })).status, 200);
+  const farmer = await newMember('Vitalu');
+  assert.equal((await call('POST', '/api/v1/inputs/items', storekeeper, { name: 'NPK Vitalu ' + RUN, category: 'FERTILIZER', unit: 'BAG', looseKg: true })).status, 400, 'Kilo za mfuko zinahitajika');
+  const item = (await call('POST', '/api/v1/inputs/items', storekeeper, { name: 'NPK Vitalu ' + RUN, category: 'FERTILIZER', unit: 'BAG', packKg: '50', looseKg: true })).body.item;
+  assert.equal(item.looseKg, true); assert.equal(item.packKg, '50.00');
+  const plain = (await call('POST', '/api/v1/inputs/items', storekeeper, { name: 'Urea Mfuko ' + RUN, category: 'FERTILIZER', unit: 'BAG', packKg: '50' })).body.item;
+  await call('POST', '/api/v1/inputs/stock/receipts', storekeeper, { inputItemId: item.id, quantity: 2, unitPriceUsd: '45', reference: 'DNV-' + RUN });
+  await approve(item.id);
+  await call('POST', '/api/v1/inputs/stock/receipts', storekeeper, { inputItemId: plain.id, quantity: 2, unitPriceUsd: '40', reference: 'DNP-' + RUN });
+  await approve(plain.id);
+
+  assert.equal((await call('POST', '/api/v1/input-issues', storekeeper, { memberId: farmer.id, lines: [{ inputItemId: item.id, quantity: '2.5', unit: 'KG' }] })).status, 400, 'Kilo nzima tu');
+  assert.equal((await call('POST', '/api/v1/input-issues', storekeeper, { memberId: farmer.id, lines: [{ inputItemId: plain.id, quantity: '3', unit: 'KG' }] })).status, 400, 'Bidhaa hii haigawiwi kwa kilo');
+  // Kilo 3 + mfuko 1 wa bidhaa nyingine: $45 / 50 x 3 = $2.70; jumla $42.70
+  const iss = await call('POST', '/api/v1/input-issues', storekeeper, { memberId: farmer.id, lines: [{ inputItemId: item.id, quantity: '3', unit: 'KG' }, { inputItemId: plain.id, quantity: '1' }] });
+  assert.equal(iss.status, 201, JSON.stringify(iss.body));
+  const kgLine = iss.body.issue.lines.find((l: any) => l.inputItemId === item.id);
+  assert.equal(Number(kgLine.kg), 3); assert.equal(Number(kgLine.quantity), 0.06); assert.equal(Number(kgLine.amountUsd), 2.7); assert.equal(Number(kgLine.amount), 6750);
+  assert.equal(iss.body.issue.totalUsd, '42.70');
+  await approve(iss.body.issue.id);
+  const st = (await call('GET', '/api/v1/inputs/stock', storekeeper)).body.data.find((x: any) => x.inputItemId === item.id);
+  assert.equal(Number(st.balance), 1.94, 'Mifuko 1 + kilo 47');
+  const stmt = (await call('GET', `/api/v1/finance/farmers/${farmer.id}`, accountant)).body;
+  assert.equal(stmt.usd.debtUsd, '42.70');
+  assert.equal(stmt.inputsSummary.find((x: any) => x.name.startsWith('NPK Vitalu')).kg, '3.00');
+  assert.ok(stmt.statement.some((e: any) => /kilo 3/.test(e.description)));
+  await assertBooksBalance();
+  assert.equal((await call('PUT', '/api/v1/finance/fx/currency', accountant, { currency: 'TZS' })).status, 200);
+});

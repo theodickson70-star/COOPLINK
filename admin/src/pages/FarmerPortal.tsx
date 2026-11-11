@@ -251,7 +251,7 @@ function Overview({ data, me, view, setView, seasonId, setSeasonId }: {
           <div className="fp-cards">{data.issues.filter((i) => i.status === 'ISSUED').map((i) => (
             <article key={i.id} className="card fp-item">
               <header><strong>{i.issueNo}</strong><time>{date(i.issuedAt)}</time></header>
-              {i.lines.map((l, k) => <Row key={k} label={`${l.name} · ${num(l.quantity)} ${l.unit}`} v={l.amountUsd ? usd(l.amountUsd) : tsh(l.amount)} />)}
+              {i.lines.map((l, k) => <Row key={k} label={`${l.name} · ${l.kg ? `${t('kilo')} ${num(l.kg)}` : `${num(l.quantity)} ${l.unit}`}`} v={l.amountUsd ? usd(l.amountUsd) : tsh(l.amount)} />)}
               <Row strong label={t('Jumla')} v={i.currency === 'USD' && i.totalUsd ? usd(i.totalUsd) : tsh(i.totalAmount)} />
             </article>
           ))}</div>

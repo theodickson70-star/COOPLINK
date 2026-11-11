@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, type Paged } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
-import { dateTime, fullName, num, tsh, UNIT_LABEL } from '../lib/format';
+import { dateTime, fullName, num, packsAndKg, tsh, UNIT_LABEL } from '../lib/format';
 import { useAuth } from '../lib/auth';
 import { usd, useFx } from '../lib/fx';
 import { Alert, Badge, Button, clientRef, Empty, Loading, MemberPicker, Modal, PageHead, Pager, Select, TextField, type MemberLite } from '../components/ui';
@@ -11,7 +11,7 @@ interface Issue {
   id: string; issueNo: string; issuedAt: string; totalAmount: string; status: string; notes: string | null; cancelReason: string | null;
   currency?: 'TZS' | 'USD'; fxRate?: string | null; totalUsd?: string | null;
   member: { id: string; memberNo: string; firstName: string; lastName: string };
-  lines?: { id: string; quantity: string; unitPrice: string; amount: string; unitPriceUsd?: string | null; amountUsd?: string | null; inputItem: { name: string; unit: string } }[];
+  lines?: { id: string; quantity: string; unitPrice: string; amount: string; kg?: string | null; unitPriceUsd?: string | null; amountUsd?: string | null; inputItem: { name: string; unit: string; packKg?: string | null } }[];
 }
 
 export function InputIssues() {
@@ -55,7 +55,7 @@ export function InputIssues() {
   );
 }
 
-interface Item { id: string; name: string; unit: string; isActive: boolean }
+interface Item { id: string; name: string; unit: string; isActive: boolean; packKg?: string | null; looseKg?: boolean }
 interface Price { inputItemId: string; unitPrice: string; unitPriceUsd: string | null }
 interface Stock { inputItemId: string; balance: string }
 
@@ -63,7 +63,8 @@ export function InputIssueNew() {
   const nav = useNavigate();
   const [params] = useSearchParams();
   const [member, setMember] = useState<MemberLite | null>(null);
-  const [lines, setLines] = useState<{ inputItemId: string; quantity: string }[]>([{ inputItemId: '', quantity: '' }]);
+  // unit KG: mbolea ya vitalu inayopimwa kwa kilo (kilo nzima)
+  const [lines, setLines] = useState<{ inputItemId: string; quantity: string; unit: 'PACK' | 'KG' }[]>([{ inputItemId: '', quantity: '', unit: 'PACK' }]);
   const [notes, setNotes] = useState('');
   const [ref] = useState(clientRef);
   const items = useFetch<{ data: Item[] }>('/inputs/items', { active: 'true' });
@@ -83,10 +84,19 @@ export function InputIssueNew() {
   const priceOf = useMemo(() => new Map(prices.data?.data.filter((p) => !U || p.unitPriceUsd).map((p) => [p.inputItemId, Number(U ? p.unitPriceUsd : p.unitPrice)])), [prices.data, U]);
   const stockOf = useMemo(() => new Map(stock.data?.data.map((s) => [s.inputItemId, Number(s.balance)])), [stock.data]);
   const itemOf = useMemo(() => new Map(items.data?.data.map((i) => [i.id, i])), [items.data]);
-  const total = lines.reduce((s, l) => s + (priceOf.get(l.inputItemId) ?? 0) * Number(l.quantity || 0), 0);
-  const valid = member && lines.every((l) => l.inputItemId && Number(l.quantity) > 0);
+  // Bei kwa mstari: kwa kilo = bei ya mfuko / kilo za mfuko; idadi ya mifuko inayotoka stoo = kilo / kilo za mfuko
+  const lineCalc = (l: { inputItemId: string; quantity: string; unit: 'PACK' | 'KG' }) => {
+    const it = itemOf.get(l.inputItemId);
+    const price = priceOf.get(l.inputItemId);
+    const kgMode = l.unit === 'KG' && !!it?.looseKg && Number(it?.packKg) > 0;
+    const unitPrice = price == null ? undefined : kgMode ? price / Number(it!.packKg) : price;
+    const packs = kgMode ? Number(l.quantity || 0) / Number(it!.packKg) : Number(l.quantity || 0);
+    return { it, kgMode, unitPrice, packs, amount: unitPrice == null ? 0 : Math.round(unitPrice * Number(l.quantity || 0) * 100) / 100 };
+  };
+  const total = lines.reduce((s, l) => s + lineCalc(l).amount, 0);
+  const valid = member && lines.every((l) => l.inputItemId && Number(l.quantity) > 0 && (l.unit !== 'KG' || Number.isInteger(Number(l.quantity))));
 
-  const setLine = (i: number, patch: Partial<{ inputItemId: string; quantity: string }>) =>
+  const setLine = (i: number, patch: Partial<{ inputItemId: string; quantity: string; unit: 'PACK' | 'KG' }>) =>
     setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
   const save = async () => {
@@ -108,23 +118,31 @@ export function InputIssueNew() {
               <thead><tr><th>Pembejeo</th><th style={{ width: 140 }}>Kiasi</th><th className="num">Bei</th><th className="num">Stoo</th><th className="num">Jumla</th><th /></tr></thead>
               <tbody>
                 {lines.map((l, i) => {
-                  const it = itemOf.get(l.inputItemId);
-                  const price = priceOf.get(l.inputItemId);
+                  const { it, kgMode, unitPrice: price, packs } = lineCalc(l);
                   const bal = stockOf.get(l.inputItemId) ?? 0;
-                  const over = !!l.inputItemId && Number(l.quantity) > bal;
+                  const over = !!l.inputItemId && packs > bal + 1e-9;
                   return (
                     <tr key={i}>
                       <td>
-                        <Select aria-label={`Pembejeo ${i + 1}`} value={l.inputItemId} onChange={(e) => setLine(i, { inputItemId: e.target.value })}>
+                        <Select aria-label={`Pembejeo ${i + 1}`} value={l.inputItemId} onChange={(e) => setLine(i, { inputItemId: e.target.value, unit: 'PACK' })}>
                           <option value="">Chagua pembejeo…</option>
                           {items.data?.data.map((o) => (
                             <option key={o.id} value={o.id} disabled={lines.some((x, j) => j !== i && x.inputItemId === o.id)}>{o.name}</option>
                           ))}
                         </Select>
                       </td>
-                      <td><input className="input" aria-label={`Kiasi ${i + 1}`} type="number" min="0.01" step="0.01" value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} /></td>
-                      <td className="num">{l.inputItemId ? (price ? money(price) : <span className="badge badge-warn">Hakuna bei</span>) : '—'}</td>
-                      <td className={`num ${over ? 'money-neg' : ''}`}>{l.inputItemId ? `${num(bal)} ${it ? UNIT_LABEL[it.unit].toLowerCase() : ''}` : '—'}</td>
+                      <td>
+                        <input className="input" aria-label={`Kiasi ${i + 1}`} type="number" min={kgMode ? '1' : '0.01'} step={kgMode ? '1' : '0.01'} value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} />
+                        {it?.looseKg && Number(it.packKg) > 0 && (
+                          <div className="unit-toggle" role="group" aria-label="Kipimo">
+                            <button type="button" className={!kgMode ? 'on' : ''} onClick={() => setLine(i, { unit: 'PACK' })}>{UNIT_LABEL[it.unit]}</button>
+                            <button type="button" className={kgMode ? 'on' : ''} onClick={() => setLine(i, { unit: 'KG' })}>Kilo</button>
+                          </div>
+                        )}
+                        {kgMode && l.quantity && !Number.isInteger(Number(l.quantity)) && <div className="money-neg" style={{ fontSize: 12 }}>Kilo nzima tu</div>}
+                      </td>
+                      <td className="num">{l.inputItemId ? (price != null ? <>{money(price)}{kgMode && <div className="muted" style={{ fontSize: 12 }}>kwa kilo</div>}</> : <span className="badge badge-warn">Hakuna bei</span>) : '—'}</td>
+                      <td className={`num ${over ? 'money-neg' : ''}`}>{l.inputItemId ? (it?.packKg ? packsAndKg(bal, it.packKg, UNIT_LABEL[it.unit].toLowerCase()) : `${num(bal)} ${it ? UNIT_LABEL[it.unit].toLowerCase() : ''}`) : '—'}</td>
                       <td className="num">{price && l.quantity ? money(price * Number(l.quantity)) : '—'}</td>
                       <td className="num">{lines.length > 1 && <Button size="sm" variant="ghost" aria-label="Ondoa mstari" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}>✕</Button>}</td>
                     </tr>
@@ -134,7 +152,7 @@ export function InputIssueNew() {
             </table>
           </div>
           <div className="actions" style={{ justifyContent: 'space-between' }}>
-            <Button variant="secondary" onClick={() => setLines((ls) => [...ls, { inputItemId: '', quantity: '' }])}>+ Ongeza pembejeo</Button>
+            <Button variant="secondary" onClick={() => setLines((ls) => [...ls, { inputItemId: '', quantity: '', unit: 'PACK' }])}>+ Ongeza pembejeo</Button>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontFamily: 'var(--font-head)', fontSize: 22, fontWeight: 700, color: 'var(--head)' }}>Jumla: {money(total)}</div>
               {U && fx.rate && total > 0 && <div className="muted" style={{ fontSize: 13 }}>≈ {tsh(total * fx.rate)} kwa kiwango cha leo ({num(fx.rate)}). Deni la mkulima ni la dola — litakatwa kwa kiwango cha siku ya soko.</div>}
@@ -187,8 +205,10 @@ export function InputIssueDetail() {
             <thead><tr><th>Pembejeo</th><th className="num">Kiasi</th><th className="num">Bei</th><th className="num">Jumla</th></tr></thead>
             <tbody>
               {i.lines?.map((l) => (
-                <tr key={l.id}><td>{l.inputItem.name}</td><td className="num">{num(l.quantity)} {UNIT_LABEL[l.inputItem.unit].toLowerCase()}</td>
-                  <td className="num">{l.unitPriceUsd ? usd(l.unitPriceUsd) : tsh(l.unitPrice)}</td><td className="num">{l.amountUsd ? <>{usd(l.amountUsd)}<div className="muted" style={{ fontSize: 12 }}>{tsh(l.amount)}</div></> : tsh(l.amount)}</td></tr>
+                <tr key={l.id}><td>{l.inputItem.name}</td><td className="num">{l.kg ? `kilo ${num(l.kg)}` : `${num(l.quantity)} ${UNIT_LABEL[l.inputItem.unit].toLowerCase()}`}</td>
+                  <td className="num">{l.kg && l.inputItem.packKg
+                    ? <>{l.unitPriceUsd ? usd(Number(l.unitPriceUsd) / Number(l.inputItem.packKg)) : tsh(Number(l.amount) / Number(l.kg))}<div className="muted" style={{ fontSize: 12 }}>kwa kilo</div></>
+                    : l.unitPriceUsd ? usd(l.unitPriceUsd) : tsh(l.unitPrice)}</td><td className="num">{l.amountUsd ? <>{usd(l.amountUsd)}<div className="muted" style={{ fontSize: 12 }}>{tsh(l.amount)}</div></> : tsh(l.amount)}</td></tr>
               ))}
               <tr><td colSpan={3} style={{ fontWeight: 700 }}>Jumla ya deni{i.currency === 'USD' && i.fxRate ? <div className="muted" style={{ fontWeight: 400, fontSize: 12 }}>Kiwango cha siku ya ugawaji: 1 USD = TSh {num(i.fxRate)} · deni linakatwa kwa kiwango cha siku ya soko</div> : null}</td>
                 <td className="num" style={{ fontWeight: 700, fontSize: 18 }}>{i.currency === 'USD' && i.totalUsd ? <>{usd(i.totalUsd)}<div className="muted" style={{ fontSize: 12, fontWeight: 400 }}>{tsh(i.totalAmount)}</div></> : tsh(i.totalAmount)}</td></tr>

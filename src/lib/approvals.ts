@@ -165,7 +165,7 @@ async function onInputIssue(tx: Tx, req: Request, a: Approval, o: Outcome, note:
   })));
   await ledger.post(tx, {
     amcosId: a.amcosId, memberId: issue.memberId, seasonId: issue.seasonId, type: 'INPUT_LOAN', debit: issue.totalAmount,
-    description: `Pembejeo ${issue.issueNo}: ${lines.map((l) => `${l.inputItem.name} x${l.quantity}`).join(', ')}`,
+    description: `Pembejeo ${issue.issueNo}: ${lines.map((l) => (l.kg ? `${l.inputItem.name} kilo ${D(l.kg).toFixed()}` : `${l.inputItem.name} x${D(l.quantity).toFixed()}`)).join(', ')}`,
     referenceType: 'INPUT_ISSUE', referenceId: issue.id, createdById: req.auth!.userId,
   });
   // Deni la dola: linaandikwa kwa dola na thamani yake ya TSh kwa kiwango cha siku ya ugawaji

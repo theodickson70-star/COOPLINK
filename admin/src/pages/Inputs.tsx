@@ -2,14 +2,14 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, apiDownload, type Paged } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
-import { CATEGORY_LABEL, date, dateTime, MOVE_LABEL, num, tsh, UNIT_LABEL } from '../lib/format';
+import { CATEGORY_LABEL, date, dateTime, MOVE_LABEL, num, packsAndKg, tsh, UNIT_LABEL } from '../lib/format';
 import { useAuth } from '../lib/auth';
 import { Alert, Badge, Button, Empty, Loading, Modal, PageHead, Pager, SelectField, TextField } from '../components/ui';
 import { Tabs } from '../components/owner-ui';
 import { ReceiveInputsModal } from '../components/ReceiveInputs';
 import { usd, useFx } from '../lib/fx';
 
-interface Item { id: string; name: string; category: string; unit: string; isActive: boolean; reorderLevel: string | null }
+interface Item { id: string; name: string; category: string; unit: string; isActive: boolean; reorderLevel: string | null; packKg: string | null; looseKg: boolean }
 interface Price { id: string; inputItemId: string; unitPrice: string; unitPriceUsd: string | null }
 interface Stock { inputItemId: string; received: string; issued: string; returned: string; adjusted: string; damaged: string; expired: string; balance: string; low: boolean }
 
@@ -67,13 +67,15 @@ export function Inputs() {
                       <tr key={it.id}>
                         <td>
                           <strong>{it.name}</strong> {!it.isActive && <Badge status="CANCELLED" label="Imesitishwa" />}
-                          <div className="muted" style={{ fontSize: 13 }}>{CATEGORY_LABEL[it.category]} · {UNIT_LABEL[it.unit]}{it.reorderLevel ? ` · kiwango cha chini ${num(it.reorderLevel)}` : ''}</div>
+                          <div className="muted" style={{ fontSize: 13 }}>{CATEGORY_LABEL[it.category]} · {UNIT_LABEL[it.unit]}{it.packKg ? ` wa kilo ${num(it.packKg)}` : ''}{it.reorderLevel ? ` · kiwango cha chini ${num(it.reorderLevel)}` : ''}</div>
+                          {it.looseKg && <span className="badge badge-info" title="Inagawiwa kwa kilo pia (mf. vitalu)">Inagawiwa kwa kilo</span>}
                         </td>
-                        <td className="num">{price ? (fx.usdMode ? <>{usd(price)}{fx.rate && <div className="muted" style={{ fontSize: 12 }}>≈ {tsh(Number(price) * fx.rate)}</div>}</> : tsh(price)) : <span className="badge badge-warn">Haijawekwa</span>}</td>
+                        <td className="num">{price ? (fx.usdMode ? <>{usd(price)}{fx.rate && <div className="muted" style={{ fontSize: 12 }}>≈ {tsh(Number(price) * fx.rate)}</div>}</> : tsh(price)) : <span className="badge badge-warn">Haijawekwa</span>}
+                          {price && it.looseKg && it.packKg && <div className="muted" style={{ fontSize: 12 }}>{fx.usdMode ? usd(Number(price) / Number(it.packKg)) : tsh(Number(price) / Number(it.packKg))} kwa kilo</div>}</td>
                         <td className="num">{num(s?.received)}</td>
-                        <td className="num">{num(s?.issued)}</td>
+                        <td className="num">{it.packKg ? packsAndKg(s?.issued, it.packKg) : num(s?.issued)}</td>
                         <td className="num">{num(Number(s?.damaged ?? 0) + Number(s?.expired ?? 0))}</td>
-                        <td className="num"><strong className={s?.low || Number(s?.balance ?? 0) <= 0 ? 'money-neg' : ''}>{num(s?.balance)}</strong>{s?.low && <div><span className="badge badge-warn">Stoo ndogo</span></div>}</td>
+                        <td className="num"><strong className={s?.low || Number(s?.balance ?? 0) <= 0 ? 'money-neg' : ''}>{it.packKg ? packsAndKg(s?.balance, it.packKg) : num(s?.balance)}</strong>{s?.low && <div><span className="badge badge-warn">Stoo ndogo</span></div>}</td>
                         <td className="num">
                           <span className="actions" style={{ justifyContent: 'flex-end' }}>
                             {may('stock.adjust.request') && <Button size="sm" variant="ghost" onClick={() => setModal({ kind: 'adjust', item: it })}>Omba marekebisho</Button>}
@@ -108,15 +110,17 @@ function ItemModal({ item, onClose, onDone }: { item?: Item; onClose: () => void
   const [unit, setUnit] = useState(item?.unit ?? 'BAG');
   const [reorder, setReorder] = useState(item?.reorderLevel ? String(Number(item.reorderLevel)) : '');
   const [active, setActive] = useState(item?.isActive ?? true);
+  const [packKg, setPackKg] = useState(item?.packKg ? String(Number(item.packKg)) : '');
+  const [looseKg, setLooseKg] = useState(item?.looseKg ?? false);
   const { busy, error, run } = useAction();
   const save = async () => {
-    const body = { name, category, unit, reorderLevel: reorder || null, ...(item ? { isActive: active } : {}) };
+    const body = { name, category, unit, reorderLevel: reorder || null, packKg: packKg || null, looseKg: unit !== 'KG' && looseKg, ...(item ? { isActive: active } : {}) };
     const r = await run(() => api(item ? `/inputs/items/${item.id}` : '/inputs/items', { method: item ? 'PATCH' : 'POST', body }));
     if (r) onDone();
   };
   return (
     <Modal open title={item ? `Hariri: ${item.name}` : 'Bidhaa mpya'} onClose={onClose}
-      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={name.trim().length < 2} onClick={save}>Hifadhi</Button></>}>
+      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={name.trim().length < 2 || (looseKg && unit !== 'KG' && !(Number(packKg) > 0))} onClick={save}>Hifadhi</Button></>}>
       <Alert>{error}</Alert>
       <TextField label="Jina *" placeholder="mf. NPK 10:18:24 (50kg)" value={name} onChange={setName} />
       <div className="form-grid">
@@ -124,7 +128,15 @@ function ItemModal({ item, onClose, onDone }: { item?: Item; onClose: () => void
         <SelectField label="Kipimo" value={unit} onChange={setUnit} options={Object.entries(UNIT_LABEL).map(([value, label]) => ({ value, label }))} />
         <TextField label="Kiwango cha chini (onyo la stoo ndogo)" type="number" min="0" value={reorder} onChange={setReorder} />
         {item && <SelectField label="Hali" value={active ? 'on' : 'off'} onChange={(v) => setActive(v === 'on')} options={[{ value: 'on', label: 'Inatumika' }, { value: 'off', label: 'Imesitishwa' }]} />}
+        {unit !== 'KG' && <TextField label={`Kilo kwa ${UNIT_LABEL[unit]?.toLowerCase() ?? 'kipimo'} kimoja`} type="number" min="0" step="0.1" value={packKg} onChange={setPackKg} placeholder="mf. 50" />}
       </div>
+      {unit !== 'KG' && (
+        <label className="check-row">
+          <input type="checkbox" checked={looseKg} onChange={(e) => setLooseKg(e.target.checked)} />
+          <span><strong>Inagawiwa kwa kilo pia</strong> (mf. mbolea ya vitalu). Bei ya kilo = bei ya {UNIT_LABEL[unit]?.toLowerCase()} ÷ kilo zake{packKg && Number(packKg) > 0 ? ` (÷ ${packKg})` : ''}.</span>
+        </label>
+      )}
+      {looseKg && !(Number(packKg) > 0) && unit !== 'KG' && <Alert kind="warn">Weka kilo ngapi kwa {UNIT_LABEL[unit]?.toLowerCase()} kimoja.</Alert>}
     </Modal>
   );
 }

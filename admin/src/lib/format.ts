@@ -71,3 +71,12 @@ export const TXN_KIND_LABEL: Record<string, string> = {
   TRANSFER: 'Uhamisho',
 };
 export const ACCOUNT_KIND_LABEL: Record<string, string> = { CASH: 'Fedha taslimu', BANK: 'Benki', MOBILE_MONEY: 'Simu (M-Pesa n.k.)' };
+
+/** Salio la mfuko unaogawanywa kwa kilo: 1.94 (mfuko wa kilo 50) -> "mifuko 1 + kilo 47" */
+export function packsAndKg(qty: string | number | null | undefined, packKg: string | number | null | undefined, unitLabel = 'mifuko') {
+  const q = Number(qty ?? 0), pk = Number(packKg ?? 0);
+  if (!pk || Number.isInteger(Math.round(q * 10000) / 10000)) return `${nf.format(q)}`;
+  const whole = Math.trunc(q);
+  const kg = Math.round((q - whole) * pk * 10) / 10;
+  return whole ? `${nf.format(whole)} ${unitLabel} + kilo ${nf.format(kg)}` : `kilo ${nf.format(kg)}`;
+}

@@ -51,7 +51,15 @@ const itemBody = z.object({
   category: z.enum(schema.inputCategoryEnum.enumValues),
   unit: z.enum(schema.inputUnitEnum.enumValues),
   reorderLevel: decimalSchema({ min: 0 }).nullable().optional(),
+  packKg: decimalSchema({ min: 0.1 }).nullable().optional(),   // kilo kwa mfuko (kwa kugawa kwa kilo)
+  looseKg: z.boolean().optional(),                              // inagawiwa kwa kilo pia (mf. mbolea ya vitalu)
 });
+
+/** Kugawa kwa kilo kunahitaji kujua kilo za mfuko mmoja. */
+function checkLoose(x: { unit?: string | null; packKg?: string | null; looseKg?: boolean | null }) {
+  if (x.looseKg && !(Number(x.packKg) > 0)) throw badRequest('Weka kilo ngapi kwa mfuko mmoja ili pembejeo hii igawiwe kwa kilo');
+  if (x.looseKg && x.unit === 'KG') throw badRequest('Bidhaa hii tayari inapimwa kwa kilo — haihitaji kugawanywa');
+}
 
 inputsRouter.get(
   '/items',
@@ -70,6 +78,7 @@ inputsRouter.post(
   requireAmcosPerm('products.manage'),
   ah(async (req, res) => {
     const body = itemBody.extend({ amcosId: z.string().uuid().optional() }).parse(req.body);
+    checkLoose(body);
     const amcosId = await resolveWriteAmcosId(req, body.amcosId);
     const item = await db.transaction(async (tx) => {
       const [row] = await tx.insert(items).values({ ...body, amcosId }).returning();
@@ -87,6 +96,7 @@ inputsRouter.patch(
     const { id } = uuidParam.parse(req.params);
     const body = itemBody.partial().extend({ isActive: z.boolean().optional() }).parse(req.body);
     const before = await findItemScoped(req, id);
+    checkLoose({ unit: body.unit ?? before.unit, packKg: body.packKg === undefined ? before.packKg : body.packKg, looseKg: body.looseKg ?? before.looseKg });
     const item = await db.transaction(async (tx) => {
       const [row] = await tx.update(items).set(body).where(eq(items.id, id)).returning();
       await audit(tx, req, { action: 'INPUT_ITEM_UPDATE', entity: 'InputItem', entityId: id, amcosId: before.amcosId, before, after: row });
@@ -352,7 +362,7 @@ async function loadIssue(id: string) {
   return db.query.inputIssues.findFirst({
     where: eq(issues.id, id),
     with: {
-      lines: { with: { inputItem: { columns: { id: true, name: true, unit: true } } } },
+      lines: { with: { inputItem: { columns: { id: true, name: true, unit: true, packKg: true } } } },
       member: { columns: { id: true, memberNo: true, firstName: true, lastName: true } },
     },
   });
@@ -408,7 +418,8 @@ inputIssuesRouter.post(
         // Kutoka app ya offline: kitambulisho cha kipekee ili ikituma mara mbili isirekodiwe mara mbili
         clientRef: z.string().trim().min(8).max(64).optional(),
         lines: z
-          .array(z.object({ inputItemId: z.string().uuid(), quantity: decimalSchema({ min: 0.01 }) }))
+          // unit KG: quantity ni kilo nzima (vitalu); mfumo unazibadilisha kuwa sehemu ya mfuko kwa stoo
+          .array(z.object({ inputItemId: z.string().uuid(), quantity: decimalSchema({ min: 0.01 }), unit: z.enum(['PACK', 'KG']).default('PACK') }))
           .min(1, 'Ongeza angalau pembejeo moja')
           .max(30),
       })
@@ -440,15 +451,28 @@ inputIssuesRouter.post(
     const missing = itemRows.filter((i) => !priceOf.has(i.id)).map((i) => i.name);
     if (missing.length) throw badRequest(`Bei ${usdMode ? 'ya dola ' : ''}haijawekwa kwa msimu huu: ${missing.join(', ')}`);
 
+    const itemOf = new Map(itemRows.map((i) => [i.id, i]));
     const lines = body.lines.map((l) => {
       const p = priceOf.get(l.inputItemId)!;
-      if (rate) {
-        const amountUsd = D(l.quantity).times(p.unitPriceUsd!).toDecimalPlaces(2);
-        const amount = toTzs(amountUsd, rate);
-        return { ...l, unitPriceUsd: p.unitPriceUsd, amountUsd: fmt2(amountUsd), unitPrice: fmt2(amount.div(l.quantity)), amount: fmt2(amount) };
+      const it = itemOf.get(l.inputItemId)!;
+      // Kwa kilo: kilo nzima tu; mifuko = kilo / kilo za mfuko; bei ya kilo = bei ya mfuko / kilo za mfuko
+      let packs = D(l.quantity), kg: string | null = null, share = D(1);
+      if (l.unit === 'KG') {
+        if (!it.looseKg || !it.packKg) throw badRequest(`${it.name} haigawiwi kwa kilo`);
+        if (!D(l.quantity).isInteger()) throw badRequest(`Kilo ziwe nzima (1, 2, 3…) — ${it.name}`);
+        kg = fmt2(l.quantity);
+        packs = D(l.quantity).div(it.packKg).toDecimalPlaces(4);
+        share = D(l.quantity).div(it.packKg);
       }
-      return { ...l, unitPriceUsd: null as string | null, amountUsd: null as string | null, unitPrice: p.unitPrice, amount: fmt2(D(l.quantity).times(p.unitPrice)) };
+      const units = l.unit === 'KG' ? share : D(l.quantity);
+      if (rate) {
+        const amountUsd = units.times(p.unitPriceUsd!).toDecimalPlaces(2);
+        const amount = toTzs(amountUsd, rate);
+        return { inputItemId: l.inputItemId, quantity: packs.toFixed(4), kg, unitPriceUsd: p.unitPriceUsd, amountUsd: fmt2(amountUsd), unitPrice: fmt2(amount.div(packs)), amount: fmt2(amount) };
+      }
+      return { inputItemId: l.inputItemId, quantity: packs.toFixed(4), kg, unitPriceUsd: null as string | null, amountUsd: null as string | null, unitPrice: p.unitPrice, amount: fmt2(units.times(p.unitPrice)) };
     });
+    const lineLabel = (l: { inputItemId: string; quantity: string; kg: string | null }) => `${nameOf.get(l.inputItemId)} ${l.kg ? `kilo ${D(l.kg).toFixed()}` : `x${D(l.quantity).toFixed()}`}`;
     const total = fmt2(lines.reduce((s, l) => s.plus(l.amount), D(0)));
     const totalUsd = rate ? fmt2(lines.reduce((s, l) => s.plus(l.amountUsd ?? 0), D(0))) : null;
     const nameOf = new Map(itemRows.map((i) => [i.id, i.name]));
@@ -480,7 +504,7 @@ inputIssuesRouter.post(
       await audit(tx, req, { action: 'INPUT_ISSUE_REQUEST', entity: 'InputIssue', entityId: issue.id, amcosId, after: { ...issue, lines } });
       const approval = await createApproval(tx, req, {
         amcosId, type: 'INPUT_ISSUE', entityType: 'InputIssue', entityId: issue.id, amount: total,
-        title: `Pembejeo kwa ${member.firstName} ${member.lastName} (${member.memberNo}): ${lines.map((l) => `${nameOf.get(l.inputItemId)} x${l.quantity}`).join(', ')}${totalUsd ? ` — $${totalUsd} (kiwango ${rate!.toFixed()})` : ''}`,
+        title: `Pembejeo kwa ${member.firstName} ${member.lastName} (${member.memberNo}): ${lines.map(lineLabel).join(', ')}${totalUsd ? ` — $${totalUsd} (kiwango ${rate!.toFixed()})` : ''}`,
         reason: body.notes ?? null,
       });
       await tx.update(issues).set({ approvalId: approval.id }).where(eq(issues.id, issue.id));

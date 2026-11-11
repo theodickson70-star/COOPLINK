@@ -51,7 +51,13 @@ export function createApp() {
   const app = express();
   // Kinga ya jumla: hash ya PIN ya mkulima haitoki kwenye API yoyote, hata route ikirudisha safu nzima ya members.
   const HIDDEN_KEYS = new Set(['portalPinHash', 'portalTokenVersion']);
-  app.set('json replacer', (k: string, v: unknown) => (HIDDEN_KEYS.has(k) ? undefined : v));
+  // Idadi za stoo zina desimali 4 (mbolea ya vitalu kwa kilo: 0.0600 mfuko). Zisizohitaji desimali 4 zinaonyeshwa kwa 2 (20.0000 -> 20.00).
+  const QTY_KEYS = new Set(['quantity', 'balance', 'received', 'issued', 'returned', 'adjusted', 'damaged', 'expired', 'countedQty', 'systemQty', 'difference']);
+  app.set('json replacer', (k: string, v: unknown) => {
+    if (HIDDEN_KEYS.has(k)) return undefined;
+    if (typeof v === 'string' && QTY_KEYS.has(k) && /^-?\d+\.\d{2}00$/.test(v)) return v.slice(0, -2);
+    return v;
+  });
   app.set('trust proxy', 1); // Railway / Vercel / Nginx
   app.disable('x-powered-by');
   // img-src: blob: inahitajika kuonyesha picha za wakulima (zinapakuliwa kwa token) na kupunguza picha kwenye kifaa

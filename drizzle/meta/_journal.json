@@ -162,6 +162,13 @@
       "when": 1794408777652,
       "tag": "0022_usd_inputs",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1794410374625,
+      "tag": "0023_loose_kg",
+      "breakpoints": true
     }
   ]
 }

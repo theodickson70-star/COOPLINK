@@ -87,8 +87,8 @@ export interface StatementData {
   totals: Record<string, { debit: string; credit: string }>;
   sales: { id: string; settlementNo: string; kg: string; grossTzs: string; deductions: string; netTzs: string; status: string; marketNo: string; marketDate: string; buyer: string | null }[];
   balance: string; amountOwed: string;
-  inputsSummary: { name: string; unit: string; quantity: string; amount: string }[];
-  issues: { id: string; issueNo: string; issuedAt: string; status: string; totalAmount: string; cancelReason: string | null; currency?: 'TZS' | 'USD'; totalUsd?: string | null; fxRate?: string | null; lines: { name: string; unit: string; quantity: string; unitPrice: string; amount: string; unitPriceUsd?: string | null; amountUsd?: string | null }[] }[];
+  inputsSummary: { name: string; unit: string; quantity: string; kg?: string | null; amount: string; amountUsd?: string | null }[];
+  issues: { id: string; issueNo: string; issuedAt: string; status: string; totalAmount: string; cancelReason: string | null; currency?: 'TZS' | 'USD'; totalUsd?: string | null; fxRate?: string | null; lines: { name: string; unit: string; quantity: string; kg?: string | null; unitPrice: string; amount: string; unitPriceUsd?: string | null; amountUsd?: string | null }[] }[];
   /** Deni la pembejeo la dola (chama cha USD) */
   usd?: { debtUsd: string; bookTzs: string; rate: string | null; rateAt: string | null; atCurrentTzs: string | null } | null;
   statement: { id: string; date: string; type: string; description: string; debit: string; credit: string; balance: string }[];
@@ -138,7 +138,7 @@ export function FarmerDebtDetail() {
                 <tbody>{data.issues.map((i) => (
                   <tr key={i.id} style={{ opacity: i.status === 'ISSUED' ? 1 : 0.6 }}>
                     <td><strong>{i.issueNo}</strong><div className="muted" style={{ fontSize: 12 }}>{date(i.issuedAt)}</div></td>
-                    <td style={{ fontSize: 13 }}>{i.lines.map((l, k) => <div key={k}>{l.name}: {num(l.quantity)} × {tsh(l.unitPrice)} = {tsh(l.amount)}</div>)}</td>
+                    <td style={{ fontSize: 13 }}>{i.lines.map((l, k) => <div key={k}>{l.name}: {l.kg ? `kilo ${num(l.kg)}` : `${num(l.quantity)} × ${l.unitPriceUsd ? usd(l.unitPriceUsd) : tsh(l.unitPrice)}`} = {l.amountUsd ? `${usd(l.amountUsd)} (${tsh(l.amount)})` : tsh(l.amount)}</div>)}</td>
                     <td className="num">{tsh(i.totalAmount)}</td>
                     <td><Badge status={i.status} label={ISSUE_STATUS[i.status]} />{i.cancelReason && <div className="muted" style={{ fontSize: 12 }}>{i.cancelReason}</div>}</td>
                   </tr>
@@ -220,7 +220,9 @@ export function StatementDoc({ data, className }: { data: StatementData; classNa
       {data.inputsSummary.length > 0 && (<>
         <h3 className="stmt-h">Pembejeo alizopokea</h3>
         <div className="table-wrap"><table className="table fin-table"><thead><tr><th>Bidhaa</th><th className="num">Idadi</th><th className="num">Thamani</th></tr></thead>
-          <tbody>{data.inputsSummary.map((x) => <tr key={x.name}><td>{x.name}</td><td className="num">{num(x.quantity)}</td><td className="num">{tsh(x.amount)}</td></tr>)}</tbody></table></div>
+          <tbody>{data.inputsSummary.map((x) => <tr key={x.name}><td>{x.name}</td>
+            <td className="num">{[Number(x.quantity) > 0 ? num(x.quantity) : '', x.kg ? `kilo ${num(x.kg)}` : ''].filter(Boolean).join(' + ') || '0'}</td>
+            <td className="num">{x.amountUsd ? <>{usd(x.amountUsd)}<div className="muted" style={{ fontSize: 11 }}>{tsh(x.amount)}</div></> : tsh(x.amount)}</td></tr>)}</tbody></table></div>
       </>)}
 
       <h3 className="stmt-h">Miamala yote ya kipindi</h3>

@@ -298,6 +298,9 @@ export const inputItems = pgTable('input_items', {
   category: inputCategoryEnum().notNull(),
   unit: inputUnitEnum().notNull(),
   reorderLevel: numeric({ precision: 14, scale: 2 }), // stoo ikishuka chini ya hapa = "stock ndogo"
+  // Mfuko unaogawanywa kwa kilo (mf. mbolea ya vitalu): kilo ngapi kwa mfuko mmoja; bei ya kilo = bei ya mfuko / packKg
+  packKg: numeric({ precision: 10, scale: 2 }),
+  looseKg: boolean().notNull().default(false),
   isActive: boolean().notNull().default(true),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -348,9 +351,10 @@ export const inputIssueLines = pgTable('input_issue_lines', {
   id: id(),
   inputIssueId: uuid().notNull().references(() => inputIssues.id),
   inputItemId: uuid().notNull().references(() => inputItems.id),
-  quantity: numeric({ precision: 14, scale: 2 }).notNull(),
+  quantity: numeric({ precision: 16, scale: 4 }).notNull(), // mifuko (kilo 3 za mfuko wa kilo 50 = 0.06)
   unitPrice: money().notNull(),
   amount: money().notNull(),
+  kg: numeric({ precision: 12, scale: 2 }),               // ugawaji kwa kilo: kilo zilizopimwa (quantity = kg / packKg)
   unitPriceUsd: numeric({ precision: 12, scale: 4 }),
   amountUsd: numeric({ precision: 14, scale: 2 }),
 }, (t) => [index().on(t.inputIssueId)]);
@@ -362,7 +366,7 @@ export const stockMovements = pgTable('stock_movements', {
   seasonId: uuid().notNull().references(() => seasons.id),
   inputItemId: uuid().notNull().references(() => inputItems.id),
   type: stockMovementTypeEnum().notNull(),
-  quantity: numeric({ precision: 14, scale: 2 }).notNull(),
+  quantity: numeric({ precision: 16, scale: 4 }).notNull(), // desimali 4: mifuko iliyogawiwa kwa kilo
   reference: text(),
   inputIssueId: uuid().references(() => inputIssues.id),
   notes: text(),

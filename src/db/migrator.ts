@@ -101,6 +101,13 @@ const MARKERS: Record<string, string[]> = {
   '0017_rebrand_dukalangu': [
     "select not exists (select 1 from platform_settings where key = 'business.profile' and upper(trim(value->>'companyName')) in ('NAYA GROUP', 'NAYA'))",
   ],
+  '0023_loose_kg': [
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'input_issue_lines' and column_name = 'quantity' and numeric_scale = 4)",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'stock_movements' and column_name = 'quantity' and numeric_scale = 4)",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'input_issue_lines' and column_name = 'kg')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'input_items' and column_name = 'pack_kg')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'input_items' and column_name = 'loose_kg')",
+  ],
   '0022_usd_inputs': [
     "select to_regclass('public.fx_rates') is not null",
     "select to_regclass('public.member_usd_ledger') is not null",

@@ -1235,3 +1235,8 @@ tr.row-msg.row-warn td { color: var(--warn-ink); }
 .fx-how { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; }
 .stmt-usd { margin: 8px 0 0; padding: 8px 12px; border-radius: 8px; background: var(--tint-gold); font-size: 13px; }
 .fp-usd { display: block; margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(246,240,225,.2); opacity: .95 !important; font-size: 12.5px !important; }
+.check-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--tint); font-size: 14px; cursor: pointer; margin-top: 4px; }
+.check-row input { margin-top: 3px; width: 18px; height: 18px; flex: none; }
+.unit-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-top: 4px; }
+.unit-toggle button { border: 0; background: transparent; padding: 3px 10px; font: inherit; font-size: 12.5px; cursor: pointer; color: var(--muted); }
+.unit-toggle button.on { background: var(--green); color: #fff; }

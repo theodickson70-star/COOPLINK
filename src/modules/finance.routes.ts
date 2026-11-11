@@ -670,12 +670,14 @@ export async function farmerStatement(m: typeof schema.members.$inferSelect, sea
   const lines = issues.length ? await db.select({ l: schema.inputIssueLines, name: schema.inputItems.name, unit: schema.inputItems.unit })
     .from(schema.inputIssueLines).innerJoin(schema.inputItems, eq(schema.inputItems.id, schema.inputIssueLines.inputItemId))
     .where(inArray(schema.inputIssueLines.inputIssueId, issues.map((i) => i.id))) : [];
-  const byItem = new Map<string, { name: string; unit: string; quantity: ReturnType<typeof D>; amount: ReturnType<typeof D> }>();
+  const byItem = new Map<string, { name: string; unit: string; quantity: ReturnType<typeof D>; kg: ReturnType<typeof D>; amount: ReturnType<typeof D>; amountUsd: ReturnType<typeof D> }>();
   for (const x of lines) {
     const iss = issues.find((i) => i.id === x.l.inputIssueId)!;
     if (iss.status !== 'ISSUED') continue;
-    const cur = byItem.get(x.l.inputItemId) ?? { name: x.name, unit: x.unit, quantity: D(0), amount: D(0) };
-    cur.quantity = cur.quantity.plus(x.l.quantity); cur.amount = cur.amount.plus(x.l.amount);
+    const cur = byItem.get(x.l.inputItemId) ?? { name: x.name, unit: x.unit, quantity: D(0), kg: D(0), amount: D(0), amountUsd: D(0) };
+    // Mifuko kamili na kilo (vitalu) zinahesabiwa kando ili taarifa isionyeshe "mifuko 0.06"
+    if (x.l.kg) cur.kg = cur.kg.plus(x.l.kg); else cur.quantity = cur.quantity.plus(x.l.quantity);
+    cur.amount = cur.amount.plus(x.l.amount); cur.amountUsd = cur.amountUsd.plus(x.l.amountUsd ?? 0);
     byItem.set(x.l.inputItemId, cur);
   }
   const amcos = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, m.amcosId) }))!;
@@ -687,10 +689,10 @@ export async function farmerStatement(m: typeof schema.members.$inferSelect, sea
     seasons: seasonList, season: season ?? null, opening: fmt2(opening), totals,
     sales: sales.map((x) => ({ ...x, kg: fmt2(x.kg), grossTzs: fmt2(x.grossTzs), deductions: fmt2(x.deductions), netTzs: fmt2(x.netTzs) })),
     balance: fmt2(run), amountOwed: fmt2(run.lt(0) ? run.neg() : 0),
-    inputsSummary: [...byItem.values()].map((v) => ({ name: v.name, unit: v.unit, quantity: fmt2(v.quantity), amount: fmt2(v.amount) })),
+    inputsSummary: [...byItem.values()].map((v) => ({ name: v.name, unit: v.unit, quantity: fmt2(v.quantity), kg: v.kg.gt(0) ? fmt2(v.kg) : null, amount: fmt2(v.amount), amountUsd: v.amountUsd.gt(0) ? fmt2(v.amountUsd) : null })),
     issues: issues.map((i) => ({ id: i.id, issueNo: i.issueNo, issuedAt: i.issuedAt, status: i.status, totalAmount: i.totalAmount, cancelReason: i.cancelReason,
       currency: i.currency, totalUsd: i.totalUsd, fxRate: i.fxRate,
-      lines: lines.filter((x) => x.l.inputIssueId === i.id).map((x) => ({ name: x.name, unit: x.unit, quantity: x.l.quantity, unitPrice: x.l.unitPrice, amount: x.l.amount, unitPriceUsd: x.l.unitPriceUsd, amountUsd: x.l.amountUsd })) })),
+      lines: lines.filter((x) => x.l.inputIssueId === i.id).map((x) => ({ name: x.name, unit: x.unit, quantity: x.l.quantity, kg: x.l.kg, unitPrice: x.l.unitPrice, amount: x.l.amount, unitPriceUsd: x.l.unitPriceUsd, amountUsd: x.l.amountUsd })) })),
     statement,
   };
 }
