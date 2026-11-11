@@ -169,10 +169,16 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
       {a.type === 'MEMBER_REGISTRATION' && (a.payload as { nameOverride?: { name: string; phoneOwnerName: string | null; phone: string | null; reason: string } } | null)?.nameOverride && (() => { const n = (a.payload as { nameOverride: { name: string; phoneOwnerName: string | null; phone: string | null; reason: string } }).nameOverride; return (
         <Alert kind="warn">{t('Jina la mkulima')} <b>{n.name}</b> ni tofauti na mwenye namba {n.phone ? phone(n.phone) : ''} {n.phoneOwnerName ? <>(<b>{n.phoneOwnerName}</b>)</> : '(haijasajiliwa kwenye mobile money)'}. Sababu: {n.reason}. Ukiidhinisha usajili, unaidhinisha pia jina hili.</Alert>
       ); })()}
-      {a.type === 'KUNI_BATCH' && a.payload && (() => { const k = a.payload as { farmers: number; total: string; interest: string; rate: string; amountPerAcre: string }; return (
-        <dl className="dl"><dt>{t('Wakulima')}</dt><dd>{k.farmers}</dd><dt>{t('Pesa ya kuni')}</dt><dd><strong>{tsh(k.total)}</strong></dd><dt>Riba ({Number(k.rate)}%)</dt><dd>{tsh(k.interest)}</dd><dt>{t('Kikomo kwa ekari')}</dt><dd>{tsh(k.amountPerAcre)}</dd></dl>
+      {a.type === 'KUNI_BATCH' && a.payload && (() => { const k = a.payload as { loanType?: 'KUNI' | 'GRADING' | 'TREES'; totalTrees?: number | null; treesPerArea?: number | null; areaUnit?: string; costPerTreeUsd?: string | null; farmers: number; total: string; interest: string; rate: string; amountPerAcre?: string; totalUsd?: string; interestUsd?: string; fxRate?: string; amountPerAcreUsd?: string }; return (
+        k.totalUsd
+          ? <dl className="dl"><dt>{t('Mkopo')}</dt><dd><strong>{t(k.loanType === 'GRADING' ? 'Mkopo wa grading' : k.loanType === 'TREES' ? 'Mkopo wa miti' : 'Mkopo wa kuni')}</strong></dd><dt>{t('Wakulima')}</dt><dd>{k.farmers}</dd>
+            <dt>{t('Kiasi')}</dt><dd><strong>{usd(k.totalUsd)}</strong> <span className="muted">({tsh(k.total)})</span></dd><dt>Riba ({Number(k.rate)}%)</dt><dd>{usd(k.interestUsd)}</dd>
+            {k.loanType === 'TREES'
+              ? <><dt>{t('Miti')}</dt><dd>{Number(k.totalTrees ?? 0).toLocaleString('en-US')} × {usd(k.costPerTreeUsd, 2)}</dd><dt>{t('Miti kwa eneo')}</dt><dd>{k.treesPerArea} / {k.areaUnit === 'ACRE' ? t('ekari') : t('hekta')}</dd></>
+              : <><dt>{t('Kikomo kwa ekari')}</dt><dd>{usd(k.amountPerAcreUsd)}</dd></>}<dt>{t('Kiwango cha dola')}</dt><dd>1 USD = TSh {Number(k.fxRate).toLocaleString('en-US')}</dd></dl>
+          : <dl className="dl"><dt>{t('Wakulima')}</dt><dd>{k.farmers}</dd><dt>{t('Pesa ya kuni')}</dt><dd><strong>{tsh(k.total)}</strong></dd><dt>Riba ({Number(k.rate)}%)</dt><dd>{tsh(k.interest)}</dd><dt>{t('Kikomo kwa ekari')}</dt><dd>{tsh(k.amountPerAcre ?? 0)}</dd></dl>
       ); })()}
-      {a.type === 'KUNI_BATCH' && <Alert kind="warn">{t('Ukiidhinisha, Mhasibu atatuma pesa kwenye akaunti za wakulima. Mkopo na riba vitakatwa kwenye mauzo ya tumbaku pamoja na deni la pembejeo.')}</Alert>}
+      {a.type === 'KUNI_BATCH' && <Alert kind="warn">{t('Ukiidhinisha, Mhasibu atatuma pesa kwenye akaunti za wakulima. Mkopo na riba vinaingia kwenye deni la dola la mkulima na kukatwa kwenye mauzo ya tumbaku pamoja na deni la pembejeo.')}</Alert>}
       {a.type === 'GROUP_REGISTRATION' && p?.members && (
         <div className="table-wrap"><table className="table"><tbody>{p.members.map((m) => <tr key={m.memberNo}><td>{m.name}</td><td className="muted">{m.memberNo}</td></tr>)}</tbody></table></div>
       )}

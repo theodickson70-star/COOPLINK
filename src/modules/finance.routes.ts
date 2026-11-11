@@ -278,7 +278,7 @@ financeRouter.post('/expenses', requireAmcosPerm('finance.record'), ah(async (re
 financeRouter.post('/farmer-payments', requireAmcosPerm('finance.record'), ah(async (req, res) => {
   const body = baseTxn.extend({ category: z.enum(['PAYMENT', 'CASH_LOAN']).default('PAYMENT'), memberId: z.string().uuid() }).parse(req.body);
   // Mikopo ya fedha ina njia moja tu: Pesa ya kuni (kikomo kwa ekari, riba, orodha kwa idhini)
-  if (body.category === 'CASH_LOAN') throw badRequest('Mikopo ya fedha kwa wakulima inatolewa kupitia "Pesa ya kuni"');
+  if (body.category === 'CASH_LOAN') throw badRequest('Mikopo ya fedha kwa wakulima inatolewa kupitia "Mikopo" (kuni, grading au miti)');
   const member = await findMemberScoped(req, body.memberId);
   if (member.status !== 'ACTIVE') throw badRequest('Mkulima hayuko hai (ACTIVE)');
   const payee = `${member.firstName} ${member.lastName} (${member.memberNo})`;

@@ -101,6 +101,22 @@ const MARKERS: Record<string, string[]> = {
   '0017_rebrand_dukalangu': [
     "select not exists (select 1 from platform_settings where key = 'business.profile' and upper(trim(value->>'companyName')) in ('NAYA GROUP', 'NAYA'))",
   ],
+  '0025_tree_loans': [
+    "select exists (select 1 from pg_enum e join pg_type t on t.oid = e.enumtypid where t.typname = 'loan_type' and e.enumlabel = 'TREES')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'kuni_settings' and column_name = 'cost_per_tree_usd')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'kuni_settings' and column_name = 'trees_per_area')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'kuni_settings' and column_name = 'area_unit')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'kuni_loans' and column_name = 'trees')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'kuni_batches' and column_name = 'total_trees')",
+  ],
+  '0024_loans': [
+    "select exists (select 1 from pg_type where typname = 'loan_type')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'kuni_settings' and column_name = 'amount_per_acre_usd')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'kuni_batches' and column_name = 'total_interest_usd')",
+    "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'kuni_loans' and column_name = 'interest_usd')",
+    "select to_regclass('public.kuni_settings_amcos_season_type_idx') is not null",
+    "select to_regclass('public.kuni_settings_amcos_id_season_id_index') is null",
+  ],
   '0023_loose_kg': [
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'input_issue_lines' and column_name = 'quantity' and numeric_scale = 4)",
     "select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'stock_movements' and column_name = 'quantity' and numeric_scale = 4)",

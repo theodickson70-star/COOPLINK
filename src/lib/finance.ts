@@ -32,7 +32,7 @@ export const EXPENSE_CATEGORIES: Record<string, string> = {
 };
 export const FARMER_PAYMENT_CATEGORIES: Record<string, string> = {
   PAYMENT: 'Malipo kwa mkulima',
-  CASH_LOAN: 'Pesa ya kuni (mkopo wa fedha)',
+  CASH_LOAN: 'Mkopo wa fedha (kuni / grading / miti)',
 };
 export const SUPPLIER_PAYMENT_CATEGORIES: Record<string, string> = { SUPPLIER: 'Malipo kwa mzabuni' };
 

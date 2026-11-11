@@ -588,62 +588,6 @@ test('Ingiza pembejeo: bidhaa mpya inasajiliwa pamoja na mzigo, baada ya idhini 
   await assertBooksBalance();
 });
 
-// 15 -----------------------------------------------------------------
-test('Pesa ya kuni: kikomo kwa ekari, riba ya msimu, orodha kwa idhini, deni linakatwa kwenye mauzo', async () => {
-  const F = await newMember('Fatuma'), G2 = await newMember('Gabrieli');
-  // Njia ya zamani ya "mkopo wa fedha" imefungwa — njia moja tu
-  assert.equal((await call('POST', '/api/v1/finance/farmer-payments', accountant, { memberId: F.id, category: 'CASH_LOAN', amount: '1000', description: 'x' })).status, 400);
-  // Makisio: F ekari 2, G2 ekari 1.5 (Meneja anaidhinisha)
-  for (const [m, acres] of [[F, '2'], [G2, '1.5']] as const) {
-    const e = await call('POST', '/api/v1/estimates', storekeeper, { memberId: m.id, acresPlanted: acres, estimatedKg: String(Number(acres) * 600) });
-    assert.equal(e.status, 201, JSON.stringify(e.body));
-    assert.equal((await call('POST', `/api/v1/estimates/${e.body.estimate.id}/approve`, manager, { confirmPassword: 'Staff12345' })).status, 200);
-  }
-  assert.equal((await call('POST', '/api/v1/kuni/batches', accountant, { loans: [{ memberId: F.id, amount: '1000' }] })).status, 400, 'Mipangilio haijawekwa');
-  assert.equal((await call('PUT', '/api/v1/kuni/settings', manager, { interestRate: '10', amountPerAcre: '150000', isOpen: true })).status, 403, 'Mhasibu ndiye anaweka');
-  assert.equal((await call('PUT', '/api/v1/kuni/settings', accountant, { interestRate: '10', amountPerAcre: '150000', isOpen: true })).status, 200);
-  const el = (await call('GET', '/api/v1/kuni/eligible', accountant)).body.data;
-  assert.equal(el.find((x: any) => x.memberId === F.id).limit, '300000.00');
-  assert.equal(el.find((x: any) => x.memberId === G2.id).available, '225000.00');
-  assert.equal((await call('POST', '/api/v1/kuni/batches', accountant, { loans: [{ memberId: F.id, amount: '300001' }] })).status, 400, 'Haizidi kikomo');
-  const b = await call('POST', '/api/v1/kuni/batches', accountant, { loans: [{ memberId: F.id, amount: '200000' }, { memberId: G2.id, amount: '225000' }] });
-  assert.equal(b.status, 201, JSON.stringify(b.body));
-  assert.equal(b.body.batch.totalInterest, '42500.00');
-  assert.equal((await call('POST', '/api/v1/kuni/batches', accountant, { loans: [{ memberId: F.id, amount: '100001' }] })).status, 400, 'Kinachosubiri kinahesabiwa kwenye kikomo');
-  const det0 = (await call('GET', `/api/v1/kuni/batches/${b.body.batch.id}`, accountant)).body;
-  assert.equal((await call('POST', `/api/v1/kuni/batches/${b.body.batch.id}/confirm`, accountant, { accountId: bank.id, loanIds: [det0.loans[0].id], reference: 'X1' })).status, 400, 'Kabla ya idhini');
-  await approve(b.body.batch.id);
-  const lf = det0.loans.find((l: any) => l.memberId === F.id);
-  const c = await call('POST', `/api/v1/kuni/batches/${b.body.batch.id}/confirm`, accountant, { accountId: bank.id, loanIds: det0.loans.map((l: any) => l.id), reference: 'BULK-KUNI-' + RUN });
-  assert.equal(c.status, 200, JSON.stringify(c.body));
-  assert.equal(c.body.status, 'COMPLETED');
-  const mbal = async (id: string) => (await call('GET', `/api/v1/members/${id}`, manager)).body.balance.balance;
-  assert.equal(await mbal(F.id), '-220000.00', 'Mkopo 200,000 + riba 10%');
-  const rows = await gl();
-  assert.ok(Number(bal(rows, '4450')) >= 42500, 'Riba ni mapato ya chama');
-  const fd = (await call('GET', '/api/v1/finance/farmers?filter=all&search=Fatuma', accountant)).body.data[0];
-  assert.equal(fd.loans, '200000.00'); assert.equal(fd.interest, '20000.00');
-  await assertBooksBalance();
-
-  // Kusahihisha malipo ya F: mkopo na riba vinaondolewa, mkopo unarudi "umeshindwa" (unaweza kutumwa tena)
-  const t = (await call('GET', `/api/v1/kuni/batches/${b.body.batch.id}`, accountant)).body.loans.find((l: any) => l.id === lf.id);
-  const txn = (await call('GET', '/api/v1/finance/transactions?search=' + t.txnNo, accountant)).body.data[0];
-  assert.equal((await call('POST', `/api/v1/finance/transactions/${txn.id}/reverse`, accountant, { reason: 'Imetumwa namba isiyo sahihi' })).status, 202);
-  await approve(txn.id);
-  assert.equal(await mbal(F.id), '0.00');
-  const fd2 = (await call('GET', '/api/v1/finance/farmers?filter=all&search=Fatuma', accountant)).body.data[0];
-  assert.equal(Number(fd2.loans), 0, 'Pesa ya kuni iliyosahihishwa haionekani tena'); assert.equal(Number(fd2.interest), 0);
-  assert.equal((await call('GET', `/api/v1/kuni/batches/${b.body.batch.id}`, accountant)).body.loans.find((l: any) => l.id === lf.id).status, 'FAILED');
-  await assertBooksBalance();
-
-  // Kwenye mauzo: deni la pembejeo + pesa ya kuni + riba vinakatwa pamoja
-  const mk = (await call('POST', '/api/v1/sales/markets', accountant, { marketDate: today, buyerName: 'TLTC', exchangeRate: '2500' })).body.market;
-  await call('POST', `/api/v1/sales/markets/${mk.id}/bales`, accountant, { bales: [{ memberId: G2.id, baleNo: 'G2-' + RUN, grossKg: '200', priceUsd: '2' }] });
-  const pv = (await call('GET', `/api/v1/sales/markets/${mk.id}/preview`, accountant)).body.rows[0];
-  const loanLine = pv.deductions.find((d: any) => d.basis === 'OUTSTANDING_LOAN');
-  assert.equal(loanLine.amount, '247500.00', 'Pesa ya kuni 225,000 + riba 22,500');
-});
-
 // v0.16 -----------------------------------------------------------------
 test('Madeni ya wanunuzi: tarehe ya kulipa, kuchelewa, kwa kila mnunuzi; tarehe kabla ya soko inakataliwa', async () => {
   const b = (await call('GET', '/api/v1/sales/buyers', manager)).body;
@@ -917,4 +861,136 @@ test('Mbolea ya vitalu kwa kilo: bei ya kilo = bei ya mfuko / kilo za mfuko, sto
   assert.ok(stmt.statement.some((e: any) => /kilo 3/.test(e.description)));
   await assertBooksBalance();
   assert.equal((await call('PUT', '/api/v1/finance/fx/currency', accountant, { currency: 'TZS' })).status, 200);
+});
+
+// v0.20 -----------------------------------------------------------------
+test('Mikopo: kuni na grading kwa dola — kikomo kwa ekari kila aina, riba yake, idhini, deni la dola, kikundi, kusahihisha, soko', async () => {
+  const F = await newMember('Fatuma'), G2 = await newMember('Gabrieli');
+  // Njia ya zamani ya "mkopo wa fedha" imefungwa — njia moja tu
+  assert.equal((await call('POST', '/api/v1/finance/farmer-payments', accountant, { memberId: F.id, category: 'CASH_LOAN', amount: '1000', description: 'x' })).status, 400);
+  for (const [m, acres] of [[F, '2'], [G2, '1.5']] as const) {
+    const e = await call('POST', '/api/v1/estimates', storekeeper, { memberId: m.id, acresPlanted: acres, estimatedKg: String(Number(acres) * 600) });
+    assert.equal(e.status, 201, JSON.stringify(e.body));
+    assert.equal((await call('POST', `/api/v1/estimates/${e.body.estimate.id}/approve`, manager, { confirmPassword: 'Staff12345' })).status, 200);
+  }
+  const grp = await call('POST', '/api/v1/groups', storekeeper, { name: 'Mikopo ' + RUN, memberIds: [F.id, G2.id], leaderMemberId: F.id });
+  assert.equal(grp.status, 201, JSON.stringify(grp.body));
+  await approve(grp.body.group.id);
+  await call('POST', '/api/v1/finance/fx', accountant, { usdToTzs: '2500' });
+  // Mikopo ni ya dola hata kama chama kinatumia TSh kwenye pembejeo
+  assert.equal((await call('GET', '/api/v1/finance/fx', accountant)).body.currency, 'TZS');
+
+  assert.equal((await call('POST', '/api/v1/kuni/batches', accountant, { loanType: 'KUNI', loans: [{ memberId: F.id, amountUsd: '10' }] })).status, 400, 'Mipangilio haijawekwa');
+  assert.equal((await call('PUT', '/api/v1/kuni/settings', manager, { loanType: 'KUNI', interestRate: '10', amountPerAcreUsd: '60', isOpen: true })).status, 403, 'Mhasibu ndiye anaweka');
+  assert.equal((await call('PUT', '/api/v1/kuni/settings', accountant, { loanType: 'KUNI', interestRate: '10', amountPerAcreUsd: '60', isOpen: true })).status, 200);
+  const st = (await call('GET', '/api/v1/kuni/settings', accountant)).body;
+  assert.equal(st.types.KUNI.amountPerAcreUsd, '60.00'); assert.equal(st.types.GRADING.configured, false, 'Grading ina mipangilio yake');
+  const el = (await call('GET', '/api/v1/kuni/eligible?type=KUNI', accountant)).body.data;
+  assert.equal(el.find((x: any) => x.memberId === F.id).limit, '120.00');
+  assert.equal(el.find((x: any) => x.memberId === G2.id).available, '90.00');
+  assert.equal((await call('POST', '/api/v1/kuni/batches', accountant, { loanType: 'KUNI', loans: [{ memberId: F.id, amountUsd: '120.01' }] })).status, 400, 'Haizidi kikomo');
+  assert.equal((await call('POST', '/api/v1/kuni/batches', accountant, { loanType: 'GRADING', loans: [{ memberId: F.id, amountUsd: '10' }] })).status, 400, 'Grading bado imefungwa');
+  const b = await call('POST', '/api/v1/kuni/batches', accountant, { loanType: 'KUNI', loans: [{ memberId: F.id, amountUsd: '80' }, { memberId: G2.id, amountUsd: '90' }] });
+  assert.equal(b.status, 201, JSON.stringify(b.body));
+  assert.equal(b.body.batch.currency, 'USD'); assert.equal(b.body.batch.totalUsd, '170.00'); assert.equal(b.body.batch.totalInterestUsd, '17.00');
+  assert.equal(b.body.batch.totalAmount, '425000.00', 'TSh kwa kiwango cha siku ya kuandaa'); assert.equal(b.body.batch.totalInterest, '42500.00');
+  assert.match(b.body.batch.batchNo, /-KN-/);
+  assert.equal((await call('POST', '/api/v1/kuni/batches', accountant, { loanType: 'KUNI', loans: [{ memberId: F.id, amountUsd: '40.01' }] })).status, 400, 'Kinachosubiri kinahesabiwa kwenye kikomo');
+  const det0 = (await call('GET', `/api/v1/kuni/batches/${b.body.batch.id}`, accountant)).body;
+  assert.equal((await call('POST', `/api/v1/kuni/batches/${b.body.batch.id}/confirm`, accountant, { accountId: bank.id, loanIds: [det0.loans[0].id], reference: 'X1' })).status, 400, 'Kabla ya idhini');
+  await approve(b.body.batch.id);
+  const lf = det0.loans.find((l: any) => l.memberId === F.id);
+  const c = await call('POST', `/api/v1/kuni/batches/${b.body.batch.id}/confirm`, accountant, { accountId: bank.id, loanIds: det0.loans.map((l: any) => l.id), reference: 'BULK-KUNI-' + RUN });
+  assert.equal(c.status, 200, JSON.stringify(c.body));
+  assert.equal(c.body.status, 'COMPLETED');
+  const mbal = async (id: string) => (await call('GET', `/api/v1/members/${id}`, manager)).body.balance.balance;
+  assert.equal(await mbal(F.id), '-220000.00', 'Mkopo $80 + riba 10% = $88 x 2,500');
+  assert.ok(Number(bal(await gl(), '4450')) >= 42500, 'Riba ni mapato ya chama');
+  const fd = (await call('GET', '/api/v1/finance/farmers?filter=all&search=Fatuma', accountant)).body.data[0];
+  assert.equal(fd.loans, '200000.00'); assert.equal(fd.interest, '20000.00');
+  await assertBooksBalance();
+
+  // Mkopo wa grading: mipangilio yake, kikomo chake (hauathiriwi na kuni)
+  assert.equal((await call('PUT', '/api/v1/kuni/settings', accountant, { loanType: 'GRADING', interestRate: '5', amountPerAcreUsd: '20', isOpen: true })).status, 200);
+  const elg = (await call('GET', '/api/v1/kuni/eligible?type=GRADING', accountant)).body.data;
+  assert.equal(elg.find((x: any) => x.memberId === F.id).available, '40.00');
+  assert.equal(elg.find((x: any) => x.memberId === F.id).debtUsd, '88.00');
+  const gb = await call('POST', '/api/v1/kuni/batches', accountant, { loanType: 'GRADING', loans: [{ memberId: F.id, amountUsd: '40' }] });
+  assert.equal(gb.status, 201, JSON.stringify(gb.body));
+  assert.match(gb.body.batch.batchNo, /-GR-/); assert.equal(gb.body.batch.totalInterestUsd, '2.00');
+  await approve(gb.body.batch.id);
+  const gl0 = (await call('GET', `/api/v1/kuni/batches/${gb.body.batch.id}`, accountant)).body;
+  assert.equal(gl0.batch.label, 'Mkopo wa grading');
+  assert.equal((await call('POST', `/api/v1/kuni/batches/${gb.body.batch.id}/confirm`, accountant, { accountId: bank.id, loanIds: gl0.loans.map((l: any) => l.id), reference: 'GR-' + RUN })).status, 200);
+  assert.equal((await call('GET', '/api/v1/kuni/batches?type=GRADING', accountant)).body.data.every((x: any) => x.loanType === 'GRADING'), true);
+
+  // Deni limejumlishwa: kwa mkulima (kuni + grading) na kwa kikundi
+  const debts = (await call('GET', '/api/v1/kuni/debts?search=' + RUN, accountant)).body;
+  const dF = debts.farmers.find((x: any) => x.memberId === F.id);
+  assert.equal(dF.kuniUsd, '88.00'); assert.equal(dF.gradingUsd, '42.00'); assert.equal(dF.debtUsd, '130.00');
+  const dG = debts.groups.find((x: any) => x.id === grp.body.group.id);
+  assert.equal(dG.debtUsd, '229.00', 'F $130 + G2 $99'); assert.equal(dG.kuniUsd, '187.00'); assert.equal(dG.gradingUsd, '42.00'); assert.equal(dG.members, 2);
+  assert.equal((await call('GET', `/api/v1/groups/${grp.body.group.id}`, accountant)).body.group.owingUsd, '229.00');
+  const stmt = (await call('GET', `/api/v1/finance/farmers/${F.id}`, accountant)).body;
+  assert.equal(stmt.usd.breakdown.gradingUsd, '42.00'); assert.equal(stmt.usd.debtUsd, '130.00');
+  assert.equal((await call('GET', '/api/v1/kuni/debts', storekeeper)).status, 403, 'Stokipa haoni madeni ya fedha');
+  await assertBooksBalance();
+
+  // Kusahihisha malipo ya kuni ya F: mkopo, riba na deni la dola vinaondolewa; mkopo unarudi "umeshindwa"
+  const t = (await call('GET', `/api/v1/kuni/batches/${b.body.batch.id}`, accountant)).body.loans.find((l: any) => l.id === lf.id);
+  const txn = (await call('GET', '/api/v1/finance/transactions?search=' + t.txnNo, accountant)).body.data[0];
+  assert.equal(txn.amountUsd, '80.00');
+  assert.equal((await call('POST', `/api/v1/finance/transactions/${txn.id}/reverse`, accountant, { reason: 'Imetumwa namba isiyo sahihi' })).status, 202);
+  await approve(txn.id);
+  assert.equal(await mbal(F.id), '-105000.00', 'Grading $42 x 2,500 inabaki');
+  const dF2 = (await call('GET', '/api/v1/kuni/debts?search=Fatuma', accountant)).body.farmers.find((x: any) => x.memberId === F.id);
+  assert.equal(dF2.kuniUsd, '0.00'); assert.equal(dF2.debtUsd, '42.00');
+  assert.equal((await call('GET', `/api/v1/kuni/batches/${b.body.batch.id}`, accountant)).body.loans.find((l: any) => l.id === lf.id).status, 'FAILED');
+  await assertBooksBalance();
+
+  // Sokoni: deni la dola la G2 ($99) linakatwa kwa kiwango cha soko (2,600) — faida ya kiwango inaandikwa
+  const mk = (await call('POST', '/api/v1/sales/markets', accountant, { marketDate: today, buyerName: 'TLTC', exchangeRate: '2600' })).body.market;
+  await call('POST', `/api/v1/sales/markets/${mk.id}/bales`, accountant, { bales: [{ memberId: G2.id, baleNo: 'G2-' + RUN, grossKg: '200', priceUsd: '2' }] });
+  const pv = (await call('GET', `/api/v1/sales/markets/${mk.id}/preview`, accountant)).body.rows[0];
+  const loanLine = pv.deductions.find((d: any) => d.basis === 'OUTSTANDING_LOAN');
+  assert.equal(loanLine.amount, '257400.00', 'Mkopo wa kuni $90 + riba $9 = $99 x 2,600');
+});
+
+// v0.21 -----------------------------------------------------------------
+test('Mkopo wa miti: miti kwa hekta x gharama ya mti + riba, kikomo kwa idadi ya miti, deni la dola', async () => {
+  const T = await newMember('Tumaini'), U = await newMember('Upendo');
+  for (const [m, acres] of [[T, '5'], [U, '2.5']] as const) {
+    const e = await call('POST', '/api/v1/estimates', storekeeper, { memberId: m.id, acresPlanted: acres, estimatedKg: String(Number(acres) * 600) });
+    assert.equal(e.status, 201, JSON.stringify(e.body));
+    assert.equal((await call('POST', `/api/v1/estimates/${e.body.estimate.id}/approve`, manager, { confirmPassword: 'Staff12345' })).status, 200);
+  }
+  await call('POST', '/api/v1/finance/fx', accountant, { usdToTzs: '2500' });
+  assert.equal((await call('PUT', '/api/v1/kuni/settings', accountant, { loanType: 'TREES', interestRate: '10', isOpen: true })).status, 400, 'Idadi ya miti na gharama zinahitajika');
+  assert.equal((await call('PUT', '/api/v1/kuni/settings', accountant, { loanType: 'TREES', interestRate: '10', areaUnit: 'HECTARE', treesPerArea: 400, costPerTreeUsd: '0.25', isOpen: true })).status, 200);
+  const st = (await call('GET', '/api/v1/kuni/settings', accountant)).body.types.TREES;
+  assert.equal(st.treesPerArea, 400); assert.equal(st.costPerTreeUsd, '0.2500'); assert.equal(st.areaUnit, 'HECTARE');
+  // Ekari 5 = hekta 2.02 -> miti 809; ekari 2.5 = hekta 1.01 -> miti 404
+  const el = (await call('GET', '/api/v1/kuni/eligible?type=TREES', accountant)).body.data;
+  const eT = el.find((x: any) => x.memberId === T.id), eU = el.find((x: any) => x.memberId === U.id);
+  assert.equal(eT.limitTrees, 809); assert.equal(eT.hectares, '2.02'); assert.equal(eT.available, '202.25');
+  assert.equal(eU.availableTrees, 404);
+  assert.equal((await call('POST', '/api/v1/kuni/batches', accountant, { loanType: 'TREES', loans: [{ memberId: U.id, trees: 405 }] })).status, 400, 'Haizidi miti ya kikomo');
+  assert.equal((await call('POST', '/api/v1/kuni/batches', accountant, { loanType: 'TREES', loans: [{ memberId: U.id, trees: 10.5 }] })).status, 400, 'Mti mzima tu');
+  const b = await call('POST', '/api/v1/kuni/batches', accountant, { loanType: 'TREES', loans: [{ memberId: T.id, trees: 800 }, { memberId: U.id, trees: 404 }] });
+  assert.equal(b.status, 201, JSON.stringify(b.body));
+  assert.match(b.body.batch.batchNo, /-MT-/);
+  assert.equal(b.body.batch.totalTrees, 1204); assert.equal(b.body.batch.totalUsd, '301.00'); assert.equal(b.body.batch.totalInterestUsd, '30.10');
+  assert.equal((await call('POST', '/api/v1/kuni/batches', accountant, { loanType: 'TREES', loans: [{ memberId: T.id, trees: 10 }] })).status, 400, 'Miti inayosubiri inahesabiwa');
+  await approve(b.body.batch.id);
+  const det = (await call('GET', `/api/v1/kuni/batches/${b.body.batch.id}`, accountant)).body;
+  assert.equal(det.loans.find((l: any) => l.memberId === T.id).trees, 800);
+  assert.equal((await call('POST', `/api/v1/kuni/batches/${b.body.batch.id}/confirm`, accountant, { accountId: bank.id, loanIds: det.loans.map((l: any) => l.id), reference: 'MITI-' + RUN })).status, 200);
+  const d = (await call('GET', '/api/v1/kuni/debts?search=Tumaini', accountant)).body.farmers.find((x: any) => x.memberId === T.id);
+  assert.equal(d.treesUsd, '220.00', 'Miti 800 x $0.25 = $200 + riba 10%'); assert.equal(d.debtUsd, '220.00');
+  assert.equal((await call('GET', `/api/v1/members/${T.id}`, manager)).body.balance.balance, '-550000.00');
+  // Kipimo cha ekari: miti kwa ekari moja moja
+  assert.equal((await call('PUT', '/api/v1/kuni/settings', accountant, { loanType: 'TREES', interestRate: '10', areaUnit: 'ACRE', treesPerArea: 200, costPerTreeUsd: '0.25', isOpen: true })).status, 200);
+  const el2 = (await call('GET', '/api/v1/kuni/eligible?type=TREES', accountant)).body.data;
+  assert.equal(el2.find((x: any) => x.memberId === T.id).availableTrees, 200, 'Ekari 5 x 200 = 1000 - 800 alizochukua');
+  await assertBooksBalance();
 });

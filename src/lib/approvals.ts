@@ -51,7 +51,7 @@ export const APPROVAL_LABEL: Record<ApprovalType, string> = {
   STOCK_RECEIPT: 'Mzigo wa pembejeo (idadi na bei)',
   GROUP_REGISTRATION: 'Usajili wa kikundi cha wakulima',
   GROUP_CHANGE: 'Mabadiliko ya wanakikundi',
-  KUNI_BATCH: 'Pesa ya kuni (mikopo ya wakulima)',
+  KUNI_BATCH: 'Mikopo ya wakulima (kuni / grading / miti)',
 };
 
 /** Marekebisho ya Meneja wakati wa kuidhinisha mzigo wa pembejeo (idadi na bei). */

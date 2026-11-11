@@ -81,10 +81,12 @@ const GUIDES: Record<string, Partial<Record<Role, Guide>>> = {
     'Fungua mkulima kuona "Taarifa ya mkulima" ya msimu wowote.',
     'Chapisha taarifa au hifadhi PDF kwa kumpa mkulima — ina sahihi za Mhasibu, Meneja na Mkulima.',
   ] } },
-  kuni: { '*': { title: 'Pesa ya kuni', steps: [
-    'Mikopo ya kuni inatolewa kwa kikomo cha ekari za mkulima.',
-    'Orodha inaidhinishwa na Meneja kabla ya kutuma pesa.',
-    'Mkopo na riba vinakatwa kwenye mauzo ya tumbaku.',
+  kuni: { '*': { title: 'Mikopo ya wakulima', steps: [
+    'Kuna mikopo mitatu: kuni (kuchoma tumbaku), grading (kupanga madaraja na kufunga mabelo) na miti (kupanda miti shambani).',
+    'Mkopo wa miti: chama kinaweka idadi ya miti kwa hekta (au ekari) na gharama ya mti mmoja; mkulima anapewa kwa idadi ya miti.',
+    'Kila mkopo una mipangilio yake: kikomo, riba, na wazi/imefungwa. Mikopo yote ni kwa dola.',
+    'Orodha inaidhinishwa na Meneja kabla ya kutuma pesa; pesa zinatumwa kwa TSh kwa kiwango cha siku hiyo.',
+    'Tab ya "Madeni" inaonyesha deni la dola la kila mkulima (pembejeo + mikopo yote) na jumla ya kila kikundi.',
   ] } },
   groups: { '*': { title: 'Vikundi vya wakulima', steps: [
     'Kila mkulima ana deni lake, lakini kikundi kinadhamini wanachama wake.',

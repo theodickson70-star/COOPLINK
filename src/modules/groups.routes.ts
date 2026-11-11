@@ -26,6 +26,9 @@ const groupStats = {
   members: sql<number>`(select count(*)::int from member_group_members x where x.group_id = "member_groups"."id" and x.left_at is null)`,
   owing: sql<string>`(select coalesce(sum(-b.bal), 0) from (select sum(l.credit) - sum(l.debit) as bal from member_ledger_entries l
     where l.member_id in (select x.member_id from member_group_members x where x.group_id = "member_groups"."id" and x.left_at is null) group by l.member_id) b where b.bal < 0)`,
+  // Deni la dola (pembejeo + mikopo ya kuni/grading) la wanachama wote wa kikundi
+  owingUsd: sql<string>`(select coalesce(sum(greatest(b.u, 0)), 0) from (select sum(u.usd) as u from member_usd_ledger u
+    where u.member_id in (select x.member_id from member_group_members x where x.group_id = "member_groups"."id" and x.left_at is null) group by u.member_id) b)`,
   inputs: sql<string>`(select coalesce(sum(l.debit - l.credit), 0) from member_ledger_entries l where l.reference_type = 'INPUT_ISSUE'
     and l.member_id in (select x.member_id from member_group_members x where x.group_id = "member_groups"."id" and x.left_at is null))`,
   leader: sql<string | null>`(select m.first_name || ' ' || m.last_name from members m where m.id = "member_groups"."leader_member_id")`,
@@ -35,7 +38,7 @@ const groupStats = {
 groupsRouter.get('/', requireAmcosPerm('members.read', 'finance.read'), ah(async (req, res) => {
   const { status } = z.object({ status: z.enum(schema.groupStatusEnum.enumValues).optional() }).parse(req.query);
   const rows = await db.select({ g: G, ...groupStats }).from(G).where(and(amcosScope(req, G.amcosId), status ? eq(G.status, status) : undefined)).orderBy(asc(G.status), asc(G.name));
-  res.json({ data: rows.map(({ g, ...s }) => ({ ...g, ...s, owing: fmt2(s.owing), inputs: fmt2(s.inputs) })) });
+  res.json({ data: rows.map(({ g, ...s }) => ({ ...g, ...s, owing: fmt2(s.owing), owingUsd: fmt2(s.owingUsd), inputs: fmt2(s.inputs) })) });
 }));
 
 async function findGroup(req: Request, id: string) {
@@ -58,13 +61,16 @@ groupsRouter.get('/:id', requireAmcosPerm('members.read', 'finance.read'), ah(as
     balance: sql<string>`coalesce(sum(${L.credit}) - sum(${L.debit}), 0)` })
     .from(L).where(inArray(L.memberId, ids)).groupBy(L.memberId) : [];
   const by = new Map(sums.map((s) => [s.memberId, s]));
+  const usdRows = ids.length ? await db.select({ memberId: schema.memberUsdLedger.memberId, usd: sql<string>`sum(${schema.memberUsdLedger.usd})` })
+    .from(schema.memberUsdLedger).where(inArray(schema.memberUsdLedger.memberId, ids)).groupBy(schema.memberUsdLedger.memberId) : [];
+  const usdOf = new Map(usdRows.map((u) => [u.memberId, D(u.usd).gt(0) ? fmt2(u.usd) : '0.00']));
   const pending = await db.select().from(schema.approvalRequests).where(and(eq(schema.approvalRequests.entityId, id), eq(schema.approvalRequests.status, 'PENDING')));
   res.json({
-    group: { ...g, ...stats, owing: fmt2(stats.owing), inputs: fmt2(stats.inputs) },
+    group: { ...g, ...stats, owing: fmt2(stats.owing), owingUsd: fmt2(stats.owingUsd), inputs: fmt2(stats.inputs) },
     members: mems.map((m) => {
       const s = by.get(m.gm.memberId);
       return { memberId: m.gm.memberId, memberNo: m.memberNo, name: `${m.firstName} ${m.lastName}`, village: m.village, status: m.status, joinedAt: m.gm.joinedAt, leftAt: m.gm.leftAt, removeReason: m.gm.removeReason,
-        inputs: fmt2(s?.inputs ?? 0), guaranteedFor: fmt2(s?.guaranteedFor ?? 0), coveredByGroup: fmt2(s?.coveredByGroup ?? 0), balance: fmt2(s?.balance ?? 0) };
+        inputs: fmt2(s?.inputs ?? 0), debtUsd: usdOf.get(m.gm.memberId) ?? '0.00', guaranteedFor: fmt2(s?.guaranteedFor ?? 0), coveredByGroup: fmt2(s?.coveredByGroup ?? 0), balance: fmt2(s?.balance ?? 0) };
     }),
     pending: pending.map((p) => ({ id: p.id, requestNo: p.requestNo, type: p.type, title: p.title, createdAt: p.createdAt })),
   });

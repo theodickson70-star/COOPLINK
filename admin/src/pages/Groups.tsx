@@ -9,10 +9,11 @@ import { api } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
 import { date, tsh } from '../lib/format';
+import { usd } from '../lib/fx';
 import { Alert, Badge, Button, Empty, Loading, MemberPicker, Modal, PageHead, SelectField, TextField, type MemberLite } from '../components/ui';
 import { Kpi, Section } from '../components/owner-ui';
 
-interface Group { id: string; groupNo: string; name: string; village: string | null; status: string; members: number; owing: string; inputs: string; leader: string | null; createdAt: string; leaderMemberId: string | null; notes: string | null }
+interface Group { id: string; groupNo: string; name: string; village: string | null; status: string; members: number; owing: string; owingUsd?: string; inputs: string; leader: string | null; createdAt: string; leaderMemberId: string | null; notes: string | null }
 const G_STATUS: Record<string, string> = { PENDING: 'Inasubiri idhini', ACTIVE: 'Hai', REJECTED: 'Imekataliwa', INACTIVE: 'Hakitumiki' };
 
 export function Groups() {
@@ -38,12 +39,13 @@ export function Groups() {
       <section className="card" style={{ marginTop: 16 }}>
         {!data ? <Loading /> : data.data.length === 0 ? <Empty>Bado hakuna kikundi. Unda kikundi kwa kuchagua wanachama waliothibitishwa.</Empty> : (
           <div className="table-wrap"><table className="table">
-            <thead><tr><th>Kikundi</th><th>Kiongozi</th><th className="num">Wanachama</th><th className="num">Pembejeo</th><th className="num">Deni la kikundi</th><th>Hali</th></tr></thead>
+            <thead><tr><th>Kikundi</th><th>Kiongozi</th><th className="num">Wanachama</th><th className="num">Pembejeo</th><th className="num">Deni la kikundi</th><th className="num">Deni la dola</th><th>Hali</th></tr></thead>
             <tbody>{data.data.map((g) => (
               <tr key={g.id} onClick={() => nav(`/groups/${g.id}`)} style={{ cursor: 'pointer' }}>
                 <td><strong>{g.name}</strong><div className="muted" style={{ fontSize: 12 }}>{g.groupNo}{g.village ? ` · ${g.village}` : ''}</div></td>
                 <td>{g.leader ?? '—'}</td><td className="num">{g.members}</td><td className="num">{tsh(g.inputs)}</td>
                 <td className="num"><strong className={Number(g.owing) > 0 ? 'money-neg' : ''}>{tsh(g.owing)}</strong></td>
+                <td className="num">{Number(g.owingUsd) ? <strong className="money-neg">{usd(g.owingUsd)}</strong> : '—'}</td>
                 <td><Badge status={g.status === 'PENDING' ? 'PENDING_APPROVAL' : g.status} label={G_STATUS[g.status]} /></td>
               </tr>
             ))}</tbody>
@@ -87,7 +89,7 @@ function GroupForm({ onClose, onDone }: { onClose: () => void; onDone: (m: strin
   );
 }
 
-interface GMember { memberId: string; memberNo: string; name: string; village: string | null; status: string; joinedAt: string; leftAt: string | null; removeReason: string | null; inputs: string; guaranteedFor: string; coveredByGroup: string; balance: string }
+interface GMember { memberId: string; memberNo: string; name: string; village: string | null; status: string; joinedAt: string; leftAt: string | null; removeReason: string | null; inputs: string; guaranteedFor: string; coveredByGroup: string; debtUsd?: string; balance: string }
 
 export function GroupDetail() {
   const { id } = useParams();
@@ -113,16 +115,18 @@ export function GroupDetail() {
         <Kpi tone="dark" label="Wanachama" value={current.length} />
         <Kpi label="Pembejeo walizokopa" value={tsh(g.inputs)} />
         <Kpi tone={Number(g.owing) > 0 ? 'bad' : undefined} label="Deni la kikundi (jumla)" value={tsh(g.owing)} hint="Kikundi kizima kinawajibika" />
+        {Number(g.owingUsd) > 0 && <Kpi tone="gold" label="Deni la dola la kikundi" value={usd(g.owingUsd)} hint="Pembejeo + mikopo (kuni, grading, miti)" />}
       </div>
       <Section pad={false} title="Wanachama na madeni yao">
         <div className="table-wrap"><table className="table">
-          <thead><tr><th>Mwanachama</th><th className="num">Pembejeo</th><th className="num">Amewalipia wenzake</th><th className="num">Amelipiwa na kikundi</th><th className="num">Salio</th><th /></tr></thead>
+          <thead><tr><th>Mwanachama</th><th className="num">Pembejeo</th><th className="num">Amewalipia wenzake</th><th className="num">Amelipiwa na kikundi</th><th className="num">Deni la dola</th><th className="num">Salio</th><th /></tr></thead>
           <tbody>{data.members.map((m) => (
             <tr key={m.memberId} style={{ opacity: m.leftAt ? 0.5 : 1 }}>
               <td><Link to={memberLink(m.memberId)}>{m.name}</Link><div className="muted" style={{ fontSize: 12 }}>{m.memberNo}{m.memberId === g.leaderMemberId ? ' · Kiongozi' : ''}{m.leftAt ? ` · alitoka ${date(m.leftAt)}${m.removeReason ? ` (${m.removeReason})` : ''}` : ''}</div></td>
               <td className="num">{Number(m.inputs) ? tsh(m.inputs) : '—'}</td>
               <td className="num">{Number(m.guaranteedFor) ? tsh(m.guaranteedFor) : '—'}</td>
               <td className="num">{Number(m.coveredByGroup) ? tsh(m.coveredByGroup) : '—'}</td>
+              <td className="num">{Number(m.debtUsd) ? usd(m.debtUsd) : '—'}</td>
               <td className="num"><strong className={Number(m.balance) < 0 ? 'money-neg' : ''}>{Number(m.balance) < 0 ? `Deni ${tsh(-Number(m.balance))}` : Number(m.balance) > 0 ? `Anadai ${tsh(m.balance)}` : '0'}</strong></td>
               <td className="num">{canEdit && !m.leftAt && <Button size="sm" variant="ghost" onClick={() => setRemove(m)}>Toa</Button>}</td>
             </tr>

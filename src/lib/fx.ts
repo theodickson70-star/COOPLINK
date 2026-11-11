@@ -105,7 +105,17 @@ export async function usdSummary(amcosId: string, memberId: string) {
   const pos = (await usdPositions(db, amcosId, [memberId])).get(memberId);
   if (!pos) return null;
   const rate = await currentRate(db, amcosId);
+  // Mgawanyo: dola zilizotolewa kwa pembejeo, mkopo wa kuni na mkopo wa grading (neti ya zilizofutwa)
+  const [b] = (await db.execute<{ inputs: string; kuni: string; grading: string; trees: string; repaid: string }>(sql`
+    select coalesce(sum(case when u.reference_type = 'INPUT_ISSUE' and u.kind in ('ISSUE', 'CANCEL') then u.usd end), 0)::numeric(14,2)::text as inputs,
+      coalesce(sum(case when u.reference_type = 'KUNI_LOAN' and u.kind in ('ISSUE', 'CANCEL') and kl.loan_type = 'KUNI' then u.usd end), 0)::numeric(14,2)::text as kuni,
+      coalesce(sum(case when u.reference_type = 'KUNI_LOAN' and u.kind in ('ISSUE', 'CANCEL') and kl.loan_type = 'GRADING' then u.usd end), 0)::numeric(14,2)::text as grading,
+      coalesce(sum(case when u.reference_type = 'KUNI_LOAN' and u.kind in ('ISSUE', 'CANCEL') and kl.loan_type = 'TREES' then u.usd end), 0)::numeric(14,2)::text as trees,
+      coalesce(-sum(case when u.kind = 'REPAY' then u.usd end), 0)::numeric(14,2)::text as repaid
+    from member_usd_ledger u left join kuni_loans kl on u.reference_type = 'KUNI_LOAN' and kl.id = u.reference_id
+    where u.amcos_id = ${amcosId} and u.member_id = ${memberId}`)).rows;
   return {
+    breakdown: { inputsUsd: b.inputs, kuniUsd: b.kuni, gradingUsd: b.grading, treesUsd: b.trees, repaidUsd: b.repaid },
     debtUsd: fmt2(Decimal.max(pos.usd, 0)), bookTzs: fmt2(pos.tzs),
     rate: rate?.usdToTzs ?? null, rateAt: rate?.createdAt ?? null, atCurrentTzs: rate && pos.usd.gt(0) ? fmt2(toTzs(pos.usd, rate.usdToTzs)) : null,
   };

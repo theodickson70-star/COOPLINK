@@ -1240,3 +1240,4 @@ tr.row-msg.row-warn td { color: var(--warn-ink); }
 .unit-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-top: 4px; }
 .unit-toggle button { border: 0; background: transparent; padding: 3px 10px; font: inherit; font-size: 12.5px; cursor: pointer; color: var(--muted); }
 .unit-toggle button.on { background: var(--green); color: #fff; }
+.table tr.row-sub td { background: var(--line-2); font-size: 13px; }

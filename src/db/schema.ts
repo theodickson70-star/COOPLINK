@@ -64,6 +64,8 @@ export const marketStatusEnum = pgEnum('market_status', ['SCHEDULED', 'OPEN', 'C
 export const baleStatusEnum = pgEnum('bale_status', ['REGISTERED', 'GRADED', 'SOLD', 'REJECTED']);
 export const deductionBasisEnum = pgEnum('deduction_basis', ['PERCENT_OF_GROSS', 'PER_KG', 'FIXED', 'OUTSTANDING_LOAN']);
 export const currencyEnum = pgEnum('currency', ['TZS', 'USD']);
+/** Aina za mikopo ya fedha kwa wakulima: kuni (kukaushia tumbaku), grading (madaraja na mabelo), miti (kupanda miti shambani) */
+export const loanTypeEnum = pgEnum('loan_type', ['KUNI', 'GRADING', 'TREES']);
 export const settlementStatusEnum = pgEnum('settlement_status', ['DRAFT', 'APPROVED', 'PAID', 'CANCELLED']);
 export const paymentMethodEnum = pgEnum('payment_method', ['MOBILE_MONEY', 'BANK', 'CASH']);
 export const paymentStatusEnum = pgEnum('payment_status', ['PENDING', 'PROCESSING', 'SUCCESS', 'FAILED', 'CANCELLED']);
@@ -1349,23 +1351,35 @@ export const kuniSettings = pgTable('kuni_settings', {
   id: id(),
   amcosId: uuid().notNull().references(() => amcos.id),
   seasonId: uuid().notNull().references(() => seasons.id),
+  loanType: loanTypeEnum().notNull().default('KUNI'),
   interestRate: numeric({ precision: 6, scale: 3 }).notNull().default('0'), // % kwa msimu
-  amountPerAcre: money().notNull().default('0'),                           // kikomo: TZS kwa ekari
+  amountPerAcre: money().notNull().default('0'),                           // (zamani) kikomo: TZS kwa ekari
+  amountPerAcreUsd: numeric({ precision: 14, scale: 2 }),                  // kikomo: USD kwa ekari
+  // Mkopo wa miti: idadi ya miti kwa eneo (hekta au ekari) x gharama ya mti mmoja
+  areaUnit: text().notNull().default('HECTARE'),                           // 'HECTARE' | 'ACRE'
+  treesPerArea: integer(),
+  costPerTreeUsd: numeric({ precision: 12, scale: 4 }),
   isOpen: boolean().notNull().default(true),
   updatedById: uuid(),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
-}, (t) => [uniqueIndex().on(t.amcosId, t.seasonId)]);
+}, (t) => [uniqueIndex('kuni_settings_amcos_season_type_idx').on(t.amcosId, t.seasonId, t.loanType)]);
 
 export const kuniBatches = pgTable('kuni_batches', {
   id: id(),
   amcosId: uuid().notNull().references(() => amcos.id),
   seasonId: uuid().notNull().references(() => seasons.id),
   batchNo: text().notNull(),
+  loanType: loanTypeEnum().notNull().default('KUNI'),
   status: paymentBatchStatusEnum().notNull().default('DRAFT'),
   interestRate: numeric({ precision: 6, scale: 3 }).notNull(),
   totalAmount: money().notNull(),
   totalInterest: money().notNull(),
+  currency: currencyEnum().notNull().default('TZS'),       // USD: mkopo ni wa dola; TSh = dola x fxRate (kiwango cha siku ya kuandaa)
+  fxRate: numeric({ precision: 12, scale: 4 }),
+  totalUsd: numeric({ precision: 14, scale: 2 }),
+  totalInterestUsd: numeric({ precision: 14, scale: 2 }),
+  totalTrees: integer(),
   approvalId: uuid(),
   notes: text(),
   createdById: uuid(),
@@ -1379,8 +1393,12 @@ export const kuniLoans = pgTable('kuni_loans', {
   batchId: uuid().notNull().references(() => kuniBatches.id),
   seasonId: uuid().notNull().references(() => seasons.id),
   memberId: uuid().notNull().references(() => members.id),
-  amount: money().notNull(),     // mkopo (principal)
+  loanType: loanTypeEnum().notNull().default('KUNI'),
+  amount: money().notNull(),     // mkopo (principal) kwa TSh
   interest: money().notNull(),   // riba (inaongezwa kwenye deni pesa zikitumwa)
+  amountUsd: numeric({ precision: 14, scale: 2 }),
+  interestUsd: numeric({ precision: 14, scale: 2 }),
+  trees: integer(),               // mkopo wa miti: idadi ya miti
   method: paymentMethodEnum().notNull(),
   provider: text(),
   destination: text().notNull(),

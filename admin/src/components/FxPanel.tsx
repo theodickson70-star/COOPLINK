@@ -36,7 +36,7 @@ export function FxPanel() {
       <div className="grid grid-kpi">
         <Kpi tone="dark" label="Sarafu ya pembejeo" value={d.currency === 'USD' ? 'Dola (USD)' : 'Shilingi (TSh)'} hint={d.currency === 'USD' ? 'Bei, mikopo ya pembejeo na manunuzi kwa dola' : 'Bei na madeni kwa TSh'} />
         <Kpi tone="gold" label="Kiwango cha sasa" value={d.rate ? `TSh ${num(d.rate.usdToTzs)}` : '—'} hint={d.rate ? `Kwa USD 1 · tangu ${dateTime(d.rate.createdAt)}` : 'Bado hakijawekwa'} />
-        <Kpi label="Deni la pembejeo la dola" value={usd(d.farmersUsdDebt)} hint={`Wakulima ${num(d.farmersWithUsdDebt)}${d.rate && Number(d.farmersUsdDebt) > 0 ? ` · ≈ ${tsh(Number(d.farmersUsdDebt) * Number(d.rate.usdToTzs))} leo` : ''}`} />
+        <Kpi label="Deni la dola la wakulima" value={usd(d.farmersUsdDebt)} hint={`Pembejeo + mikopo · wakulima ${num(d.farmersWithUsdDebt)}${d.rate && Number(d.farmersUsdDebt) > 0 ? ` · ≈ ${tsh(Number(d.farmersUsdDebt) * Number(d.rate.usdToTzs))} leo` : ''}`} />
       </div>
 
       <Section title="Inavyofanya kazi">

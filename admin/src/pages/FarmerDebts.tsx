@@ -57,7 +57,7 @@ export function FarmerDebts() {
         <div className="toolbar"><input className="input" placeholder="Tafuta jina, namba au kijiji…" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} aria-label="Tafuta mkulima" /></div>
         {loading && !data ? <Loading /> : !data?.data.length ? <Empty>Hakuna mkulima kwenye orodha hii.</Empty> : (
           <div className="table-wrap"><table className="table">
-            <thead><tr><th>Mkulima</th><th className="num">Pembejeo</th><th className="num">Pesa ya kuni (+riba)</th><th className="num">Mauzo</th><th className="num">Makato</th><th className="num">Malipo / marejesho</th><th className="num">Salio</th></tr></thead>
+            <thead><tr><th>Mkulima</th><th className="num">Pembejeo</th><th className="num">Mikopo (+riba)</th><th className="num">Mauzo</th><th className="num">Makato</th><th className="num">Malipo / marejesho</th><th className="num">Salio</th></tr></thead>
             <tbody>{data.data.map((r) => (
               <tr key={r.id} onClick={() => nav(`/farmer-debts/${r.id}`)} style={{ cursor: 'pointer' }}>
                 <td><strong>{r.firstName} {r.lastName}</strong><div className="muted" style={{ fontSize: 12 }}>{r.memberNo}{r.village ? ` · ${r.village}` : ''}{r.groupName ? ` · Kikundi ${r.groupName}` : ''}</div></td>
@@ -90,7 +90,7 @@ export interface StatementData {
   inputsSummary: { name: string; unit: string; quantity: string; kg?: string | null; amount: string; amountUsd?: string | null }[];
   issues: { id: string; issueNo: string; issuedAt: string; status: string; totalAmount: string; cancelReason: string | null; currency?: 'TZS' | 'USD'; totalUsd?: string | null; fxRate?: string | null; lines: { name: string; unit: string; quantity: string; kg?: string | null; unitPrice: string; amount: string; unitPriceUsd?: string | null; amountUsd?: string | null }[] }[];
   /** Deni la pembejeo la dola (chama cha USD) */
-  usd?: { debtUsd: string; bookTzs: string; rate: string | null; rateAt: string | null; atCurrentTzs: string | null } | null;
+  usd?: { breakdown?: { inputsUsd: string; kuniUsd: string; gradingUsd: string; treesUsd?: string; repaidUsd: string }; debtUsd: string; bookTzs: string; rate: string | null; rateAt: string | null; atCurrentTzs: string | null } | null;
   statement: { id: string; date: string; type: string; description: string; debit: string; credit: string; balance: string }[];
 }
 export const ISSUE_STATUS: Record<string, string> = { ISSUED: 'Imetolewa', CANCELLED: 'Imefutwa', PENDING_APPROVAL: 'Inasubiri idhini' };
@@ -124,7 +124,7 @@ export function FarmerDebtDetail() {
         <Kpi tone={owes ? 'bad' : 'dark'} label={owes ? 'Deni analodaiwa' : Number(data.balance) > 0 ? 'Chama kinamdai' : 'Salio'} value={tsh(owes ? data.amountOwed : data.balance)} hint={data.season ? `Mwisho wa msimu ${data.season.name}` : undefined} />
         <Kpi label="Mauzo ya tumbaku" value={tsh(salesTzs)} hint={`Kilo ${num(kg)}`} />
         {data.usd && Number(data.usd.debtUsd) > 0
-          ? <Kpi tone="gold" label="Deni la pembejeo (dola)" value={usd(data.usd.debtUsd)} hint={data.usd.atCurrentTzs ? `≈ ${tsh(data.usd.atCurrentTzs)} kwa kiwango cha sasa` : undefined} />
+          ? <Kpi tone="gold" label="Deni la dola" value={usd(data.usd.debtUsd)} hint={data.usd.atCurrentTzs ? `≈ ${tsh(data.usd.atCurrentTzs)} kwa kiwango cha sasa` : undefined} />
           : <Kpi label="Pembejeo alizokopa" value={tsh(inputs)} hint={`Ugawaji ${data.issues.filter((i) => i.status === 'ISSUED').length}`} />}
         <Kpi label="Malipo aliyopokea" value={tsh(paid)} />
       </div>
@@ -178,6 +178,8 @@ export function StatementDoc({ data, className }: { data: StatementData; classNa
   const m = data.member;
   const { owes, inputs, loans, salesTzs, deductions, paid, repaid, kg, other, fxAdj, period, fullName } = statementSums(data);
   const usdDebt = data.usd && Number(data.usd.debtUsd) > 0 ? data.usd : null;
+  const bd = usdDebt?.breakdown;
+  const usdBreak = bd ? [[bd.inputsUsd, 'pembejeo'], [bd.kuniUsd, 'mkopo wa kuni'], [bd.gradingUsd, 'mkopo wa grading'], [bd.treesUsd ?? '0', 'mkopo wa miti']].filter(([v]) => Number(v) > 0).map(([v, l]) => `${l} ${usd(v)}`).concat(Number(bd.repaidUsd) > 0 ? [`amelipa ${usd(bd.repaidUsd)}`] : []).join(', ') : '';
   return (
     <section className={`card card-pad print-doc stmt ${className ?? ''}`} style={{ marginTop: 16 }}>
       <DocHead title="TAARIFA YA MKULIMA" no={m.memberNo} sub={period} org={data.amcos} />
@@ -194,7 +196,7 @@ export function StatementDoc({ data, className }: { data: StatementData; classNa
         <tr><td>Mauzo ya tumbaku (kilo {num(kg)})</td><td className="num money-pos">+ {tsh(salesTzs)}</td></tr>
         {repaid > 0 && <tr><td>Marejesho ya deni</td><td className="num money-pos">+ {tsh(repaid)}</td></tr>}
         <tr><td>Pembejeo alizokopa</td><td className="num money-neg">− {tsh(inputs)}</td></tr>
-        {loans > 0 && <tr><td>Pesa ya kuni na riba</td><td className="num money-neg">− {tsh(loans)}</td></tr>}
+        {loans > 0 && <tr><td>Mikopo (kuni, grading, miti) na riba</td><td className="num money-neg">− {tsh(loans)}</td></tr>}
         <tr><td>Makato ya mauzo (ushuru, ada n.k.)</td><td className="num money-neg">− {tsh(deductions)}</td></tr>
         <tr><td>Malipo aliyopokea</td><td className="num money-neg">− {tsh(paid)}</td></tr>
         {fxAdj !== 0 && <tr><td>Tofauti ya kiwango cha dola (deni la pembejeo)</td><td className={`num ${fxAdj > 0 ? 'money-neg' : 'money-pos'}`}>{fxAdj > 0 ? '−' : '+'} {tsh(Math.abs(fxAdj))}</td></tr>}
@@ -202,7 +204,7 @@ export function StatementDoc({ data, className }: { data: StatementData; classNa
         <tr className="row-grand"><td>{owes ? 'DENI ANALODAIWA' : Number(data.balance) > 0 ? 'CHAMA KINAMDAI (atalipwa)' : 'SALIO'}</td><td className="num">{tsh(owes ? data.amountOwed : data.balance)}</td></tr>
       </tbody></table>
       {usdDebt && (
-        <p className="stmt-usd">Kati ya deni hili, <strong>deni la pembejeo ni {usd(usdDebt.debtUsd)}</strong> (dola). Litakatwa kwa kiwango cha siku ya soko.
+        <p className="stmt-usd">Kati ya deni hili, <strong>deni la dola ni {usd(usdDebt.debtUsd)}</strong>{usdBreak ? <> ({usdBreak})</> : null}. Litakatwa kwa kiwango cha siku ya soko.
           {usdDebt.rate && usdDebt.atCurrentTzs ? <> Kwa kiwango cha sasa (1 USD = TSh {num(usdDebt.rate)}) ni <strong>{tsh(usdDebt.atCurrentTzs)}</strong>.</> : null}</p>
       )}
 

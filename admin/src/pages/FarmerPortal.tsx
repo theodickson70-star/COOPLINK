@@ -210,7 +210,7 @@ function Overview({ data, me, view, setView, seasonId, setSeasonId }: {
         <div><span>{t('Pembejeo')}</span><strong>{tsh(s.inputs)}</strong></div>
         <div><span>{t('Makato')}</span><strong>{tsh(s.deductions)}</strong></div>
         <div><span>{t('Malipo uliyopokea')}</span><strong>{tsh(s.paid)}</strong></div>
-        {s.loans > 0 && <div><span>{t('Pesa ya kuni na riba')}</span><strong>{tsh(s.loans)}</strong></div>}
+        {s.loans > 0 && <div><span>{t('Mikopo (kuni, grading, miti) na riba')}</span><strong>{tsh(s.loans)}</strong></div>}
         <div><span>{t('Hisa')}</span><strong>{num(me.member.sharesCount)}</strong><small>{me.member.entryFeePaid ? t('Kiingilio kimelipwa') : t('Kiingilio hakijalipwa')}</small></div>
       </div>
 
@@ -226,7 +226,7 @@ function Overview({ data, me, view, setView, seasonId, setSeasonId }: {
             <Row label={t('Mauzo ya tumbaku')} v={`+ ${tsh(s.salesTzs)}`} pos />
             {s.repaid > 0 && <Row label={t('Marejesho ya deni')} v={`+ ${tsh(s.repaid)}`} pos />}
             <Row label={t('Pembejeo ulizokopa')} v={`− ${tsh(s.inputs)}`} />
-            {s.loans > 0 && <Row label={t('Pesa ya kuni na riba')} v={`− ${tsh(s.loans)}`} />}
+            {s.loans > 0 && <Row label={t('Mikopo (kuni, grading, miti) na riba')} v={`− ${tsh(s.loans)}`} />}
             <Row label={t('Makato ya mauzo')} v={`− ${tsh(s.deductions)}`} />
             {s.fxAdj !== 0 && <Row label={t('Tofauti ya kiwango cha dola')} v={`${s.fxAdj > 0 ? '−' : '+'} ${tsh(Math.abs(s.fxAdj))}`} pos={s.fxAdj < 0} />}
             <Row label={t('Malipo uliyopokea')} v={`− ${tsh(s.paid)}`} />

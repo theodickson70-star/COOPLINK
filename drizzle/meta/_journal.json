@@ -169,6 +169,20 @@
       "when": 1794410374625,
       "tag": "0023_loose_kg",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794411976359,
+      "tag": "0024_loans",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1794413786467,
+      "tag": "0025_tree_loans",
+      "breakpoints": true
     }
   ]
 }
