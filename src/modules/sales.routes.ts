@@ -222,6 +222,68 @@ salesRouter.get('/markets/:id', requireAmcosPerm('sales.read'), ah(async (req, r
   });
 }));
 
+// ------------------------------ BEI ZA MADARAJA (orodha ya TTB ya msimu) ------------------------------
+const GP = schema.gradePrices;
+/** Daraja kwa herufi kubwa bila nafasi: "l1 of" -> "L1OF" */
+export const normGrade = (g: string) => g.toUpperCase().replace(/[\s.\-_/]+/g, '');
+
+async function priceListOf(tx: typeof db | Tx, amcosId: string, seasonId: string) {
+  const rows = await tx.select({ grade: GP.grade, priceUsd: GP.priceUsd }).from(GP).where(and(eq(GP.amcosId, amcosId), eq(GP.seasonId, seasonId)));
+  return new Map(rows.map((r) => [r.grade, D(r.priceUsd)]));
+}
+
+salesRouter.get('/grade-prices', requireAmcosPerm('sales.read'), ah(async (req, res) => {
+  const { seasonId } = z.object({ seasonId: z.string().uuid().optional() }).parse(req.query);
+  const amcosId = await readAmcosId(req);
+  const s = await season(seasonId);
+  const rows = await db.select({ gp: GP, by: schema.users.fullName }).from(GP).leftJoin(schema.users, eq(schema.users.id, GP.updatedById))
+    .where(and(eq(GP.amcosId, amcosId), eq(GP.seasonId, s.id))).orderBy(asc(GP.sortOrder), asc(GP.grade));
+  const last = rows.reduce<(typeof rows)[number] | null>((a, r) => (!a || r.gp.updatedAt > a.gp.updatedAt ? r : a), null);
+  const used = await db.select({ n: sql<number>`count(*)::int` }).from(BL).innerJoin(MK, eq(MK.id, BL.marketId))
+    .where(and(eq(BL.amcosId, amcosId), eq(MK.seasonId, s.id), sql`${BL.listPriceUsd} is not null`));
+  res.json({
+    season: { id: s.id, name: s.name, status: s.status },
+    prices: rows.map((r) => ({ grade: r.gp.grade, priceUsd: r.gp.priceUsd })),
+    count: rows.length, average: rows.length ? rows.reduce((t, r) => t.plus(r.gp.priceUsd), D(0)).div(rows.length).toFixed(3) : null,
+    updatedAt: last?.gp.updatedAt ?? null, updatedBy: last?.by ?? null, balesPriced: used[0]?.n ?? 0,
+  });
+}));
+
+/** Mhasibu anaingiza / anasasisha orodha nzima ya msimu. Mabelo yaliyokwisha andikwa yanabaki na bei yao. */
+salesRouter.put('/grade-prices', requireAmcosPerm('sales.manage'), ah(async (req, res) => {
+  const body = z.object({
+    seasonId: z.string().uuid().optional(),
+    prices: z.array(z.object({ grade: z.string().trim().min(1).max(12), priceUsd: decimalSchema({ min: 0.001 }) })).max(300),
+  }).parse(req.body);
+  const amcosId = await resolveWriteAmcosId(req);
+  const s = await season(body.seasonId);
+  if (s.status === 'CLOSED') throw badRequest('Msimu umefungwa');
+  const list = body.prices.map((p) => ({ grade: normGrade(p.grade), priceUsd: D(p.priceUsd) }));
+  for (const p of list) {
+    if (!/^[A-Z0-9]{1,8}$/.test(p.grade)) throw badRequest(`Daraja "${p.grade}" si sahihi — tumia herufi na namba tu (mf. L1OF)`);
+    if (p.priceUsd.gt(SALE_LIMITS.price.max)) throw badRequest(`${p.grade}: bei $${p.priceUsd.toFixed()} kwa kilo si halisi — weka bei kwa DOLA kwa kilo (mf. 2.124)`);
+  }
+  const dup = list.find((p, i) => list.findIndex((q) => q.grade === p.grade) !== i);
+  if (dup) throw badRequest(`Daraja ${dup.grade} limerudiwa kwenye orodha`);
+  const out = await db.transaction(async (tx) => {
+    const before = await tx.select({ grade: GP.grade, priceUsd: GP.priceUsd }).from(GP).where(and(eq(GP.amcosId, amcosId), eq(GP.seasonId, s.id)));
+    const keep = list.map((p) => p.grade);
+    await tx.delete(GP).where(and(eq(GP.amcosId, amcosId), eq(GP.seasonId, s.id), keep.length ? sql`${GP.grade} not in (${sql.join(keep.map((g) => sql`${g}`), sql`, `)})` : undefined));
+    for (const [i, p] of list.entries()) {
+      const prev = before.find((b) => b.grade === p.grade);
+      const moved = !prev || !D(prev.priceUsd).eq(p.priceUsd);
+      await tx.insert(GP).values({ amcosId, seasonId: s.id, grade: p.grade, priceUsd: p.priceUsd.toFixed(4), sortOrder: i, updatedById: req.auth!.userId })
+        .onConflictDoUpdate({ target: [GP.amcosId, GP.seasonId, GP.grade], set: { priceUsd: p.priceUsd.toFixed(4), sortOrder: i, ...(moved ? { updatedById: req.auth!.userId, updatedAt: new Date() } : {}) } });
+    }
+    const was = new Map(before.map((b) => [b.grade, b.priceUsd]));
+    const changed = list.filter((p) => !was.has(p.grade) || !D(was.get(p.grade)!).eq(p.priceUsd)).map((p) => ({ grade: p.grade, from: was.get(p.grade) ?? null, to: p.priceUsd.toFixed(4) }));
+    const removed = before.filter((b) => !keep.includes(b.grade)).map((b) => b.grade);
+    await audit(tx, req, { action: 'GRADE_PRICES_SET', entity: 'GradePrices', entityId: s.id, amcosId, before: { count: before.length }, after: { count: list.length, changed, removed } });
+    return { count: list.length, changed: changed.length, removed: removed.length };
+  });
+  res.json(out);
+}));
+
 // ------------------------------ MABELO ------------------------------
 const baleRow = z.object({
   memberId: z.string().uuid().optional(),
@@ -230,7 +292,9 @@ const baleRow = z.object({
   grossKg: decimalSchema({ min: 0.01 }),
   netKg: decimalSchema({ min: 0 }).nullable().optional(),
   grade: z.string().trim().max(20).nullable().optional(),
+  // Orodha ya bei ya msimu ikiwepo: bei inatoka kwenye daraja; bei ya juu zaidi inahitaji sababu, ya chini inakataliwa
   priceUsd: decimalSchema({ min: 0 }).nullable().optional(),
+  priceNote: z.string().trim().max(200).nullable().optional(),
   rejected: z.boolean().optional(),
   rejectReason: z.string().trim().nullable().optional(),
 });
@@ -249,16 +313,32 @@ salesRouter.post('/markets/:id/bales', requireAmcosPerm('sales.manage'), ah(asyn
     const byNo = new Map(members.map((x) => [x.memberNo.toUpperCase(), x]));
     const taken = await tx.select({ baleNo: BL.baleNo }).from(BL).where(and(eq(BL.amcosId, m.amcosId), inArray(sql`upper(${BL.baleNo})`, nos)));
     if (taken.length) throw badRequest(`Mabelo haya tayari yamesajiliwa: ${taken.map((t) => t.baleNo).join(', ')}`);
+    const priceList = await priceListOf(tx, m.amcosId, m.seasonId);
     const values = bales.map((b, i) => {
       const mem = b.memberId ? byId.get(b.memberId) : b.memberNo ? byNo.get(b.memberNo.toUpperCase()) : undefined;
       if (!mem) throw new AppError(400, 'MEMBER_NOT_FOUND', `Mstari ${i + 1}: mkulima hajapatikana (${b.memberNo ?? b.memberId ?? '-'})`);
       if (mem.status !== 'ACTIVE') throw badRequest(`Mstari ${i + 1}: ${mem.firstName} ${mem.lastName} hayuko hai (ACTIVE)`);
-      if (!b.rejected && (b.priceUsd === null || b.priceUsd === undefined)) throw badRequest(`Mstari ${i + 1}: weka bei (USD kwa kilo) au weka belo kama limekataliwa`);
-      const bp = baleProblem(b); if (bp) throw new AppError(400, 'BALE_UNREALISTIC', `Mstari ${i + 1} (${b.baleNo}): ${bp}`);
+      const grade = b.grade ? normGrade(b.grade) : null;
+      let price = b.priceUsd ?? null, listPrice: Decimal | null = null, note: string | null = null;
+      if (!b.rejected && priceList.size) {
+        // Bei inatoka kwenye orodha ya madaraja ya msimu
+        if (!grade) throw badRequest(`Mstari ${i + 1} (${b.baleNo}): weka daraja la belo`);
+        listPrice = priceList.get(grade) ?? null;
+        if (!listPrice) throw new AppError(400, 'UNKNOWN_GRADE', `Mstari ${i + 1} (${b.baleNo}): daraja ${grade} halipo kwenye orodha ya bei ya msimu huu`);
+        if (price === null || price === undefined || price === '') price = listPrice.toFixed(4);
+        else if (D(price).lt(listPrice)) throw badRequest(`Mstari ${i + 1} (${b.baleNo}): bei $${D(price).toFixed()} iko chini ya bei ya daraja ${grade} ($${listPrice.toFixed()})`);
+        else if (D(price).gt(listPrice)) {
+          if (!b.priceNote || b.priceNote.length < 3) throw badRequest(`Mstari ${i + 1} (${b.baleNo}): bei $${D(price).toFixed()} iko juu ya bei ya daraja ${grade} ($${listPrice.toFixed()}) — eleza sababu`);
+          note = b.priceNote;
+        }
+      }
+      if (!b.rejected && (price === null || price === undefined)) throw badRequest(`Mstari ${i + 1}: weka bei (USD kwa kilo) au weka belo kama limekataliwa`);
+      const bp = baleProblem({ ...b, priceUsd: price }); if (bp) throw new AppError(400, 'BALE_UNREALISTIC', `Mstari ${i + 1} (${b.baleNo}): ${bp}`);
       const kg = D(b.netKg ?? b.grossKg);
       return {
         amcosId: m.amcosId, marketId: m.id, memberId: mem.id, baleNo: b.baleNo.toUpperCase(), grossKg: b.grossKg, netKg: b.netKg ?? null,
-        grade: b.grade ? b.grade.toUpperCase() : null, priceUsd: b.rejected ? null : b.priceUsd!, valueUsd: b.rejected ? null : fmt2(kg.times(b.priceUsd!)),
+        grade, priceUsd: b.rejected ? null : price!, valueUsd: b.rejected ? null : fmt2(kg.times(price!)),
+        listPriceUsd: b.rejected || !listPrice ? null : listPrice.toFixed(4), priceNote: b.rejected ? null : note,
         status: (b.rejected ? 'REJECTED' : 'SOLD') as 'REJECTED' | 'SOLD', rejectReason: b.rejected ? (b.rejectReason ?? 'Limekataliwa') : null, createdById: req.auth!.userId,
       };
     });

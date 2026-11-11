@@ -1066,3 +1066,39 @@ test('Mkulima: hali ya ndoa (ameoa / ameolewa / hajaoa) kwenye usajili, kubadili
   assert.equal(rows[0].ok, true); assert.ok(!rows[1].warnings.some((w: string) => /Hali ya ndoa/.test(w)), 'ameolewa inaeleweka');
   assert.ok(rows[2].warnings.some((w: string) => /Hali ya ndoa/.test(w)), 'Isiyoeleweka inaachwa wazi kwa tahadhari');
 });
+
+// v0.24 -----------------------------------------------------------------
+test('Bei za madaraja ya msimu (TTB): orodha ya chama, belo kwa daraja -> bei inajiweka, chini inakataliwa, juu inahitaji sababu', async () => {
+  const F = await newMember('Daraja');
+  assert.equal((await call('PUT', '/api/v1/sales/grade-prices', storekeeper, { prices: [{ grade: 'L1OF', priceUsd: '3.16' }] })).status, 403);
+  assert.equal((await call('PUT', '/api/v1/sales/grade-prices', accountant, { prices: [{ grade: 'L1OF', priceUsd: '3160' }] })).status, 400, 'Bei ya shilingi inakataliwa');
+  assert.equal((await call('PUT', '/api/v1/sales/grade-prices', accountant, { prices: [{ grade: 'L1OF', priceUsd: '3.16' }, { grade: 'l1 of', priceUsd: '3.1' }] })).status, 400, 'Daraja limerudiwa');
+  const put = await call('PUT', '/api/v1/sales/grade-prices', accountant, { prices: [{ grade: 'l1 of', priceUsd: '3.160' }, { grade: 'X2L', priceUsd: '1.816' }, { grade: 'C3O', priceUsd: '1.571' }] });
+  assert.equal(put.status, 200, JSON.stringify(put.body)); assert.equal(put.body.count, 3);
+  const gp = (await call('GET', '/api/v1/sales/grade-prices', manager)).body;
+  assert.equal(gp.count, 3); assert.ok(gp.prices.some((p: any) => p.grade === 'L1OF' && p.priceUsd === '3.1600'));
+  assert.equal(gp.average, '2.182');
+
+  const mk = (await call('POST', '/api/v1/sales/markets', accountant, { marketDate: today, buyerName: 'Alliance One', exchangeRate: '2500' })).body.market;
+  const post = (bales: any[]) => call('POST', `/api/v1/sales/markets/${mk.id}/bales`, accountant, { bales });
+  assert.equal((await post([{ memberId: F.id, baleNo: 'GP0-' + RUN, grossKg: '50' }])).status, 400, 'Daraja linahitajika');
+  const unk = await post([{ memberId: F.id, baleNo: 'GP0-' + RUN, grossKg: '50', grade: 'X9Z' }]);
+  assert.equal(unk.status, 400); assert.equal(unk.body.error.code, 'UNKNOWN_GRADE');
+  assert.equal((await post([{ memberId: F.id, baleNo: 'GP0-' + RUN, grossKg: '50', grade: 'X2L', priceUsd: '1.5' }])).status, 400, 'Chini ya bei ya daraja');
+  assert.equal((await post([{ memberId: F.id, baleNo: 'GP0-' + RUN, grossKg: '50', grade: 'X2L', priceUsd: '1.9' }])).status, 400, 'Juu bila sababu');
+  const ok = await post([
+    { memberId: F.id, baleNo: 'GP1-' + RUN, grossKg: '100', grade: 'l1of' },
+    { memberId: F.id, baleNo: 'GP2-' + RUN, grossKg: '50', grade: 'X2L', priceUsd: '1.9', priceNote: 'Mnunuzi ameongeza bei' },
+    { memberId: F.id, baleNo: 'GP3-' + RUN, grossKg: '40', rejected: true, rejectReason: 'Unyevu' },
+  ]);
+  assert.equal(ok.status, 201, JSON.stringify(ok.body));
+  const g1 = ok.body.bales.find((b: any) => b.baleNo.startsWith('GP1-'));
+  assert.equal(g1.grade, 'L1OF'); assert.equal(Number(g1.priceUsd), 3.16); assert.equal(g1.valueUsd, '316.00'); assert.equal(Number(g1.listPriceUsd), 3.16);
+  const g2 = ok.body.bales.find((b: any) => b.baleNo.startsWith('GP2-'));
+  assert.equal(Number(g2.priceUsd), 1.9); assert.equal(Number(g2.listPriceUsd), 1.816); assert.equal(g2.priceNote, 'Mnunuzi ameongeza bei');
+  // Orodha ikibadilika, mabelo yaliyokwisha andikwa hayabadiliki
+  assert.equal((await call('PUT', '/api/v1/sales/grade-prices', accountant, { prices: [{ grade: 'L1OF', priceUsd: '3.2' }, { grade: 'X2L', priceUsd: '1.816' }] })).status, 200);
+  const det = (await call('GET', `/api/v1/sales/markets/${mk.id}`, accountant)).body;
+  assert.equal(Number(det.bales.find((b: any) => b.baleNo.startsWith('GP1-')).priceUsd), 3.16);
+  assert.equal((await call('GET', '/api/v1/sales/grade-prices', accountant)).body.count, 2, 'C3O imeondolewa');
+});

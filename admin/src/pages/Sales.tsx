@@ -12,13 +12,14 @@ import { date, dateTime, num, phone, tsh } from '../lib/format';
 import { Alert, Badge, Button, Empty, Loading, Modal, PageHead, SelectField, TextField } from '../components/ui';
 import { Kpi, Section, Tabs } from '../components/owner-ui';
 import { Amt, DocHead, PrintButton, Signatures, today } from './acc-common';
+import { TTB_2026_27, TTB_2026_27_LABEL } from '../lib/ttb-grades';
 
 const usd = (v: string | number) => `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const METHOD: Record<string, string> = { MOBILE_MONEY: 'Simu', BANK: 'Benki', CASH: 'Taslimu' };
 const SETTLE: Record<string, string> = { DRAFT: 'Inasubiri idhini', APPROVED: 'Imeidhinishwa — haijalipwa', PAID: 'Imelipwa', CANCELLED: 'Imefutwa' };
 
 interface Market {
-  id: string; marketNo: string; marketDate: string; location: string | null; buyerName: string | null; exchangeRate: string | null; status: string; notes: string | null; buyerDueDate?: string | null;
+  id: string; seasonId?: string; marketNo: string; marketDate: string; location: string | null; buyerName: string | null; exchangeRate: string | null; status: string; notes: string | null; buyerDueDate?: string | null;
   bales: number; rejected: number; farmers: number; kg: string; usd: string; settlement: string | null; grossTzs?: string; netTzs?: string; paid?: string; approvalId: string | null;
 }
 interface Limits { rate: { min: number; max: number; warnMin: number; warnMax: number }; price: { max: number; warn: number }; kg: { max: number; warn: number } }
@@ -49,7 +50,7 @@ interface Rule { id: string; name: string; code: string; basis: string; basisLab
 export function Sales() {
   const t = useT();
   const { may } = useAuth();
-  const [tab, setTab] = useState<'markets' | 'buyers' | 'rules'>(() => (new URLSearchParams(window.location.search).get('tab') === 'buyers' ? 'buyers' : 'markets'));
+  const [tab, setTab] = useState<'markets' | 'buyers' | 'rules' | 'grades'>(() => { const q = new URLSearchParams(window.location.search).get('tab'); return q === 'buyers' || q === 'grades' ? q : 'markets'; });
   const sum = useFetch<{ season: { name: string }; pending: { markets: number; open: number; waiting: number; bales: number; kg: string; usd: string; tzs: string }; farmers: number; kg: string; grossTzs: string; deductions: string; netTzs: string; paid: string; unpaid: string; deductionsByRule: { name: string; amount: string }[] }>('/sales/summary');
   return (
     <>
@@ -72,7 +73,8 @@ export function Sales() {
           <Kpi tone={Number(sum.data.unpaid) > 0 ? 'gold' : undefined} label="Bado hawajalipwa" value={tsh(sum.data.unpaid)} hint={`Wamelipwa ${tsh(sum.data.paid)}`} />
         </div>
       )}
-      <Tabs value={tab} onChange={setTab} items={[['markets', 'Masoko'], ['buyers', 'Malipo ya mnunuzi'], ['rules', 'Kanuni za makato']]} />
+      <Tabs value={tab} onChange={setTab} items={[['markets', 'Masoko'], ['grades', 'Bei za madaraja'], ['buyers', 'Malipo ya mnunuzi'], ['rules', 'Kanuni za makato']]} />
+      {tab === 'grades' && <GradePrices canManage={may('sales.manage')} />}
       {tab === 'buyers' && <Buyers canRecord={may('finance.record')} />}
       {tab === 'markets' && <Markets canManage={may('sales.manage')} />}
       {tab === 'rules' && <Rules canManage={may('sales.manage')} byRule={sum.data?.deductionsByRule ?? []} />}
@@ -225,7 +227,7 @@ function RuleForm({ rule, onClose, onDone }: { rule: Rule | null; onClose: () =>
 }
 
 // ------------------------------ SOKO MOJA ------------------------------
-interface Bale { id: string; baleNo: string; memberId: string; memberNo: string; memberName: string; grossKg: string; netKg: string | null; grade: string | null; priceUsd: string | null; valueUsd: string | null; status: string; rejectReason: string | null }
+interface Bale { id: string; baleNo: string; memberId: string; memberNo: string; memberName: string; grossKg: string; netKg: string | null; grade: string | null; priceUsd: string | null; listPriceUsd?: string | null; priceNote?: string | null; valueUsd: string | null; status: string; rejectReason: string | null }
 interface Settlement { id: string; settlementNo: string; memberId: string; memberNo: string; memberName: string; totalKg: string; grossUsd: string; grossTzs: string; totalDeductions: string; netTzs: string; status: string; paid: string; lines: { id: string; description: string; amount: string }[] }
 interface Batch { id: string; batchNo: string; totalAmount: string; status: string; payments: number; paid: string; createdAt: string }
 interface PreviewRow { memberId: string; memberNo: string; name: string; bales: number; groupName: string | null; coveredByGroup: string; totalKg: string; grossUsd: string; grossTzs: string; deductions: { code: string; description: string; amount: string; kind?: string }[]; totalDeductions: string; netTzs: string; debtBefore: string }
@@ -283,7 +285,7 @@ export function MarketDetail() {
         <Kpi label="Wastani wa bei" value={Number(m.kg) ? `${usd(Number(m.usd) / Number(m.kg))}/kg` : '—'} />
       </div>
       <Tabs value={tab} onChange={setTab} items={[['bales', `Mabelo (${data.bales.length})`], ['settle', 'Hesabu za wakulima'], ['pay', `Malipo (${data.batches.length})`]]} />
-      {tab === 'bales' && <Bales marketId={m.id} rate={m.exchangeRate} limits={L} bales={data.bales} editable={manage && editable} onChanged={(msg) => { setOk(msg); reload(); }} />}
+      {tab === 'bales' && <Bales marketId={m.id} seasonId={m.seasonId} rate={m.exchangeRate} limits={L} bales={data.bales} editable={manage && editable} onChanged={(msg) => { setOk(msg); reload(); }} />}
       {tab === 'settle' && (data.settlements.length ? (
         <Section pad={false} title="Hesabu za wakulima (settlement)" actions={<PrintButton />}>
           <div className="print-doc">
@@ -339,11 +341,28 @@ export function MarketDetail() {
   );
 }
 
-interface Row { memberNo: string; baleNo: string; grossKg: string; netKg: string; grade: string; priceUsd: string; rejected: boolean }
-const emptyRow = (): Row => ({ memberNo: '', baleNo: '', grossKg: '', netKg: '', grade: '', priceUsd: '', rejected: false });
+interface Row { memberNo: string; baleNo: string; grossKg: string; netKg: string; grade: string; priceUsd: string; priceNote: string; rejected: boolean }
+const emptyRow = (): Row => ({ memberNo: '', baleNo: '', grossKg: '', netKg: '', grade: '', priceUsd: '', priceNote: '', rejected: false });
+const normGrade = (g: string) => g.toUpperCase().replace(/[\s.\-_/]+/g, '');
+interface GradeList { season: { id: string; name: string; status: string }; prices: { grade: string; priceUsd: string }[]; count: number; average: string | null; updatedAt: string | null; updatedBy: string | null; balesPriced: number }
 
-function Bales({ marketId, rate, limits: L, bales, editable, onChanged }: { marketId: string; rate: string | null; limits: Limits; bales: Bale[]; editable: boolean; onChanged: (m: string) => void }) {
+function Bales({ marketId, seasonId, rate, limits: L, bales, editable, onChanged }: { marketId: string; seasonId?: string; rate: string | null; limits: Limits; bales: Bale[]; editable: boolean; onChanged: (m: string) => void }) {
   const t = useT();
+  // Orodha ya bei za madaraja ya msimu: ikiwepo, daraja linaweka bei (ya juu zaidi inahitaji sababu; ya chini haikubaliki)
+  const gl = useFetch<GradeList>('/sales/grade-prices', seasonId ? { seasonId } : undefined);
+  const list = new Map((gl.data?.prices ?? []).map((p) => [p.grade, Number(p.priceUsd)]));
+  const hasList = list.size > 0;
+  const listPrice = (r: Row) => (hasList && r.grade ? list.get(normGrade(r.grade)) ?? null : null);
+  const priceOf = (r: Row) => (r.priceUsd !== '' ? r.priceUsd : listPrice(r) != null ? String(listPrice(r)) : '');
+  const gradeCheck = (r: Row): { level: 'error' | 'warn' | null; text: string | null } => {
+    if (!hasList || r.rejected || !(r.memberNo.trim() || r.baleNo.trim())) return { level: null, text: null };
+    if (!r.grade.trim()) return { level: 'error', text: 'Weka daraja — bei inatoka kwenye orodha ya bei za madaraja' };
+    const lp = listPrice(r);
+    if (lp == null) return { level: 'error', text: `Daraja ${normGrade(r.grade)} halipo kwenye orodha ya bei ya msimu` };
+    if (r.priceUsd !== '' && Number(r.priceUsd) < lp) return { level: 'error', text: `Bei $${num(r.priceUsd)} iko chini ya bei ya daraja ($${num(lp)})` };
+    if (r.priceUsd !== '' && Number(r.priceUsd) > lp && r.priceNote.trim().length < 3) return { level: 'error', text: `Bei iko juu ya bei ya daraja ($${num(lp)}) — eleza sababu` };
+    return { level: null, text: null };
+  };
   const fx = rateCheck(rate, L).level === 'error' ? 0 : Number(rate ?? 0);
   const tzsOf = (kg: string, price: string) => (fx && Number(kg) > 0 && price !== '' ? Number(kg) * Number(price) * fx : null);
   const [rows, setRows] = useState<Row[]>([emptyRow(), emptyRow(), emptyRow()]);
@@ -352,20 +371,20 @@ function Bales({ marketId, rate, limits: L, bales, editable, onChanged }: { mark
   const { busy, error, run } = useAction();
   const set = (i: number, p: Partial<Row>) => setRows(rows.map((r, k) => (k === i ? { ...r, ...p } : r)));
   const filled = rows.filter((r) => r.memberNo.trim() || r.baleNo.trim());
-  const checks = rows.map((r) => baleCheck(r, L));
+  const checks = rows.map((r) => { const g = gradeCheck(r); return g.level ? g : baleCheck({ ...r, priceUsd: priceOf(r) }, L); });
   const errors = rows.filter((r, i) => (r.memberNo.trim() || r.baleNo.trim()) && checks[i].level === 'error').length;
   const warns = rows.filter((r, i) => (r.memberNo.trim() || r.baleNo.trim()) && checks[i].level === 'warn').length;
-  const valid = errors === 0 && filled.length > 0 && filled.every((r) => r.memberNo.trim() && r.baleNo.trim() && Number(r.grossKg) > 0 && (r.rejected || Number(r.priceUsd) >= 0 && r.priceUsd !== ''));
+  const valid = errors === 0 && filled.length > 0 && filled.every((r) => r.memberNo.trim() && r.baleNo.trim() && Number(r.grossKg) > 0 && (r.rejected || Number(priceOf(r)) >= 0 && priceOf(r) !== ''));
   const save = async () => {
     const r = await run(() => api<{ bales: unknown[] }>(`/sales/markets/${marketId}/bales`, { method: 'POST', body: { bales: filled.map((x) => ({
       memberNo: x.memberNo.trim(), baleNo: x.baleNo.trim(), grossKg: x.grossKg, netKg: x.netKg || null, grade: x.grade || null,
-      priceUsd: x.rejected ? null : x.priceUsd, rejected: x.rejected || undefined,
+      priceUsd: x.rejected ? null : (x.priceUsd || (hasList ? null : x.priceUsd)), priceNote: x.priceNote.trim() || null, rejected: x.rejected || undefined,
     })) } }));
     if (r) { setRows([emptyRow(), emptyRow(), emptyRow()]); onChanged(`Mabelo ${r.bales.length} yamehifadhiwa`); }
   };
   const applyPaste = () => {
     const parsed = pasteText.split(/\r?\n/).map((l) => l.split(/\t|;|,/).map((c) => c.trim())).filter((c) => c.length >= 3 && c[0])
-      .map(([memberNo, baleNo, grossKg, grade = '', priceUsd = '']) => ({ ...emptyRow(), memberNo, baleNo, grossKg, grade, priceUsd }));
+      .map(([memberNo, baleNo, grossKg, grade = '', priceUsd = '']) => ({ ...emptyRow(), memberNo, baleNo, grossKg, grade: normGrade(grade), priceUsd: hasList && priceUsd && list.get(normGrade(grade)) === Number(priceUsd) ? '' : priceUsd }));
     if (parsed.length) setRows(parsed);
     setPaste(false); setPasteText('');
   };
@@ -375,6 +394,10 @@ function Bales({ marketId, rate, limits: L, bales, editable, onChanged }: { mark
       {editable && (
         <Section title="Ingiza mabelo" actions={<Button size="sm" variant="secondary" onClick={() => setPaste(true)}>{t('Bandika kutoka Excel')}</Button>}>
           <Alert>{error}</Alert>
+          {gl.data && (hasList
+            ? <p className="muted" style={{ margin: '0 0 10px' }}>{t('Bei inatoka kwenye orodha ya bei za madaraja')} ({gl.data.count} · {t('msimu')} {gl.data.season.name}). {t('Andika daraja tu; bei ya juu zaidi inahitaji sababu, ya chini haikubaliki.')}</p>
+            : <Alert kind="warn">{t('Orodha ya bei za madaraja ya msimu huu haijawekwa — bei inaandikwa kwa mkono.')} <Link to="/sales?tab=grades">{t('Weka bei za madaraja')}</Link></Alert>)}
+          <datalist id="grade-list">{[...list.keys()].map((g) => <option key={g} value={g}>{`$${list.get(g)}`}</option>)}</datalist>
           <div className="table-wrap"><table className="table bale-entry">
             <thead><tr><th>{t('Namba ya mkulima')}</th><th>{t('Namba ya belo / tiketi')}</th><th>{t('Kilo')}</th><th>{t('Kilo halisi')}</th><th>{t('Daraja')}</th><th>{t('Bei USD/kg')}</th><th className="num">Thamani (TZS)</th><th>{t('Limekataliwa')}</th><th /></tr></thead>
             <tbody>{rows.map((r, i) => (<Fragment key={i}>
@@ -383,12 +406,15 @@ function Bales({ marketId, rate, limits: L, bales, editable, onChanged }: { mark
                 <td><input className="input" value={r.baleNo} onChange={(e) => set(i, { baleNo: e.target.value })} aria-label={`Namba ya belo ${i + 1}`} /></td>
                 <td><input className="input" type="number" min="0" value={r.grossKg} onChange={(e) => set(i, { grossKg: e.target.value })} aria-label={`Kilo ${i + 1}`} /></td>
                 <td><input className="input" type="number" min="0" value={r.netKg} onChange={(e) => set(i, { netKg: e.target.value })} aria-label={`Kilo halisi ${i + 1}`} placeholder="hiari" /></td>
-                <td><input className="input" value={r.grade} onChange={(e) => set(i, { grade: e.target.value.toUpperCase() })} aria-label={`Daraja ${i + 1}`} /></td>
-                <td><input className="input" type="number" min="0" step="0.0001" disabled={r.rejected} value={r.priceUsd} onChange={(e) => set(i, { priceUsd: e.target.value })} aria-label={`Bei ${i + 1}`} /></td>
-                <td className="num bale-tzs">{!r.rejected && tzsOf(r.netKg || r.grossKg, r.priceUsd) !== null ? tsh(tzsOf(r.netKg || r.grossKg, r.priceUsd)!) : '—'}</td>
+                <td><input className="input" list="grade-list" value={r.grade} onChange={(e) => set(i, { grade: e.target.value.toUpperCase() })} aria-label={`Daraja ${i + 1}`} /></td>
+                <td><input className="input" type="number" min="0" step="0.0001" disabled={r.rejected} value={r.priceUsd} placeholder={listPrice(r) != null ? String(listPrice(r)) : undefined} onChange={(e) => set(i, { priceUsd: e.target.value })} aria-label={`Bei ${i + 1}`} />
+                  {!r.rejected && listPrice(r) != null && <div className="muted" style={{ fontSize: 11 }}>{t('daraja')}: ${num(listPrice(r)!)}</div>}</td>
+                <td className="num bale-tzs">{!r.rejected && tzsOf(r.netKg || r.grossKg, priceOf(r)) !== null ? tsh(tzsOf(r.netKg || r.grossKg, priceOf(r))!) : '—'}</td>
                 <td style={{ textAlign: 'center' }}><input type="checkbox" checked={r.rejected} onChange={(e) => set(i, { rejected: e.target.checked })} aria-label={`Limekataliwa ${i + 1}`} /></td>
                 <td>{rows.length > 1 && <Button size="sm" variant="ghost" aria-label="Ondoa" onClick={() => setRows(rows.filter((_, k) => k !== i))}>✕</Button>}</td>
               </tr>
+              {!r.rejected && listPrice(r) != null && r.priceUsd !== '' && Number(r.priceUsd) > listPrice(r)! && (
+                <tr className="row-msg"><td colSpan={9}><input className="input" value={r.priceNote} onChange={(e) => set(i, { priceNote: e.target.value })} placeholder={t('Sababu ya bei ya juu (mf. mnunuzi ameongeza bei)')} aria-label={`Sababu ya bei ${i + 1}`} /></td></tr>)}
               {checks[i].text && (r.memberNo.trim() || r.baleNo.trim() || r.grossKg || r.priceUsd) && <tr className={`row-msg row-${checks[i].level}`}><td colSpan={9}>⚠ {checks[i].text}</td></tr>}
             </Fragment>))}</tbody>
           </table></div>
@@ -409,7 +435,7 @@ function Bales({ marketId, rate, limits: L, bales, editable, onChanged }: { mark
                 <td><strong>{b.baleNo}</strong>{bc.text && <div className={`name-note ${bc.level === 'error' ? 'bad' : 'warn'}`} style={{ margin: '2px 0 0' }}>{bc.level === 'error' ? 'Si halisi: ' : ''}{bc.text}</div>}{b.status === 'REJECTED' && <div><span className="badge badge-bad">{t('Limekataliwa')}</span> <span className="muted" style={{ fontSize: 12 }}>{b.rejectReason}</span></div>}</td>
                 <td>{b.memberName}<div className="muted" style={{ fontSize: 12 }}>{b.memberNo}</div></td>
                 <td className="num">{num(b.netKg ?? b.grossKg)}</td><td>{b.grade ?? '—'}</td>
-                <td className="num">{b.priceUsd ? usd(b.priceUsd) : '—'}</td><td className="num">{b.valueUsd ? usd(b.valueUsd) : '—'}</td>
+                <td className="num">{b.priceUsd ? (Number(b.priceUsd) % 0.01 ? `$${Number(b.priceUsd)}` : usd(b.priceUsd)) : '—'}{b.listPriceUsd && Number(b.priceUsd) > Number(b.listPriceUsd) && <div className="muted" style={{ fontSize: 11 }} title={b.priceNote ?? ''}>{t('daraja')} ${Number(b.listPriceUsd)} · {b.priceNote}</div>}</td><td className="num">{b.valueUsd ? usd(b.valueUsd) : '—'}</td>
                 <td className="num">{b.valueUsd && fx ? tsh(Number(b.valueUsd) * fx) : '—'}</td>
                 <td className="num">{editable && <Button size="sm" variant="ghost" onClick={async () => { if (await run(() => api(`/sales/bales/${b.id}`, { method: 'DELETE' }))) onChanged(`Belo ${b.baleNo} limeondolewa`); }}>{t('Ondoa')}</Button>}</td>
               </tr>
@@ -423,7 +449,7 @@ function Bales({ marketId, rate, limits: L, bales, editable, onChanged }: { mark
       </Section>
       {paste && (
         <Modal open title="Bandika mabelo kutoka Excel" onClose={() => setPaste(false)} footer={<><Button variant="secondary" onClick={() => setPaste(false)}>{t('Ghairi')}</Button><Button onClick={applyPaste}>{t('Weka kwenye fomu')}</Button></>}>
-          <p className="muted">{t('Nakili safu kutoka Excel kwa mpangilio huu:')} <strong>{t('Namba ya mkulima · Namba ya belo · Kilo · Daraja · Bei USD')}</strong></p>
+          <p className="muted">{t('Nakili safu kutoka Excel kwa mpangilio huu:')} <strong>{t('Namba ya mkulima · Namba ya belo · Kilo · Daraja · Bei USD')}</strong>{hasList ? ` — ${t('bei inaweza kuachwa wazi (inatoka kwenye daraja)')}` : ''}</p>
           <textarea className="textarea" rows={10} value={pasteText} onChange={(e) => setPasteText(e.target.value)} aria-label="Data ya mabelo" placeholder={'UHA-000001\tT-1001\t102.5\tL1F\t2.10'} />
         </Modal>
       )}
@@ -762,5 +788,114 @@ function BuyerPayment({ row, onClose, onDone }: { row: BuyerRow; onClose: () => 
         <TextField label="Kumbukumbu (namba ya malipo ya benki)" value={f.reference} onChange={(v) => setF({ ...f, reference: v })} />
       </div>
     </Modal>
+  );
+}
+
+// ------------------------------ BEI ZA MADARAJA (orodha ya TTB ya msimu) ------------------------------
+/** Kila msimu Halmashauri ya Tumbaku inatoa bei mpya ya kila daraja; Mhasibu anaiingiza hapa. */
+function GradePrices({ canManage }: { canManage: boolean }) {
+  const t = useT();
+  const { data, reload, error } = useFetch<GradeList>('/sales/grade-prices');
+  const [edit, setEdit] = useState(false);
+  const [rows, setRows] = useState<{ grade: string; priceUsd: string }[]>([]);
+  const [paste, setPaste] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+  const act = useAction();
+  if (error) return <Alert>{error}</Alert>;
+  if (!data) return <Loading />;
+  const start = (from: { grade: string; priceUsd: string }[]) => { setRows(from.map((r) => ({ grade: r.grade, priceUsd: String(Number(r.priceUsd)) }))); setEdit(true); setOk(null); };
+  const grades = rows.map((r) => normGrade(r.grade));
+  const rowProblem = (r: { grade: string; priceUsd: string }, i: number) => {
+    const g = normGrade(r.grade);
+    if (!g && !r.priceUsd) return null;
+    if (!/^[A-Z0-9]{1,8}$/.test(g)) return 'Daraja si sahihi';
+    if (grades.indexOf(g) !== i) return 'Limerudiwa';
+    if (!(Number(r.priceUsd) > 0)) return 'Weka bei';
+    if (Number(r.priceUsd) > 20) return 'Bei ya dola kwa kilo (mf. 2.124)';
+    return null;
+  };
+  const filled = rows.filter((r) => r.grade.trim() || r.priceUsd);
+  const bad = rows.some((r, i) => rowProblem(r, i));
+  const parsePaste = (text: string) => {
+    // Mstari mmoja kila daraja: "X1O 2.124" au "1  X1O  2.124" (kutoka Excel/karatasi)
+    const out: { grade: string; priceUsd: string }[] = [];
+    for (const line of text.split(/\r?\n/)) {
+      const cells = line.split(/[\t,;]|\s{1,}/).map((c) => c.trim()).filter(Boolean);
+      for (let k = 0; k < cells.length - 1; k++) {
+        const g = normGrade(cells[k]), p = cells[k + 1].replace(/^\$/, '');
+        if (/^[A-Z]{1,3}[0-9A-Z]{0,5}$/.test(g) && /[A-Z]/.test(g) && /^\d+(\.\d+)?$/.test(p)) { out.push({ grade: g, priceUsd: p }); k++; }
+      }
+    }
+    return out;
+  };
+  const save = async () => {
+    const r = await act.run(() => api<{ count: number; changed: number; removed: number }>('/sales/grade-prices', { method: 'PUT', body: { prices: filled.map((x) => ({ grade: normGrade(x.grade), priceUsd: x.priceUsd })) } }));
+    if (r) { setEdit(false); setOk(`Bei za madaraja ${r.count} zimehifadhiwa (${r.changed} zimebadilika${r.removed ? `, ${r.removed} zimeondolewa` : ''})`); reload(); }
+  };
+  const avg = filled.length ? filled.reduce((x, r) => x + Number(r.priceUsd || 0), 0) / filled.length : 0;
+  const cols = 3, per = Math.ceil(data.prices.length / cols);
+  return (
+    <div className="stack" style={{ marginTop: 16 }}>
+      <Alert kind="ok">{ok}</Alert>
+      <Alert>{act.error}</Alert>
+      {!edit && <>
+        <div className="grid grid-kpi no-print">
+          <Kpi tone="dark" label="Madaraja yenye bei" value={num(data.count)} hint={`Msimu ${data.season.name}`} />
+          <Kpi tone="gold" label="Wastani wa bei" value={data.average ? `$${data.average}/kg` : '—'} hint="Wastani wa madaraja (si wa uzani)" />
+          <Kpi label="Mabelo yaliyouzwa kwa orodha" value={num(data.balesPriced)} hint="Yanabaki na bei yao orodha ikibadilika" />
+          <Kpi label="Ilisasishwa" value={data.updatedAt ? date(data.updatedAt) : '—'} hint={data.updatedBy ?? undefined} />
+        </div>
+        {data.count === 0 ? (
+          <section className="card card-pad stack">
+            <Empty>{t('Bei za madaraja za msimu huu bado hazijawekwa. Mpaka ziwekwe, bei ya kila belo inaandikwa kwa mkono.')}</Empty>
+            {canManage && <div className="actions" style={{ justifyContent: 'center' }}>
+              <Button onClick={() => start(TTB_2026_27.map(([grade, priceUsd]) => ({ grade, priceUsd })))}>{t('Jaza orodha ya TTB 2026/2027')}</Button>
+              <Button variant="secondary" onClick={() => { start([]); setPaste(''); }}>{t('Bandika kutoka Excel / karatasi')}</Button>
+              <Button variant="secondary" onClick={() => start([{ grade: '', priceUsd: '' }])}>{t('Andika moja moja')}</Button>
+            </div>}
+          </section>
+        ) : (
+          <Section title={`Bei za madaraja — msimu ${data.season.name} (USD kwa kilo)`} actions={<>{canManage && <Button size="sm" onClick={() => start(data.prices)}>{t('Badilisha bei')}</Button>}<PrintButton /></>}>
+            <div className="print-doc">
+              <div className="print-only"><DocHead title="BEI ZA MADARAJA YA TUMBAKU" sub={`Msimu ${data.season.name} · USD kwa kilo`} /></div>
+              <div className="grade-cols">{Array.from({ length: cols }, (_, c) => data.prices.slice(c * per, (c + 1) * per)).map((part, c) => (
+                <table key={c} className="table fin-table grade-table"><thead><tr><th>S/N</th><th>{t('Daraja')}</th><th className="num">{t('Bei kwa kilo')}</th></tr></thead>
+                  <tbody>{part.map((p, k) => <tr key={p.grade}><td className="muted">{c * per + k + 1}</td><td><strong>{p.grade}</strong></td><td className="num">${Number(p.priceUsd).toFixed(3)}</td></tr>)}</tbody></table>
+              ))}</div>
+            </div>
+          </Section>
+        )}
+      </>}
+      {edit && (
+        <Section title={`Bei za madaraja — msimu ${data.season.name}`} actions={<>
+          <Button size="sm" variant="secondary" onClick={() => setPaste('')}>{t('Bandika kutoka Excel / karatasi')}</Button>
+          <Button size="sm" variant="secondary" onClick={() => { if (!rows.length || window.confirm(t('Kubadilisha orodha yote kwa ya TTB 2026/2027?'))) setRows(TTB_2026_27.map(([grade, priceUsd]) => ({ grade, priceUsd }))); }}>{t('Jaza ya TTB 2026/2027')}</Button>
+        </>}>
+          <Alert kind="warn">{t('Kagua kila bei dhidi ya karatasi rasmi ya Halmashauri ya Tumbaku kabla ya kuhifadhi.')} {rows.length === TTB_2026_27.length && rows.every((r, i) => r.grade === TTB_2026_27[i][0]) ? `(${TTB_2026_27_LABEL})` : ''} {data.balesPriced > 0 ? t('Mabelo yaliyokwisha andikwa hayabadiliki.') : ''}</Alert>
+          <div className="grade-cols">{Array.from({ length: 3 }, (_, c) => { const per3 = Math.ceil(rows.length / 3) || 1; return (
+            <table key={c} className="table grade-table"><thead><tr><th>S/N</th><th>{t('Daraja')}</th><th>{t('Bei (USD/kg)')}</th><th /></tr></thead>
+              <tbody>{rows.slice(c * per3, (c + 1) * per3).map((r, k) => { const i = c * per3 + k; const pr = rowProblem(r, i); return (
+                <tr key={i} className={pr ? 'row-error' : undefined}>
+                  <td className="muted">{i + 1}</td>
+                  <td><input className="input" value={r.grade} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, grade: e.target.value.toUpperCase() } : x)))} aria-label={`Daraja ${i + 1}`} style={{ maxWidth: 90 }} /></td>
+                  <td><input className="input" type="number" min="0" step="0.001" value={r.priceUsd} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, priceUsd: e.target.value } : x)))} aria-label={`Bei ${i + 1}`} style={{ maxWidth: 100 }} />{pr && <div className="money-neg" style={{ fontSize: 11 }}>{t(pr)}</div>}</td>
+                  <td><Button size="sm" variant="ghost" aria-label="Ondoa" onClick={() => setRows(rows.filter((_, j) => j !== i))}>✕</Button></td>
+                </tr>); })}</tbody></table>); })}</div>
+          <div className="actions" style={{ justifyContent: 'space-between', marginTop: 12 }}>
+            <div className="actions"><Button size="sm" variant="secondary" onClick={() => setRows([...rows, { grade: '', priceUsd: '' }])}>{t('+ Daraja')}</Button>
+              <span className="muted">{t('Madaraja')} {filled.length} · {t('wastani')} ${avg.toFixed(3)}</span></div>
+            <div className="actions"><Button variant="secondary" onClick={() => setEdit(false)}>{t('Ghairi')}</Button><Button busy={act.busy} disabled={bad || !filled.length} onClick={save}>{t('Hifadhi bei')}</Button></div>
+          </div>
+        </Section>
+      )}
+      {paste !== null && (
+        <Modal open title="Bandika bei za madaraja" onClose={() => setPaste(null)} footer={<><Button variant="secondary" onClick={() => setPaste(null)}>{t('Ghairi')}</Button>
+          <Button disabled={!parsePaste(paste).length} onClick={() => { const p = parsePaste(paste); setRows(p); setEdit(true); setPaste(null); }}>{t('Weka')} {parsePaste(paste).length || ''}</Button></>}>
+          <p className="muted">{t('Nakili kutoka Excel au andika daraja na bei kila mstari, mf.')} <strong>X1O 2.124</strong>. {t('Safu za S/N zinarukwa; mstari unaweza kuwa na madaraja kadhaa.')}</p>
+          <textarea className="textarea" rows={12} value={paste} onChange={(e) => setPaste(e.target.value)} aria-label="Bei za madaraja" placeholder={'1\tX1O\t2.124\n2\tX1L\t2.024\n…'} />
+          {paste && <p className="muted">{t('Yamesomwa')}: {parsePaste(paste).length}</p>}
+        </Modal>
+      )}
+    </div>
   );
 }

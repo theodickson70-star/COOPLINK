@@ -73,8 +73,9 @@ const GUIDES: Record<string, Partial<Record<Role, Guide>>> = {
     'Muamala uliokamilika haufutwi — unasahihishwa kwa ombi la kusahihisha.',
   ] } },
   sales: { '*': { title: 'Mauzo ya tumbaku', steps: [
+    'Kila msimu: weka bei za madaraja (tab "Bei za madaraja") kutoka orodha ya Halmashauri ya Tumbaku.',
     'Anza na kanuni za makato (ushuru, deni la pembejeo), kisha fungua soko.',
-    'Ingiza mabelo (au bandika kutoka Excel), hakiki hesabu, kisha wasilisha kwa Meneja.',
+    'Ingiza mabelo kwa daraja — bei inajiweka; hakiki hesabu, kisha wasilisha kwa Meneja.',
     'Baada ya idhini, andaa orodha ya malipo ya wakulima.',
     'Wanunuzi: ona deni la kila mnunuzi, tarehe ya kulipa, na chapisha barua ya madai.',
   ] } },

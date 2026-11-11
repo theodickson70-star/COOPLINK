@@ -454,6 +454,8 @@ export const bales = pgTable('bales', {
   netKg: numeric({ precision: 10, scale: 2 }),
   grade: text(),
   priceUsd: numeric({ precision: 10, scale: 4 }), // bei kwa kilo
+  listPriceUsd: numeric({ precision: 10, scale: 4 }), // bei ya daraja kwenye orodha ya msimu (TTB) siku ya kuandika
+  priceNote: text(),                                  // sababu ya bei ya juu kuliko orodha
   valueUsd: numeric({ precision: 14, scale: 2 }),
   status: baleStatusEnum().notNull().default('REGISTERED'),
   rejectReason: text(),
@@ -508,6 +510,22 @@ export const exchangeRates = pgTable('exchange_rates', {
 });
 
 // Kanuni za makato — zinawekwa na chama kwa kila msimu (si hard-coded)
+/**
+ * Bei za madaraja ya tumbaku za msimu (USD kwa kilo) — kila msimu Halmashauri ya Tumbaku (TTB) inatoa orodha mpya.
+ * Kila chama kinaingiza orodha yake; belo likiandikwa kwa daraja, bei inatoka hapa.
+ */
+export const gradePrices = pgTable('grade_prices', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  seasonId: uuid().notNull().references(() => seasons.id),
+  grade: text().notNull(),                                   // mf. L1OF, X2L, C3O
+  priceUsd: numeric({ precision: 10, scale: 4 }).notNull(),
+  sortOrder: integer().notNull().default(0),                 // mpangilio kama wa karatasi ya TTB (X, C, M, L, B)
+  updatedById: uuid(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex().on(t.amcosId, t.seasonId, t.grade)]);
+
 export const deductionRules = pgTable('deduction_rules', {
   id: id(),
   amcosId: uuid().notNull().references(() => amcos.id),
