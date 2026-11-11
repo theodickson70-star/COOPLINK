@@ -132,9 +132,10 @@ authRouter.post(
         const code = (e as AppError).code;
         // Namba iliyotumwa sekunde chache zilizopita bado inafanya kazi
         if (code === 'OTP_RESEND_WAIT') return res.json({ otpRequired: true, challenge: signSmsChallenge(user.id, user.tokenVersion), phoneMasked: maskedPhone(user.phone), resendIn: 60 });
-        // Owner asifungiwe nje kama mtoa huduma wa SMS ameshindwa (inarekodiwa)
-        if (!(user.role === 'SUPER_ADMIN' && code === 'OTP_SMS_FAILED')) throw e;
-        await logLogin(req, { userId: user.id, phone: user.phone, success: false, reason: 'LOGIN_OTP_SMS_FAILED_OWNER_BYPASS', suspicious: true });
+        // Mtoa huduma wa SMS akishindwa (salio, Sender ID, mtandao), watumishi wasifungiwe nje: nenosiri limeshathibitishwa,
+        // kuingia kunaendelea na tukio linarekodiwa kama la kutiliwa shaka (Owner analiona Security & Audit / SMS Center)
+        if (code !== 'OTP_SMS_FAILED') throw e;
+        await logLogin(req, { userId: user.id, phone: user.phone, success: false, reason: 'LOGIN_OTP_SMS_FAILED_BYPASS', suspicious: true });
       }
     }
     res.json(await completeLogin(req, user));

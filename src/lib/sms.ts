@@ -29,7 +29,7 @@ export function smsProvider(): Provider | null {
 }
 export const smsConfigured = () => smsProvider() !== null;
 const RODSMS_BASE = () => (process.env.RODSMS_BASE_URL ?? 'https://rodsms.com/api/v1').replace(/\/$/, '');
-export const senderId = () => (smsProvider() === 'RODSMS' ? process.env.RODSMS_SENDER_ID : process.env.AT_SENDER_ID) ?? null;
+export const senderId = () => (smsProvider() === 'RODSMS' ? process.env.RODSMS_SENDER_ID?.trim() || (senderCache?.v ? `${senderCache.v} (auto)` : null) : process.env.AT_SENDER_ID) ?? null;
 
 /** Ujumbe wa mwisho uliotumwa kwa DRY (kwa majaribio ya OTP tu — haujawahi kutumika production) */
 export const dryOutbox: { phone: string; text: string; at: number }[] = [];
@@ -44,10 +44,35 @@ async function rodsms(path: string, init: { method: 'GET' | 'POST'; body?: unkno
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   return { res, data };
 }
+/** Kosa kamili la mtoa huduma: ujumbe + makosa yote ya fields (mf. Laravel: { message, errors: { field: [..] } }) */
 const errText = (d: Record<string, unknown>, status: number) => {
   const e = d.error as { code?: string; message?: string } | string | undefined;
-  return (typeof e === 'string' ? e : e?.message ?? e?.code) ?? (d.message as string | undefined) ?? `HTTP ${status}`;
+  const head = (typeof e === 'string' ? e : e?.message ?? e?.code) ?? (d.message as string | undefined) ?? `HTTP ${status}`;
+  const errs = d.errors && typeof d.errors === 'object'
+    ? Object.entries(d.errors as Record<string, unknown>).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(' ') : String(v)}`).join('; ')
+    : '';
+  return (errs ? `${errs} (HTTP ${status})` : `${head} (HTTP ${status})`).slice(0, 400);
 };
+
+/** Sender ID: RODSMS_SENDER_ID, au ya kwanza iliyoidhinishwa kwenye akaunti ya RodSMS (inakumbukwa saa 1) */
+let senderCache: { v: string | null; at: number } | null = null;
+const senderOf = (x: unknown) => typeof x === 'string' ? x : String((x as Record<string, unknown>)?.sender_id ?? (x as Record<string, unknown>)?.name ?? (x as Record<string, unknown>)?.sender ?? '');
+async function rodsmsSender(): Promise<string | null> {
+  const env = process.env.RODSMS_SENDER_ID?.trim();
+  if (env) return env;
+  if (senderCache && Date.now() - senderCache.at < 3600_000) return senderCache.v;
+  let v: string | null = null;
+  try {
+    const { res, data } = await rodsms('/sender-ids', { method: 'GET' });
+    const list = (data.data ?? data.sender_ids ?? data) as unknown;
+    if (res.ok && Array.isArray(list)) {
+      const ok = list.find((x) => /approved|active/i.test(String((x as Record<string, unknown>)?.status ?? 'approved'))) ?? list[0];
+      v = ok ? senderOf(ok) || null : null;
+    }
+  } catch { /* hakuna */ }
+  senderCache = { v, at: Date.now() };
+  return v;
+}
 
 export async function providerSend(phone: string, text: string): Promise<DeliveryResult> {
   const p = smsProvider();
@@ -56,7 +81,9 @@ export async function providerSend(phone: string, text: string): Promise<Deliver
   try {
     if (p === 'RODSMS') {
       // RodSMS API v1: POST /messages (namba 255XXXXXXXXX, Sender ID iliyoidhinishwa, SMS ya kawaida ya huduma)
-      const { res, data } = await rodsms('/messages', { method: 'POST', body: { sender_id: process.env.RODSMS_SENDER_ID, to: phone, message: text, sms_type: 'transactional' } });
+      const sender = await rodsmsSender();
+      if (!sender) return { status: 'FAILED', error: 'Sender ID haipo: weka RODSMS_SENDER_ID kwenye Railway (jina la Sender ID iliyoidhinishwa kwenye RodSMS)' };
+      const { res, data } = await rodsms('/messages', { method: 'POST', body: { sender_id: sender, to: phone, message: text, sms_type: 'transactional' } });
       const d = (data.data ?? data) as Record<string, unknown>;
       if (res.ok && !data.error) return { status: 'SENT', providerRef: String(d.id ?? d.message_id ?? d.messageId ?? '') || undefined };
       return { status: 'FAILED', error: errText(data, res.status) };
@@ -89,6 +116,7 @@ export async function providerStatus() {
     else base.error = errText(b.data, b.res.status);
     const s = await rodsms('/sender-ids', { method: 'GET' });
     const list = (s.data.data ?? s.data.sender_ids ?? s.data) as unknown;
+    if (!(s.res.ok && Array.isArray(list))) base.error = `${base.error ? base.error + ' · ' : ''}sender-ids: ${s.res.ok ? JSON.stringify(s.data).slice(0, 200) : errText(s.data, s.res.status)}`;
     if (s.res.ok && Array.isArray(list)) base.senderIds = list.map((x) => (typeof x === 'string' ? x : String((x as Record<string, unknown>).name ?? (x as Record<string, unknown>).sender_id ?? ''))).filter(Boolean).slice(0, 20);
   } catch (e) { base.error = (e as Error).message; }
   return base;
