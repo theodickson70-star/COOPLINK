@@ -8,6 +8,7 @@ import { Alert, Button, Loading } from '../components/ui';
 import { PrefSwitches, useT } from '../lib/prefs';
 import { date, LEDGER_LABEL, num, tsh } from '../lib/format';
 import { LegalLinks } from '../components/LegalLinks';
+import { usd } from '../lib/fx';
 import { StatementDoc, statementSums, type StatementData } from './FarmerDebts';
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '';
@@ -201,6 +202,7 @@ function Overview({ data, me, view, setView, seasonId, setSeasonId }: {
         <span>{bal < 0 ? t('Deni lako') : bal > 0 ? t('Chama kinakudai (utalipwa)') : t('Salio lako')}</span>
         <strong>{tsh(bal < 0 ? data.amountOwed : data.balance)}</strong>
         <small>{data.season ? t('Mwisho wa msimu {name}', { name: data.season.name }) : t('Misimu yote')}</small>
+        {data.usd && Number(data.usd.debtUsd) > 0 && <small className="fp-usd">{t('Deni la pembejeo: {usd}', { usd: usd(data.usd.debtUsd) })}{data.usd.atCurrentTzs ? ` · ≈ ${tsh(data.usd.atCurrentTzs)}` : ''} — {t('litakatwa kwa kiwango cha dola cha siku ya soko')}</small>}
       </section>
 
       <div className="fp-kpis no-print">
@@ -226,6 +228,7 @@ function Overview({ data, me, view, setView, seasonId, setSeasonId }: {
             <Row label={t('Pembejeo ulizokopa')} v={`− ${tsh(s.inputs)}`} />
             {s.loans > 0 && <Row label={t('Pesa ya kuni na riba')} v={`− ${tsh(s.loans)}`} />}
             <Row label={t('Makato ya mauzo')} v={`− ${tsh(s.deductions)}`} />
+            {s.fxAdj !== 0 && <Row label={t('Tofauti ya kiwango cha dola')} v={`${s.fxAdj > 0 ? '−' : '+'} ${tsh(Math.abs(s.fxAdj))}`} pos={s.fxAdj < 0} />}
             <Row label={t('Malipo uliyopokea')} v={`− ${tsh(s.paid)}`} />
             {data.season && <Row label={t('Salio la kuanzia msimu')} v={tsh(data.opening)} />}
             {s.other !== 0 && <Row label={t('Marekebisho mengine (salio la zamani, kusahihisha)')} v={`${s.other > 0 ? '+' : '−'} ${tsh(Math.abs(s.other))}`} pos={s.other > 0} />}
@@ -248,8 +251,8 @@ function Overview({ data, me, view, setView, seasonId, setSeasonId }: {
           <div className="fp-cards">{data.issues.filter((i) => i.status === 'ISSUED').map((i) => (
             <article key={i.id} className="card fp-item">
               <header><strong>{i.issueNo}</strong><time>{date(i.issuedAt)}</time></header>
-              {i.lines.map((l, k) => <Row key={k} label={`${l.name} · ${num(l.quantity)} ${l.unit}`} v={tsh(l.amount)} />)}
-              <Row strong label={t('Jumla')} v={tsh(i.totalAmount)} />
+              {i.lines.map((l, k) => <Row key={k} label={`${l.name} · ${num(l.quantity)} ${l.unit}`} v={l.amountUsd ? usd(l.amountUsd) : tsh(l.amount)} />)}
+              <Row strong label={t('Jumla')} v={i.currency === 'USD' && i.totalUsd ? usd(i.totalUsd) : tsh(i.totalAmount)} />
             </article>
           ))}</div>
         ))}

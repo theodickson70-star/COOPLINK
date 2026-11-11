@@ -4,12 +4,14 @@ import { api, type Paged } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
 import { dateTime, fullName, num, tsh, UNIT_LABEL } from '../lib/format';
 import { useAuth } from '../lib/auth';
+import { usd, useFx } from '../lib/fx';
 import { Alert, Badge, Button, clientRef, Empty, Loading, MemberPicker, Modal, PageHead, Pager, Select, TextField, type MemberLite } from '../components/ui';
 
 interface Issue {
   id: string; issueNo: string; issuedAt: string; totalAmount: string; status: string; notes: string | null; cancelReason: string | null;
+  currency?: 'TZS' | 'USD'; fxRate?: string | null; totalUsd?: string | null;
   member: { id: string; memberNo: string; firstName: string; lastName: string };
-  lines?: { id: string; quantity: string; unitPrice: string; amount: string; inputItem: { name: string; unit: string } }[];
+  lines?: { id: string; quantity: string; unitPrice: string; amount: string; unitPriceUsd?: string | null; amountUsd?: string | null; inputItem: { name: string; unit: string } }[];
 }
 
 export function InputIssues() {
@@ -39,7 +41,7 @@ export function InputIssues() {
                     <td><Link className="row-link" to={`/input-issues/${i.id}`}>{i.issueNo}</Link></td>
                     <td>{i.member.firstName} {i.member.lastName}<div className="muted" style={{ fontSize: 13 }}>{i.member.memberNo}</div></td>
                     <td>{dateTime(i.issuedAt)}</td>
-                    <td className="num">{tsh(i.totalAmount)}</td>
+                    <td className="num">{i.currency === 'USD' && i.totalUsd ? <>{usd(i.totalUsd)}<div className="muted" style={{ fontSize: 12 }}>{tsh(i.totalAmount)}</div></> : tsh(i.totalAmount)}</td>
                     <td><Badge status={i.status} /></td>
                   </tr>
                 ))}
@@ -54,7 +56,7 @@ export function InputIssues() {
 }
 
 interface Item { id: string; name: string; unit: string; isActive: boolean }
-interface Price { inputItemId: string; unitPrice: string }
+interface Price { inputItemId: string; unitPrice: string; unitPriceUsd: string | null }
 interface Stock { inputItemId: string; balance: string }
 
 export function InputIssueNew() {
@@ -68,13 +70,17 @@ export function InputIssueNew() {
   const prices = useFetch<{ data: Price[] }>('/inputs/prices');
   const stock = useFetch<{ data: Stock[] }>('/inputs/stock');
   const { busy, error, run } = useAction();
+  const fx = useFx();
+  const U = fx.usdMode;
+  const money = (v: number) => (U ? usd(v) : tsh(v));
 
   useEffect(() => {
     const id = params.get('member');
     if (id && !member) api<{ member: MemberLite }>(`/members/${id}`).then((r) => setMember(r.member)).catch(() => {});
   }, [params, member]);
 
-  const priceOf = useMemo(() => new Map(prices.data?.data.map((p) => [p.inputItemId, Number(p.unitPrice)])), [prices.data]);
+  // Chama cha USD: bei ni ya dola; deni la mkulima litakuwa la dola
+  const priceOf = useMemo(() => new Map(prices.data?.data.filter((p) => !U || p.unitPriceUsd).map((p) => [p.inputItemId, Number(U ? p.unitPriceUsd : p.unitPrice)])), [prices.data, U]);
   const stockOf = useMemo(() => new Map(stock.data?.data.map((s) => [s.inputItemId, Number(s.balance)])), [stock.data]);
   const itemOf = useMemo(() => new Map(items.data?.data.map((i) => [i.id, i])), [items.data]);
   const total = lines.reduce((s, l) => s + (priceOf.get(l.inputItemId) ?? 0) * Number(l.quantity || 0), 0);
@@ -117,9 +123,9 @@ export function InputIssueNew() {
                         </Select>
                       </td>
                       <td><input className="input" aria-label={`Kiasi ${i + 1}`} type="number" min="0.01" step="0.01" value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} /></td>
-                      <td className="num">{l.inputItemId ? (price ? tsh(price) : <span className="badge badge-warn">Hakuna bei</span>) : '—'}</td>
+                      <td className="num">{l.inputItemId ? (price ? money(price) : <span className="badge badge-warn">Hakuna bei</span>) : '—'}</td>
                       <td className={`num ${over ? 'money-neg' : ''}`}>{l.inputItemId ? `${num(bal)} ${it ? UNIT_LABEL[it.unit].toLowerCase() : ''}` : '—'}</td>
-                      <td className="num">{price && l.quantity ? tsh(price * Number(l.quantity)) : '—'}</td>
+                      <td className="num">{price && l.quantity ? money(price * Number(l.quantity)) : '—'}</td>
                       <td className="num">{lines.length > 1 && <Button size="sm" variant="ghost" aria-label="Ondoa mstari" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}>✕</Button>}</td>
                     </tr>
                   );
@@ -129,7 +135,10 @@ export function InputIssueNew() {
           </div>
           <div className="actions" style={{ justifyContent: 'space-between' }}>
             <Button variant="secondary" onClick={() => setLines((ls) => [...ls, { inputItemId: '', quantity: '' }])}>+ Ongeza pembejeo</Button>
-            <div style={{ fontFamily: 'var(--font-head)', fontSize: 22, fontWeight: 700, color: 'var(--head)' }}>Jumla: {tsh(total)}</div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontFamily: 'var(--font-head)', fontSize: 22, fontWeight: 700, color: 'var(--head)' }}>Jumla: {money(total)}</div>
+              {U && fx.rate && total > 0 && <div className="muted" style={{ fontSize: 13 }}>≈ {tsh(total * fx.rate)} kwa kiwango cha leo ({num(fx.rate)}). Deni la mkulima ni la dola — litakatwa kwa kiwango cha siku ya soko.</div>}
+            </div>
           </div>
           <TextField label="Maelezo" value={notes} onChange={setNotes} />
         </section>
@@ -178,9 +187,11 @@ export function InputIssueDetail() {
             <thead><tr><th>Pembejeo</th><th className="num">Kiasi</th><th className="num">Bei</th><th className="num">Jumla</th></tr></thead>
             <tbody>
               {i.lines?.map((l) => (
-                <tr key={l.id}><td>{l.inputItem.name}</td><td className="num">{num(l.quantity)} {UNIT_LABEL[l.inputItem.unit].toLowerCase()}</td><td className="num">{tsh(l.unitPrice)}</td><td className="num">{tsh(l.amount)}</td></tr>
+                <tr key={l.id}><td>{l.inputItem.name}</td><td className="num">{num(l.quantity)} {UNIT_LABEL[l.inputItem.unit].toLowerCase()}</td>
+                  <td className="num">{l.unitPriceUsd ? usd(l.unitPriceUsd) : tsh(l.unitPrice)}</td><td className="num">{l.amountUsd ? <>{usd(l.amountUsd)}<div className="muted" style={{ fontSize: 12 }}>{tsh(l.amount)}</div></> : tsh(l.amount)}</td></tr>
               ))}
-              <tr><td colSpan={3} style={{ fontWeight: 700 }}>Jumla ya deni</td><td className="num" style={{ fontWeight: 700, fontSize: 18 }}>{tsh(i.totalAmount)}</td></tr>
+              <tr><td colSpan={3} style={{ fontWeight: 700 }}>Jumla ya deni{i.currency === 'USD' && i.fxRate ? <div className="muted" style={{ fontWeight: 400, fontSize: 12 }}>Kiwango cha siku ya ugawaji: 1 USD = TSh {num(i.fxRate)} · deni linakatwa kwa kiwango cha siku ya soko</div> : null}</td>
+                <td className="num" style={{ fontWeight: 700, fontSize: 18 }}>{i.currency === 'USD' && i.totalUsd ? <>{usd(i.totalUsd)}<div className="muted" style={{ fontSize: 12, fontWeight: 400 }}>{tsh(i.totalAmount)}</div></> : tsh(i.totalAmount)}</td></tr>
             </tbody>
           </table>
         </div>
@@ -188,7 +199,7 @@ export function InputIssueDetail() {
       </section>
       <Modal open={cancelOpen} title="Futa utoaji huu?" onClose={() => setCancelOpen(false)}
         footer={<><Button variant="secondary" onClick={() => setCancelOpen(false)}>Hapana</Button><Button variant="danger" busy={act.busy} disabled={reason.trim().length < 5} onClick={cancel}>Ndiyo, futa</Button></>}>
-        <Alert kind="warn">Pembejeo zitarudi stoo na deni la {tsh(i.totalAmount)} litafutwa kwa rekodi ya REVERSAL. Historia itabaki.</Alert>
+        <Alert kind="warn">Pembejeo zitarudi stoo na deni la {i.currency === 'USD' && i.totalUsd ? `${usd(i.totalUsd)} (${tsh(i.totalAmount)})` : tsh(i.totalAmount)} litafutwa kwa rekodi ya REVERSAL. Historia itabaki.</Alert>
         <Alert>{act.error}</Alert>
         <TextField label="Sababu ya kufuta *" value={reason} onChange={setReason} />
       </Modal>

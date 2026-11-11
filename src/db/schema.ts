@@ -58,6 +58,7 @@ export const ledgerEntryTypeEnum = pgEnum('ledger_entry_type', [
   'REPAYMENT',       // Mkulima amerejesha deni kwa fedha taslimu (credit)
   'GROUP_GUARANTEE', // Deni limelipwa na wanakikundi wenzake (credit kwa mdaiwa)
   'LOAN_INTEREST',   // Riba ya pesa ya kuni (debit)
+  'FX_ADJUSTMENT',   // Deni la pembejeo la dola limebadilishwa kwa kiwango cha siku ya kulipa (debit au credit)
 ]);
 export const marketStatusEnum = pgEnum('market_status', ['SCHEDULED', 'OPEN', 'CLOSED', 'CANCELLED']);
 export const baleStatusEnum = pgEnum('bale_status', ['REGISTERED', 'GRADED', 'SOLD', 'REJECTED']);
@@ -105,6 +106,8 @@ export const amcos = pgTable('amcos', {
   email: text(),
   isActive: boolean().notNull().default(true), // access ya watumiaji wa chama (inafuata status)
   farmerPortal: boolean().notNull().default(false), // Meneja anawasha portal ya wakulima (bure ndani ya ada ya chama)
+  // Sarafu ya pembejeo: USD = bei, mikopo ya pembejeo na manunuzi kwa dola (vitabu bado ni TSh kwa kiwango cha siku husika)
+  inputCurrency: currencyEnum().notNull().default('TZS'),
   // Biashara ya CoopLink (Owner)
   status: amcosStatusEnum().notNull().default('ACTIVE'),
   statusReason: text(),
@@ -305,7 +308,8 @@ export const inputPrices = pgTable('input_prices', {
   amcosId: uuid().notNull().references(() => amcos.id),
   seasonId: uuid().notNull().references(() => seasons.id),
   inputItemId: uuid().notNull().references(() => inputItems.id),
-  unitPrice: money().notNull(), // TZS
+  unitPrice: money().notNull(), // TZS (kwa chama cha USD: thamani ya TSh siku bei ilipowekwa — kwa taarifa tu)
+  unitPriceUsd: numeric({ precision: 12, scale: 4 }), // bei ya kumkopesha mkulima kwa dola (chama cha USD)
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (t) => [uniqueIndex().on(t.seasonId, t.inputItemId), index().on(t.amcosId, t.seasonId)]);
@@ -329,6 +333,9 @@ export const inputIssues = pgTable('input_issues', {
   approvedById: uuid(),
   approvedAt: timestamp({ withTimezone: true }),
   groupId: uuid(), // kikundi cha dhamana cha mkulima wakati wa ugawaji
+  currency: currencyEnum().notNull().default('TZS'),         // USD: deni ni la dola (totalUsd), totalAmount = TSh kwa fxRate
+  fxRate: numeric({ precision: 12, scale: 4 }),
+  totalUsd: numeric({ precision: 14, scale: 2 }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (t) => [
@@ -344,6 +351,8 @@ export const inputIssueLines = pgTable('input_issue_lines', {
   quantity: numeric({ precision: 14, scale: 2 }).notNull(),
   unitPrice: money().notNull(),
   amount: money().notNull(),
+  unitPriceUsd: numeric({ precision: 12, scale: 4 }),
+  amountUsd: numeric({ precision: 14, scale: 2 }),
 }, (t) => [index().on(t.inputIssueId)]);
 
 // Kila mabadiliko ya stoo ni rekodi. Salio = jumla ya quantity (+ ndani, - nje).
@@ -363,6 +372,7 @@ export const stockMovements = pgTable('stock_movements', {
   batchNo: text(),
   expiryDate: date(),
   unitCost: money(),
+  unitCostUsd: numeric({ precision: 12, scale: 4 }), // gharama kwa dola (chama cha USD); unitCost = TSh kwa kiwango cha siku hiyo
   createdById: uuid(),
   createdAt: createdAt(),
 }, (t) => [index().on(t.amcosId, t.seasonId, t.inputItemId), index().on(t.amcosId, t.expiryDate)]);
@@ -438,6 +448,37 @@ export const bales = pgTable('bales', {
   index().on(t.marketId),
   index().on(t.amcosId, t.memberId),
 ]);
+
+/** Kiwango cha dola cha chama (Mhasibu anaweka). Kiwango cha sasa = cha karibuni. Historia haifutwi. */
+export const fxRates = pgTable('fx_rates', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  usdToTzs: numeric({ precision: 12, scale: 4 }).notNull(),
+  note: text(),
+  setById: uuid(),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.amcosId, t.createdAt)]);
+
+/**
+ * Deni la pembejeo la DOLA la mkulima (sub-ledger). usd/tzs ni chanya = deni linaongezeka.
+ *  ISSUE (+usd, +tzs kwa kiwango cha ugawaji) · CANCEL (kinyume) · REVALUE (0 usd, tofauti ya kiwango) · REPAY (-usd, -tzs)
+ *  Deni la dola = jumla ya usd; thamani yake kwenye vitabu (TSh) = jumla ya tzs.
+ */
+export const memberUsdLedger = pgTable('member_usd_ledger', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  memberId: uuid().notNull().references(() => members.id),
+  seasonId: uuid(),
+  kind: text().notNull(),
+  usd: numeric({ precision: 14, scale: 2 }).notNull(),
+  tzs: numeric({ precision: 14, scale: 2 }).notNull(),
+  rate: numeric({ precision: 12, scale: 4 }),
+  description: text().notNull(),
+  referenceType: text(),
+  referenceId: uuid(),
+  createdById: uuid(),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.amcosId, t.memberId), index().on(t.referenceType, t.referenceId)]);
 
 export const exchangeRates = pgTable('exchange_rates', {
   id: id(),
@@ -660,6 +701,8 @@ export const financeTransactions = pgTable('finance_transactions', {
   contraGlAccountId: uuid(),   // akaunti ya daftari kuu upande wa pili (hiari; vinginevyo kwa kundi)
   transferGroupId: uuid(),     // uhamisho kati ya akaunti: miamala miwili yenye kundi moja
   marketId: uuid(),            // malipo ya mnunuzi wa tumbaku kwa soko husika
+  amountUsd: numeric({ precision: 14, scale: 2 }), // malipo ya mzabuni kwa ombi la manunuzi la dola: dola zilizolipwa
+  fxRate: numeric({ precision: 12, scale: 4 }),     // kiwango kilichotumika (amount = amountUsd x fxRate)
   createdById: uuid().notNull(),
   postedById: uuid(),
   postedAt: timestamp({ withTimezone: true }),
@@ -706,6 +749,9 @@ export const purchaseRequests = pgTable('purchase_requests', {
   supplierId: uuid().references(() => suppliers.id),
   status: purchaseStatusEnum().notNull().default('PENDING_APPROVAL'),
   totalAmount: money().notNull(),
+  currency: currencyEnum().notNull().default('TZS'),   // USD: deni kwa mzabuni ni la dola (totalUsd)
+  fxRate: numeric({ precision: 12, scale: 4 }),
+  totalUsd: numeric({ precision: 14, scale: 2 }),
   neededBy: date(),
   notes: text(),
   approvalId: uuid(),
@@ -721,6 +767,8 @@ export const purchaseRequestLines = pgTable('purchase_request_lines', {
   quantity: numeric({ precision: 14, scale: 2 }).notNull(),
   unitCost: money().notNull(),
   amount: money().notNull(),
+  unitCostUsd: numeric({ precision: 12, scale: 4 }),
+  amountUsd: numeric({ precision: 14, scale: 2 }),
   receivedQty: numeric({ precision: 14, scale: 2 }).notNull().default('0'),
 }, (t) => [index().on(t.purchaseRequestId)]);
 

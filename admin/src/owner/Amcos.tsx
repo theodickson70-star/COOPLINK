@@ -93,6 +93,8 @@ function AmcosFormModal({ initial, onClose, onSaved }: { initial?: AmcosFull; on
     email: initial?.email ?? '', contactName: initial?.contactName ?? '', contactPhone: initial?.contactPhone?.replace(/^255/, '0') ?? '',
   });
   const [activate, setActivate] = useState(has('amcos.approve'));
+  // Vyama vya tumbaku vinakopesha pembejeo kwa dola (inabadilishwa baadaye na Mhasibu kwenye Fedha → Dola)
+  const [inputCurrency, setInputCurrency] = useState<'USD' | 'TZS'>('USD');
   // Meneja anaundwa pamoja na chama (Owner anaweka nenosiri la kuanzia; Meneja analibadilisha akiingia)
   const [withManager, setWithManager] = useState(!initial && has('amcos.staff'));
   const [mgr, setMgr] = useState({ fullName: '', phone: '', email: '', password: '', confirm: '' });
@@ -111,7 +113,7 @@ function AmcosFormModal({ initial, onClose, onSaved }: { initial?: AmcosFull; on
     } else {
       delete body.code; // code inatolewa na mfumo
       const manager = withManager ? { fullName: mgr.fullName.trim(), phone: mgr.phone.trim(), email: mgr.email.trim() || null, password: mgr.password } : undefined;
-      const r = await run(() => api<{ amcos: AmcosFull; manager: { fullName: string; phone: string } | null }>('/owner/amcos', { method: 'POST', body: { ...body, activate, trialPlanId: activate && trialPlanId ? trialPlanId : undefined, manager } }));
+      const r = await run(() => api<{ amcos: AmcosFull; manager: { fullName: string; phone: string } | null }>('/owner/amcos', { method: 'POST', body: { ...body, inputCurrency, activate, trialPlanId: activate && trialPlanId ? trialPlanId : undefined, manager } }));
       if (r) onSaved(r.amcos.id, { code: r.amcos.code, manager: r.manager, active: r.amcos.status === 'ACTIVE' });
     }
   };
@@ -132,6 +134,8 @@ function AmcosFormModal({ initial, onClose, onSaved }: { initial?: AmcosFull; on
         <TextField label="Simu ya chama" type="tel" value={f.phone} onChange={set('phone')} />
         <TextField label="Email" type="email" value={f.email} onChange={set('email')} />
         <PhoneNameFields phoneLabel="Simu ya mawasiliano" phone={f.contactPhone} onPhone={set('contactPhone')} nameLabel="Mtu wa mawasiliano" name={f.contactName} onName={(v) => set('contactName')(v)} optionalPhone />
+        {!initial && <SelectField label="Pembejeo zinakopeshwa kwa" value={inputCurrency} onChange={(v) => setInputCurrency(v as 'USD' | 'TZS')}
+          options={[{ value: 'USD', label: 'Dola (USD)' }, { value: 'TZS', label: 'Shilingi (TSh)' }]} help="Mhasibu ataweka kiwango cha dola kwenye Fedha → Dola" />}
       </div>
       {!initial && has('amcos.staff') && (
         <fieldset className="perm-box">

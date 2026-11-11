@@ -7,9 +7,10 @@ import { useAuth } from '../lib/auth';
 import { Alert, Badge, Button, Empty, Loading, Modal, PageHead, Pager, SelectField, TextField } from '../components/ui';
 import { Tabs } from '../components/owner-ui';
 import { ReceiveInputsModal } from '../components/ReceiveInputs';
+import { usd, useFx } from '../lib/fx';
 
 interface Item { id: string; name: string; category: string; unit: string; isActive: boolean; reorderLevel: string | null }
-interface Price { id: string; inputItemId: string; unitPrice: string }
+interface Price { id: string; inputItemId: string; unitPrice: string; unitPriceUsd: string | null }
 interface Stock { inputItemId: string; received: string; issued: string; returned: string; adjusted: string; damaged: string; expired: string; balance: string; low: boolean }
 
 export function Inputs() {
@@ -21,11 +22,13 @@ export function Inputs() {
   const [modal, setModal] = useState<null | { kind: 'item' | 'price' | 'receive' | 'adjust'; item?: Item } | { kind: 'count' }>(null);
   const pending = useFetch<{ data: { id: string; requestNo: string; title: string; amount: string | null; reason: string | null; createdAt: string; requestedBy: string | null }[] }>(may('approvals.read') ? '/approvals' : null, { status: 'PENDING', type: 'STOCK_RECEIPT', pageSize: 50 });
   const [notice, setNotice] = useState<string | null>(null);
+  const fx = useFx();
   const reloadAll = () => { items.reload(); prices.reload(); stock.reload(); pending.reload(); };
   const done = (msg?: string) => { setModal(null); reloadAll(); setNotice(msg ?? null); };
 
   if (items.loading && !items.data) return <Loading />;
-  const priceOf = new Map(prices.data?.data.map((p) => [p.inputItemId, p.unitPrice]));
+  // Chama cha USD: bei ni ya dola (bei bila dola = haijawekwa)
+  const priceOf = new Map(prices.data?.data.filter((p) => !fx.usdMode || p.unitPriceUsd).map((p) => [p.inputItemId, fx.usdMode ? p.unitPriceUsd! : p.unitPrice]));
   const stockOf = new Map(stock.data?.data.map((s) => [s.inputItemId, s]));
 
   return (
@@ -36,6 +39,7 @@ export function Inputs() {
         {may('stock.receive') && <Button variant="gold" onClick={() => setModal({ kind: 'receive' })}>+ Ingiza pembejeo</Button>}
       </PageHead>
       <Alert>{items.error ?? prices.error ?? stock.error}</Alert>
+      {fx.usdMode && <div className="fx-strip"><span>💵 Pembejeo zinakopeshwa kwa <strong>dola</strong></span><span>Kiwango cha sasa: <strong>{fx.rate ? `1 USD = TSh ${num(fx.rate)}` : 'hakijawekwa'}</strong></span></div>}
       <Alert kind="ok">{notice}</Alert>
       {!!pending.data?.data.length && (
         <section className="card" style={{ marginBottom: 16 }}>
@@ -65,7 +69,7 @@ export function Inputs() {
                           <strong>{it.name}</strong> {!it.isActive && <Badge status="CANCELLED" label="Imesitishwa" />}
                           <div className="muted" style={{ fontSize: 13 }}>{CATEGORY_LABEL[it.category]} · {UNIT_LABEL[it.unit]}{it.reorderLevel ? ` · kiwango cha chini ${num(it.reorderLevel)}` : ''}</div>
                         </td>
-                        <td className="num">{price ? tsh(price) : <span className="badge badge-warn">Haijawekwa</span>}</td>
+                        <td className="num">{price ? (fx.usdMode ? <>{usd(price)}{fx.rate && <div className="muted" style={{ fontSize: 12 }}>≈ {tsh(Number(price) * fx.rate)}</div>}</> : tsh(price)) : <span className="badge badge-warn">Haijawekwa</span>}</td>
                         <td className="num">{num(s?.received)}</td>
                         <td className="num">{num(s?.issued)}</td>
                         <td className="num">{num(Number(s?.damaged ?? 0) + Number(s?.expired ?? 0))}</td>
@@ -90,7 +94,7 @@ export function Inputs() {
       {tab === 'history' && <History items={items.data?.data ?? []} />}
 
       {modal?.kind === 'item' && <ItemModal item={'item' in modal ? modal.item : undefined} onClose={() => setModal(null)} onDone={() => done()} />}
-      {modal?.kind === 'price' && 'item' in modal && modal.item && <PriceModal item={modal.item} current={priceOf.get(modal.item.id)} onClose={() => setModal(null)} onDone={() => done('Bei imehifadhiwa')} />}
+      {modal?.kind === 'price' && 'item' in modal && modal.item && <PriceModal item={modal.item} current={priceOf.get(modal.item.id)} usdMode={fx.usdMode} rate={fx.rate} onClose={() => setModal(null)} onDone={() => done('Bei imehifadhiwa')} />}
       {modal?.kind === 'receive' && <ReceiveInputsModal onClose={() => setModal(null)} onDone={(no) => done(`Mzigo umetumwa kwa Meneja (${no}). Stoo itaongezeka na pembejeo zitaweza kutolewa baada ya Meneja kuidhinisha idadi na bei.`)} />}
       {modal?.kind === 'adjust' && 'item' in modal && modal.item && <AdjustModal item={modal.item} balance={stockOf.get(modal.item.id)?.balance ?? '0'} onClose={() => setModal(null)} onDone={() => done('Ombi la marekebisho limetumwa kwa Meneja. Stoo itabadilika baada ya idhini.')} />}
       {modal?.kind === 'count' && <CountModal items={items.data?.data.filter((i) => i.isActive) ?? []} stockOf={stockOf} onClose={() => setModal(null)} onDone={(n) => done(n ? `Tofauti ${n} zimetumwa kwa Meneja kama maombi ya marekebisho.` : 'Hesabu inalingana na mfumo. Hakuna marekebisho.')} />}
@@ -125,15 +129,18 @@ function ItemModal({ item, onClose, onDone }: { item?: Item; onClose: () => void
   );
 }
 
-function PriceModal({ item, current, onClose, onDone }: { item: Item; current?: string; onClose: () => void; onDone: () => void }) {
+function PriceModal({ item, current, usdMode, rate, onClose, onDone }: { item: Item; current?: string; usdMode: boolean; rate: number | null; onClose: () => void; onDone: () => void }) {
   const [price, setPrice] = useState(current ? String(Number(current)) : '');
   const { busy, error, run } = useAction();
+  const body = usdMode ? { inputItemId: item.id, unitPriceUsd: price } : { inputItemId: item.id, unitPrice: price };
   return (
     <Modal open title={`Bei ya ${item.name}`} onClose={onClose}
-      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={!price} onClick={async () => { if (await run(() => api('/inputs/prices', { method: 'PUT', body: { inputItemId: item.id, unitPrice: price } }))) onDone(); }}>Hifadhi bei</Button></>}>
+      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={!price || (usdMode && !rate)} onClick={async () => { if (await run(() => api('/inputs/prices', { method: 'PUT', body }))) onDone(); }}>Hifadhi bei</Button></>}>
       <Alert kind="warn">Bei mpya inatumika kwa ugawaji wa sasa na ujao tu. Pembejeo zilizokwisha tolewa zinabaki na bei yao.</Alert>
+      {usdMode && !rate && <Alert>Mhasibu bado hajaweka kiwango cha dola (Fedha → Dola).</Alert>}
       <Alert>{error}</Alert>
-      <TextField label={`Bei kwa ${UNIT_LABEL[item.unit].toLowerCase()} (TSh) *`} type="number" min="1" step="1" value={price} onChange={setPrice} />
+      <TextField label={`Bei kwa ${UNIT_LABEL[item.unit].toLowerCase()} (${usdMode ? 'USD' : 'TSh'}) *`} type="number" min={usdMode ? '0.01' : '1'} step={usdMode ? '0.01' : '1'} value={price} onChange={setPrice}
+        help={usdMode && rate && price ? `≈ ${tsh(Number(price) * rate)} kwa kiwango cha leo · deni la mkulima litakuwa la dola` : undefined} />
     </Modal>
   );
 }

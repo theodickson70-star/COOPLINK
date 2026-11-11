@@ -34,6 +34,7 @@ const body = z.object({
   phone: phoneSchema.nullable().optional(),
   email: z.string().email().nullable().optional(),
   contactName: z.string().trim().nullable().optional(),
+  inputCurrency: z.enum(['TZS', 'USD']).optional(), // sarafu ya pembejeo (vyama vya tumbaku: USD)
   contactPhone: phoneSchema.nullable().optional(),
 });
 

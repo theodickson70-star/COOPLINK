@@ -11,6 +11,7 @@ import { conflict } from './errors';
 import { audit } from './audit';
 import * as ledger from './ledger';
 import { postJournal, type JLine } from './gl';
+import { revaluationDiff, settleUsdDebt, usdPositions } from './fx';
 
 type Rule = typeof schema.deductionRules.$inferSelect;
 
@@ -81,13 +82,20 @@ export function computeSettlement(bales: { netKg: string | null; grossKg: string
   return { totalKg: fmt2(kg), grossUsd: fmt2(usd), grossTzs: fmt2(gross), deductions: out, totalDeductions: fmt2(total), netTzs: fmt2(remaining), debtBefore: fmt2(debt) };
 }
 
-/** Deni la mkulima sasa hivi (kutoka ledger yake): chanya = anadaiwa. */
-export async function memberDebts(tx: Tx, amcosId: string, memberIds: string[]) {
+/**
+ * Deni la mkulima sasa hivi (kutoka ledger yake): chanya = anadaiwa.
+ * `rate` (kiwango cha soko): deni la pembejeo la dola linahesabiwa kwa kiwango hicho (ndivyo litakavyokatwa).
+ */
+export async function memberDebts(tx: Tx, amcosId: string, memberIds: string[], rate?: Decimal.Value | null) {
   if (!memberIds.length) return new Map<string, Decimal>();
   const L = schema.memberLedgerEntries;
   const rows = await tx.select({ memberId: L.memberId, bal: sql<string>`sum(${L.credit}) - sum(${L.debit})` })
     .from(L).where(and(eq(L.amcosId, amcosId), inArray(L.memberId, memberIds))).groupBy(L.memberId);
-  return new Map(rows.map((r) => [r.memberId, D(r.bal).isNeg() ? D(r.bal).neg() : D(0)]));
+  const usd = rate ? await usdPositions(tx, amcosId, memberIds) : null;
+  return new Map(rows.map((r) => {
+    const owed = D(r.bal).neg().plus(usd ? revaluationDiff(usd.get(r.memberId), rate!) : 0);
+    return [r.memberId, owed.isPos() ? owed : D(0)];
+  }));
 }
 
 type Outcome = 'APPROVED' | 'REJECTED' | 'CANCELLED';
@@ -139,11 +147,15 @@ export async function onTobaccoSale(tx: Tx, req: Request, a: Approval, o: Outcom
           description: `Deni limelipwa na mwanakikundi ${memberName.get(s.memberId) ?? ''} (${s.settlementNo})`.replace('  ', ' '), referenceType: 'SETTLEMENT', referenceId: s.id, createdById: req.auth!.userId,
         });
         jl.push({ code: '1200', credit: l.amount, memberId: l.beneficiaryMemberId, memo: `Dhamana ya kikundi — ${debtor?.memberNo ?? ''}` });
+        // Deni la dola la mdaiwa: kiwango cha soko, kisha malipo ya kikundi yanalipunguza
+        jl.push(...await settleUsdDebt(tx, req, { amcosId: a.amcosId, memberId: l.beneficiaryMemberId, seasonId: s.seasonId, rate: market.exchangeRate!, paidTzs: l.amount, ref: s.settlementNo, referenceType: 'SETTLEMENT', referenceId: s.id }));
         continue;
       }
       if (code === '1200') {
         // Deni la pembejeo linalipwa kwa mauzo: ledger ya mkulima tayari inaonyesha deni, salio linajipunguza lenyewe
         jl.push({ code: '1200', credit: l.amount, memberId: s.memberId, memo: `Deni limerejeshwa ${s.settlementNo}` });
+        // Deni la pembejeo la dola: linabadilishwa kwa kiwango cha soko (FX_ADJUSTMENT), kisha linalipwa kwanza
+        jl.push(...await settleUsdDebt(tx, req, { amcosId: a.amcosId, memberId: s.memberId, seasonId: s.seasonId, rate: market.exchangeRate!, paidTzs: l.amount, ref: s.settlementNo, referenceType: 'SETTLEMENT', referenceId: s.id }));
       } else {
         await ledger.post(tx, {
           amcosId: a.amcosId, memberId: s.memberId, seasonId: s.seasonId, type: 'DEDUCTION', debit: l.amount,

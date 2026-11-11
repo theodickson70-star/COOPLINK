@@ -158,11 +158,14 @@ workspaceRouter.get('/setup', ah(async (req, res) => {
     db.select({ status: S.platformFees.status }).from(S.platformFees).where(and(eq(S.platformFees.amcosId, amcosId), eq(S.platformFees.kind, 'ENTRANCE'))),
   ]);
   const roles = new Set(staff.map((s) => s.role));
+  const amc = await db.query.amcos.findFirst({ where: eq(S.amcos.id, amcosId), columns: { inputCurrency: true } });
+  const [fx] = amc?.inputCurrency === 'USD' ? await db.select({ id: S.fxRates.id }).from(S.fxRates).where(eq(S.fxRates.amcosId, amcosId)).limit(1) : [];
   const steps = [
     { key: 'staff', title: 'Watumishi: Mhasibu na Stokipa', done: roles.has('ACCOUNTANT') && roles.has('CLERK'), detail: `${roles.has('ACCOUNTANT') ? 'Mhasibu ✓' : 'Mhasibu hayupo'} · ${roles.has('CLERK') ? 'Stokipa ✓' : 'Stokipa hayupo'} — akaunti zinaundwa na CoopLink`, to: '/users' },
     { key: 'members', title: 'Sajili wakulima (au pakia daftari lote kwa CSV)', done: members > 0, detail: members ? `Wakulima ${members}` : 'Bado hakuna mkulima', to: '/members' },
     { key: 'accounts', title: 'Akaunti za fedha za chama (benki/taslimu/simu)', done: accounts > 0, detail: accounts ? `Akaunti ${accounts}` : 'Mhasibu aongeze akaunti za chama', to: '/finance' },
     { key: 'opening', title: 'Salio la kuanzia (fedha, mali na madeni ya zamani ya wakulima)', done: opening > 0, detail: opening ? 'Limewekwa' : 'Mhasibu aweke salio la kuanzia', to: '/accounting/periods' },
+    ...(amc?.inputCurrency === 'USD' ? [{ key: 'fx', title: 'Kiwango cha dola (pembejeo zinakopeshwa kwa USD)', done: !!fx, detail: fx ? 'Kimewekwa' : 'Mhasibu aweke kiwango cha dola', to: '/finance?tab=fx' }] : []),
     { key: 'inputs', title: 'Pembejeo na bei zake', done: items > 0 && priced > 0, detail: items ? `Bidhaa ${items} · zenye bei ${priced}` : 'Stokipa aingize pembejeo, Meneja aidhinishe bei', to: '/inputs' },
     { key: 'estimates', title: `Makisio ya msimu${season ? ` ${season.name}` : ''}`, done: est > 0, detail: !season ? 'Hakuna msimu unaoendelea' : est ? `Makisio ${est}` : 'Stokipa aingize makisio ya wakulima', to: '/estimates' },
     { key: 'rules', title: 'Makato ya mauzo ya tumbaku (ushuru, ada n.k.)', done: rules > 0, detail: !season ? 'Hakuna msimu unaoendelea' : rules ? `Makato ${rules}` : 'Mhasibu aweke makato ya msimu', to: '/sales' },

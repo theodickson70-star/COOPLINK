@@ -155,6 +155,13 @@
       "when": 1794341189955,
       "tag": "0021_system_center",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1794408777652,
+      "tag": "0022_usd_inputs",
+      "breakpoints": true
     }
   ]
 }

@@ -311,7 +311,7 @@ async function computeMarket(tx: Tx | typeof db, m: typeof MK.$inferSelect, opts
   const groupIds = [...new Set([...groupOf.values()].map((g) => g.groupId))];
   const gMembers = await groupMembers(tx, groupIds);
   const allIds = [...new Set([...sellers, ...[...gMembers.values()].flat()])];
-  const debts = await memberDebts(tx as Tx, m.amcosId, allIds);
+  const debts = await memberDebts(tx as Tx, m.amcosId, allIds, m.exchangeRate);
   // Deni lililokwisha kukatwa (au kulipwa na kikundi) kwenye hesabu zinazosubiri idhini lisikatwe mara mbili
   const pendingLoan = await tx.execute<{ member_id: string; v: string }>(sql`
     select x.member_id, sum(x.v) as v from (

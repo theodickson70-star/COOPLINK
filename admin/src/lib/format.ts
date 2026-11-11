@@ -41,7 +41,7 @@ export const STATUS_LABEL: Record<string, string> = {
 export const LEDGER_LABEL: Record<string, string> = {
   INPUT_LOAN: 'Mkopo wa pembejeo', CASH_LOAN: 'Pesa ya kuni', LOAN_INTEREST: 'Riba ya pesa ya kuni', TOBACCO_SALE: 'Mauzo ya tumbaku',
   DEDUCTION: 'Makato', PAYMENT: 'Malipo', ADJUSTMENT: 'Marekebisho', REVERSAL: 'Kufutwa (reversal)', OPENING_BALANCE: 'Salio la kuanzia',
-  REPAYMENT: 'Marejesho ya deni', GROUP_GUARANTEE: 'Limelipwa na kikundi',
+  REPAYMENT: 'Marejesho ya deni', GROUP_GUARANTEE: 'Limelipwa na kikundi', FX_ADJUSTMENT: 'Tofauti ya kiwango cha dola',
 };
 
 export const CATEGORY_LABEL: Record<string, string> = {

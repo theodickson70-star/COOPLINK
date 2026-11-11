@@ -54,6 +54,7 @@ export const DEFAULT_CHART: ChartRow[] = [
   { code: '4400', name: 'Riba ya benki', type: 'INCOME' },
   { code: '4450', name: 'Riba ya pesa ya kuni (mikopo ya wakulima)', type: 'INCOME' },
   { code: '4600', name: 'Faida ya pembejeo zilizogawiwa', type: 'INCOME' },
+  { code: '4700', name: 'Faida ya kubadilisha fedha (dola)', type: 'INCOME' },
   { code: '4900', name: 'Mapato mengine', type: 'INCOME' },
   // MATUMIZI (EXPENSES)
   { code: '5100', name: 'Mishahara na posho', type: 'EXPENSE' },
@@ -68,6 +69,7 @@ export const DEFAULT_CHART: ChartRow[] = [
   { code: '5270', name: 'Upakiaji na usafirishaji wa pembejeo', type: 'EXPENSE' },
   { code: '5280', name: 'Mafunzo', type: 'EXPENSE' },
   { code: '5060', name: 'Upotevu / uharibifu wa stoo', type: 'EXPENSE' },
+  { code: '5700', name: 'Hasara ya kubadilisha fedha (dola)', type: 'EXPENSE' },
   { code: '5900', name: 'Uchakavu wa mali', type: 'EXPENSE' },
   { code: '5950', name: 'Hasara (faida) ya kuuza/kuondoa mali', type: 'EXPENSE' },
   { code: '5990', name: 'Matumizi mengine', type: 'EXPENSE' },
@@ -251,9 +253,30 @@ export async function syncLedger(amcosId: string) {
       await post({
         amcosId, date: t.txnDate, description: `${t.txnNo}: ${t.description}`, source: 'FINANCE_TXN', sourceId: t.id, reference: t.reference ?? t.txnNo,
         approvalId: t.approvalId, reversalOfId: orig?.id ?? null, createdById: t.postedById,
-        lines: t.direction === 'IN'
-          ? [{ glAccountId: cash.id, debit: amt }, { glAccountId: contra.id, credit: amt, memberId, supplierId: t.supplierId }]
-          : [{ glAccountId: contra.id, debit: amt, memberId, supplierId: t.supplierId }, { glAccountId: cash.id, credit: amt }],
+        lines: await (async (): Promise<JLine[]> => {
+          // Malipo ya mzabuni kwa ombi la manunuzi la DOLA: deni la mzabuni (2100) linapungua kwa thamani yake ya siku ya ombi;
+          // tofauti na TSh zilizolipwa leo ni faida/hasara ya kubadilisha fedha (4700/5700).
+          if (t.amountUsd && t.purchaseRequestId && t.category === 'SUPPLIER') {
+            const [pr] = await tx.select({ rate: schema.purchaseRequests.fxRate }).from(schema.purchaseRequests).where(eq(schema.purchaseRequests.id, t.purchaseRequestId));
+            if (pr?.rate) {
+              const carrying = D(t.amountUsd).times(pr.rate).toDecimalPlaces(2);
+              const diff = D(amt).minus(carrying); // chanya = tumelipa zaidi (hasara)
+              const sgn = t.direction === 'OUT' ? 1 : -1;
+              const L = (code: string | null, id: string | null, v: Decimal, extra: Partial<JLine> = {}): JLine => {
+                const x = v.times(sgn);
+                return { ...(id ? { glAccountId: id } : { code: code! }), ...(x.gte(0) ? { debit: x } : { credit: x.neg() }), ...extra };
+              };
+              return [
+                L(null, contra.id, carrying, { memberId, supplierId: t.supplierId }),
+                ...(diff.isZero() ? [] : [L(diff.isPos() ? '5700' : '4700', null, diff, { memo: `Tofauti ya kiwango cha dola ${t.txnNo}` })]),
+                L(null, cash.id, D(amt).neg()),
+              ];
+            }
+          }
+          return t.direction === 'IN'
+            ? [{ glAccountId: cash.id, debit: amt }, { glAccountId: contra.id, credit: amt, memberId, supplierId: t.supplierId }]
+            : [{ glAccountId: contra.id, debit: amt, memberId, supplierId: t.supplierId }, { glAccountId: cash.id, credit: amt }];
+        })(),
       });
     }
 

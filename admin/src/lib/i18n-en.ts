@@ -877,6 +877,21 @@ export const EN: Record<string, string> = {
   'Imejiidhinisha': 'Self-approved',
   'Meneja ameidhinisha ombi alilolianzisha mwenyewe (chama hakina Mhasibu/Stokipa)': 'The Manager approved a request they created (the society has no Accountant/Storekeeper)',
   'Ombi hili umeliandaa wewe. Kwa kuwa chama hakina Mhasibu/Stokipa, unaweza kujiidhinisha — idhini itaandikwa "Imejiidhinisha" na itaonekana kwa CoopLink na Chama Kikuu. Eleza kwa nini ombi ni sahihi.': 'You prepared this request. Because the society has no Accountant/Storekeeper, you may approve it yourself — it will be marked "Self-approved" and visible to CoopLink and the Union. Explain why the request is correct.',
+  // ---------- Pembejeo kwa dola ----------
+  'Deni la pembejeo: {usd}': 'Input debt: {usd}',
+  'litakatwa kwa kiwango cha dola cha siku ya soko': 'deducted at the market-day dollar rate',
+  'Tofauti ya kiwango cha dola': 'Dollar exchange difference',
+  'Dola (USD)': 'Dollar (USD)',
+  'Deni la pembejeo (dola)': 'Input debt (USD)',
+  'Tofauti ya kiwango cha dola (deni la pembejeo)': 'Dollar exchange difference (input debt)',
+  'Inavyofanya kazi': 'How it works',
+  'Weka kiwango kipya': 'Set a new rate',
+  'Sarafu ya pembejeo': 'Input currency',
+  'Historia ya viwango': 'Rate history',
+  'Kiwango cha sasa': 'Current rate',
+  'Deni la pembejeo la dola': 'Dollar input debt',
+  'Hifadhi kiwango': 'Save rate',
+  'Pembejeo zinakopeshwa kwa': 'Inputs are lent in',
 };
 
 /** Maandishi yenye sehemu inayobadilika (mf. "Ada ya msimu 2026/2027") */

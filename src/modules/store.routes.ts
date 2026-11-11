@@ -14,6 +14,7 @@ import { audit } from '../lib/audit';
 import { nextNumber, pad } from '../lib/counter';
 import { D, fmt2 } from '../lib/money';
 import { createApproval } from '../lib/approvals';
+import { inputCurrency, requireRate, toTzs } from '../lib/fx';
 import { stockBalance } from '../lib/stock';
 import { currentSeason } from './seasons.routes';
 import { today as darToday } from '../lib/subscriptions';  // tarehe ya Tanzania, si UTC
@@ -79,6 +80,8 @@ const prCols = {
   requestedBy: sql<string | null>`(select u.full_name from users u where u.id = "purchase_requests"."requested_by_id")`,
   paid: sql<string>`(select coalesce(sum(case when t.kind = 'REVERSAL' then -t.amount else t.amount end), 0) from finance_transactions t
     where t.purchase_request_id = "purchase_requests"."id" and t.status = 'POSTED')`,
+  paidUsd: sql<string>`(select coalesce(sum(case when t.kind = 'REVERSAL' then -t.amount_usd else t.amount_usd end), 0) from finance_transactions t
+    where t.purchase_request_id = "purchase_requests"."id" and t.status = 'POSTED' and t.amount_usd is not null)`,
 };
 
 storeRouter.get('/purchases', requireAmcosPerm('stock.read', 'finance.read'), ah(async (req, res) => {
@@ -88,7 +91,7 @@ storeRouter.get('/purchases', requireAmcosPerm('stock.read', 'finance.read'), ah
     db.select(prCols).from(P).leftJoin(S, eq(S.id, P.supplierId)).where(where).orderBy(desc(P.createdAt)).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
     db.select({ total: count() }).from(P).where(where),
   ]);
-  res.json(paged(rows.map((r) => ({ ...r.pr, supplierName: r.supplier, requestedBy: r.requestedBy, paid: fmt2(r.paid) })), total, q.page, q.pageSize));
+  res.json(paged(rows.map((r) => ({ ...r.pr, supplierName: r.supplier, requestedBy: r.requestedBy, paid: fmt2(r.paid), paidUsd: fmt2(r.paidUsd) })), total, q.page, q.pageSize));
 }));
 
 async function scopedPr(req: Request, id: string) {
@@ -105,7 +108,7 @@ storeRouter.get('/purchases/:id', requireAmcosPerm('stock.read', 'finance.read')
   const receipts = await db.select().from(moves).where(eq(moves.purchaseRequestId, id)).orderBy(asc(moves.createdAt));
   const payments = await db.select().from(schema.financeTransactions).where(eq(schema.financeTransactions.purchaseRequestId, id)).orderBy(asc(schema.financeTransactions.createdAt));
   const approval = row.pr.approvalId ? await db.query.approvalRequests.findFirst({ where: eq(schema.approvalRequests.id, row.pr.approvalId) }) : null;
-  res.json({ purchase: { ...row.pr, supplierName: row.supplier, requestedBy: row.requestedBy, paid: fmt2(row.paid) }, lines, receipts, payments, approval });
+  res.json({ purchase: { ...row.pr, supplierName: row.supplier, requestedBy: row.requestedBy, paid: fmt2(row.paid), paidUsd: fmt2(row.paidUsd) }, lines, receipts, payments, approval });
 }));
 
 storeRouter.post('/purchases', requireAmcosPerm('purchases.request'), ah(async (req, res) => {
@@ -113,7 +116,7 @@ storeRouter.post('/purchases', requireAmcosPerm('purchases.request'), ah(async (
     supplierId: z.string().uuid().nullable().optional(),
     neededBy: dateStr.nullable().optional(),
     notes: z.string().trim().min(3, 'Eleza sababu ya manunuzi'),
-    lines: z.array(z.object({ inputItemId: z.string().uuid(), quantity: decimalSchema({ min: 0.01 }), unitCost: decimalSchema({ min: 0 }) })).min(1).max(30),
+    lines: z.array(z.object({ inputItemId: z.string().uuid(), quantity: decimalSchema({ min: 0.01 }), unitCost: decimalSchema({ min: 0 }).optional(), unitCostUsd: decimalSchema({ min: 0 }).optional() })).min(1).max(30),
   }).parse(req.body);
   const amcosId = await resolveWriteAmcosId(req);
   const season = await openSeason();
@@ -123,20 +126,33 @@ storeRouter.post('/purchases', requireAmcosPerm('purchases.request'), ah(async (
   if (found.length !== ids.length) throw badRequest('Baadhi ya bidhaa hazipo kwenye chama hiki');
   const supplier = body.supplierId ? (await db.select().from(S).where(and(eq(S.id, body.supplierId), eq(S.amcosId, amcosId))))[0] : null;
   if (body.supplierId && !supplier) throw notFound('Mzabuni');
-  const lines = body.lines.map((l) => ({ ...l, amount: fmt2(D(l.quantity).times(l.unitCost)) }));
+  // Chama cha USD: gharama ni ya dola; TSh = dola x kiwango cha leo (deni kwa mzabuni ni la dola)
+  const rate = (await inputCurrency(db, amcosId)) === 'USD' ? await requireRate(db, amcosId) : null;
+  const lines = body.lines.map((l) => {
+    if (rate) {
+      if (l.unitCostUsd == null) throw badRequest('Weka gharama kwa USD kwa kila bidhaa');
+      const amountUsd = D(l.quantity).times(l.unitCostUsd).toDecimalPlaces(2);
+      const amount = toTzs(amountUsd, rate);
+      return { inputItemId: l.inputItemId, quantity: l.quantity, unitCostUsd: D(l.unitCostUsd).toFixed(4), amountUsd: fmt2(amountUsd), unitCost: fmt2(toTzs(l.unitCostUsd, rate)), amount: fmt2(amount) };
+    }
+    if (l.unitCost == null) throw badRequest('Weka gharama kwa kila bidhaa');
+    return { inputItemId: l.inputItemId, quantity: l.quantity, unitCostUsd: null, amountUsd: null, unitCost: l.unitCost, amount: fmt2(D(l.quantity).times(l.unitCost)) };
+  });
   const total = fmt2(lines.reduce((s, l) => s.plus(l.amount), D(0)));
+  const totalUsd = rate ? fmt2(lines.reduce((s, l) => s.plus(l.amountUsd ?? 0), D(0))) : null;
   const nameOf = new Map(found.map((i) => [i.id, i.name]));
   const amcos = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId) }))!;
   const result = await db.transaction(async (tx) => {
     const [pr] = await tx.insert(P).values({
       amcosId, seasonId: season.id, prNo: `${amcos.code}-PR-${pad(await nextNumber(tx, amcosId, 'purchase'))}`,
       supplierId: supplier?.id ?? null, totalAmount: total, neededBy: body.neededBy ?? null, notes: body.notes, requestedById: req.auth!.userId,
+      currency: rate ? 'USD' : 'TZS', fxRate: rate ? rate.toFixed(4) : null, totalUsd,
     }).returning();
     await tx.insert(PL).values(lines.map((l) => ({ purchaseRequestId: pr.id, ...l })));
     await audit(tx, req, { action: 'PURCHASE_REQUEST', entity: 'PurchaseRequest', entityId: pr.id, amcosId, after: { ...pr, lines } });
     const approval = await createApproval(tx, req, {
       amcosId, type: 'PURCHASE', entityType: 'PurchaseRequest', entityId: pr.id, amount: total, reason: body.notes,
-      title: `Manunuzi ${pr.prNo}${supplier ? ` kutoka ${supplier.name}` : ''}: ${lines.map((l) => `${nameOf.get(l.inputItemId)} x${l.quantity}`).join(', ')}`,
+      title: `Manunuzi ${pr.prNo}${supplier ? ` kutoka ${supplier.name}` : ''}: ${lines.map((l) => `${nameOf.get(l.inputItemId)} x${l.quantity}`).join(', ')}${totalUsd ? ` — $${totalUsd}` : ''}`,
     });
     const [upd] = await tx.update(P).set({ approvalId: approval.id }).where(eq(P.id, pr.id)).returning();
     return { purchase: upd, approval };

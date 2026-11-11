@@ -8,15 +8,19 @@ import { api, type Paged } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
 import { CATEGORY_LABEL, num, tsh, UNIT_LABEL } from '../lib/format';
 import { Alert, Button, Modal, SelectField, TextField } from './ui';
+import { usd, useFx } from '../lib/fx';
 
 interface Item { id: string; name: string; category: string; unit: string; isActive: boolean }
-interface PrLine { id: string; quantity: string; receivedQty: string; unitCost: string; inputItemId?: string; inputItem: { id?: string; name: string; unit: string } }
+interface PrLine { id: string; quantity: string; receivedQty: string; unitCost: string; unitCostUsd?: string | null; inputItemId?: string; inputItem: { id?: string; name: string; unit: string } }
 
 export function ReceiveInputsModal({ itemId: initialItem, purchaseId: initialPr, onClose, onDone }: {
   itemId?: string; purchaseId?: string; onClose: () => void; onDone: (requestNo: string) => void;
 }) {
   const items = useFetch<{ data: Item[] }>('/inputs/items');
-  const prices = useFetch<{ data: { inputItemId: string; unitPrice: string }[] }>('/inputs/prices');
+  const prices = useFetch<{ data: { inputItemId: string; unitPrice: string; unitPriceUsd: string | null }[] }>('/inputs/prices');
+  const fx = useFx();
+  const U = fx.usdMode; // chama cha USD: bei na gharama kwa dola
+  const money = (v: string | number) => (U ? usd(v) : tsh(v));
   const prs = useFetch<Paged<{ id: string; prNo: string; status: string; supplierName?: string | null; supplier?: string | null }>>('/store/purchases', { pageSize: 100 });
   const [mode, setMode] = useState<'normal' | 'purchase'>(initialPr ? 'purchase' : 'normal');
   const [prId, setPrId] = useState(initialPr ?? '');
@@ -35,7 +39,7 @@ export function ReceiveInputsModal({ itemId: initialItem, purchaseId: initialPr,
   const [notes, setNotes] = useState('');
   const { busy, error, run } = useAction();
 
-  const priceOf = new Map(prices.data?.data.map((p) => [p.inputItemId, p.unitPrice]));
+  const priceOf = new Map(prices.data?.data.filter((p) => !U || p.unitPriceUsd).map((p) => [p.inputItemId, U ? p.unitPriceUsd! : p.unitPrice]));
   const active = items.data?.data.filter((i) => i.isActive) ?? [];
   const openPrs = prs.data?.data.filter((p) => ['APPROVED', 'PARTIALLY_RECEIVED'].includes(p.status)) ?? [];
   const openLines = pr.data?.lines.filter((l) => Number(l.receivedQty) < Number(l.quantity)) ?? [];
@@ -50,14 +54,14 @@ export function ReceiveInputsModal({ itemId: initialItem, purchaseId: initialPr,
   useEffect(() => { if (items.data && !initialItem && !items.data.data.some((i) => i.isActive)) setKind('new'); }, [items.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // Bei ya sasa inajazwa yenyewe (Stokipa anaweza kupendekeza mpya)
   useEffect(() => { setPrice(current ? String(Number(current)) : ''); }, [current]);
-  useEffect(() => { if (line) { setQty(String(Number(line.quantity) - Number(line.receivedQty))); setCost(String(Number(line.unitCost))); } }, [line?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (line) { setQty(String(Number(line.quantity) - Number(line.receivedQty))); setCost(String(Number(U && line.unitCostUsd ? line.unitCostUsd : line.unitCost))); } }, [line?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (openLines.length === 1 && !lineId) setLineId(openLines[0].id); }, [openLines.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ready = (mode === 'purchase' ? !!line : isNew ? nItem.name.trim().length >= 2 : !!item) && Number(qty) > 0 && Number(price) > 0 && reference.trim().length >= 2;
   const save = async () => {
     const r = await run(() => api<{ approval: { requestNo: string } }>('/inputs/stock/receipts', { method: 'POST', body: {
       ...(mode === 'purchase' ? { purchaseLineId: lineId } : isNew ? { newItem: { name: nItem.name.trim(), category: nItem.category, unit: nItem.unit, reorderLevel: nItem.reorderLevel || null } } : { inputItemId: itemId }),
-      quantity: qty, unitPrice: price, unitCost: mode === 'purchase' ? null : cost || null, source: mode === 'purchase' ? null : source || null,
+      quantity: qty, ...(U ? { unitPriceUsd: price, unitCostUsd: mode === 'purchase' ? null : cost || null } : { unitPrice: price, unitCost: mode === 'purchase' ? null : cost || null }), source: mode === 'purchase' ? null : source || null,
       reference, batchNo: batchNo || null, expiryDate: expiry || null, notes: notes || undefined,
     } }));
     if (r) onDone(r.approval.requestNo);
@@ -79,7 +83,7 @@ export function ReceiveInputsModal({ itemId: initialItem, purchaseId: initialPr,
           {!initialPr && <SelectField label="Ombi la manunuzi lililoidhinishwa *" value={prId} onChange={(v) => { setPrId(v); setLineId(''); }} placeholder={openPrs.length ? 'Chagua…' : 'Hakuna ombi lililoidhinishwa'}
             options={openPrs.map((p) => ({ value: p.id, label: `${p.prNo}${p.supplierName ?? p.supplier ? ` · ${p.supplierName ?? p.supplier}` : ''}` }))} />}
           {prId && <SelectField label="Bidhaa ya ombi *" value={lineId} onChange={setLineId} placeholder="Chagua…"
-            options={openLines.map((l) => ({ value: l.id, label: `${l.inputItem.name} — imebaki ${num(Number(l.quantity) - Number(l.receivedQty))} ${UNIT_LABEL[l.inputItem.unit].toLowerCase()} (gharama ${tsh(l.unitCost)})` }))} />}
+            options={openLines.map((l) => ({ value: l.id, label: `${l.inputItem.name} — imebaki ${num(Number(l.quantity) - Number(l.receivedQty))} ${UNIT_LABEL[l.inputItem.unit].toLowerCase()} (gharama ${U && l.unitCostUsd ? usd(l.unitCostUsd) : tsh(l.unitCost)})` }))} />}
         </div>
       ) : (
         <>
@@ -110,15 +114,17 @@ export function ReceiveInputsModal({ itemId: initialItem, purchaseId: initialPr,
       )}
       <div className="form-grid">
         <TextField label={`Idadi (${unit.toLowerCase()}) *`} type="number" min="0" step="0.01" value={qty} onChange={setQty} />
-        <TextField label={`Bei kwa mkulima, kwa ${unit.toLowerCase()} (TSh) *`} type="number" min="1" value={price} onChange={setPrice} help={current ? `Bei ya sasa: ${tsh(current)}` : 'Bei mpya — Meneja ataiidhinisha'} />
-        {mode === 'normal' && <TextField label={`Gharama ya chama kwa ${unit.toLowerCase()} (hiari)`} type="number" min="0" value={cost} onChange={setCost} />}
+        <TextField label={`Bei kwa mkulima, kwa ${unit.toLowerCase()} (${U ? 'USD' : 'TSh'}) *`} type="number" min={U ? '0.01' : '1'} step={U ? '0.01' : '1'} value={price} onChange={setPrice}
+          help={[current ? `Bei ya sasa: ${money(current)}` : 'Bei mpya — Meneja ataiidhinisha', U && fx.rate && price ? `≈ ${tsh(Number(price) * fx.rate)}` : ''].filter(Boolean).join(' · ')} />
+        {mode === 'normal' && <TextField label={`Gharama ya chama kwa ${unit.toLowerCase()} (${U ? 'USD, ' : ''}hiari)`} type="number" min="0" step={U ? '0.01' : '1'} value={cost} onChange={setCost} />}
         {mode === 'normal' && <TextField label="Umetoka wapi" value={source} onChange={setSource} placeholder="mf. Chama Kikuu" />}
         <TextField label="Namba ya hati ya mzigo (delivery note) *" value={reference} onChange={setReference} />
         <TextField label="Namba ya batch" value={batchNo} onChange={setBatchNo} />
         <TextField label="Tarehe ya kuisha muda" type="date" value={expiry} onChange={setExpiry} />
       </div>
       <TextField label="Maelezo" value={notes} onChange={setNotes} />
-      {Number(qty) * Number(price) > 0 && <p style={{ margin: 0 }}>Thamani kwa bei ya mkulima: <strong>{tsh(Number(qty) * Number(price))}</strong>{mode === 'purchase' && line ? ` · gharama ya manunuzi ${tsh(Number(qty) * Number(line.unitCost))}` : ''}</p>}
+      {U && !fx.rate && <Alert>Mhasibu bado hajaweka kiwango cha dola (Fedha → Dola).</Alert>}
+      {Number(qty) * Number(price) > 0 && <p style={{ margin: 0 }}>Thamani kwa bei ya mkulima: <strong>{money(Number(qty) * Number(price))}</strong>{U && fx.rate ? ` (≈ ${tsh(Number(qty) * Number(price) * fx.rate)})` : ''}{mode === 'purchase' && line ? ` · gharama ya manunuzi ${U && line.unitCostUsd ? usd(Number(qty) * Number(line.unitCostUsd)) : tsh(Number(qty) * Number(line.unitCost))}` : ''}</p>}
     </Modal>
   );
 }

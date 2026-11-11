@@ -7,8 +7,9 @@ import { useAuth } from '../lib/auth';
 import { date, dateTime, num, phone, tsh, UNIT_LABEL } from '../lib/format';
 import { Alert, Badge, Button, Empty, Loading, Modal, PageHead, Pager, Select, SelectField, TextField } from '../components/ui';
 import { Section, Tabs } from '../components/owner-ui';
+import { usd, useFx } from '../lib/fx';
 
-interface Purchase { id: string; prNo: string; status: string; supplierId: string | null; supplierName: string | null; totalAmount: string; paid: string; neededBy: string | null; notes: string | null; requestedBy: string | null; createdAt: string }
+interface Purchase { id: string; prNo: string; status: string; supplierId: string | null; supplierName: string | null; totalAmount: string; paid: string; currency?: 'TZS' | 'USD'; totalUsd?: string | null; paidUsd?: string; fxRate?: string | null; neededBy: string | null; notes: string | null; requestedBy: string | null; createdAt: string }
 interface Supplier { id: string; name: string; phone: string | null; email: string | null; tin: string | null; address: string | null; isActive: boolean }
 const PR_STATUS: Record<string, string> = { PENDING_APPROVAL: 'Inasubiri idhini', APPROVED: 'Imeidhinishwa — subiri mzigo', REJECTED: 'Imekataliwa', PARTIALLY_RECEIVED: 'Imepokelewa sehemu', RECEIVED: 'Imepokelewa yote', CANCELLED: 'Imeondolewa' };
 const tone = (s: string) => (s === 'RECEIVED' ? 'APPROVED' : ['APPROVED', 'PARTIALLY_RECEIVED', 'PENDING_APPROVAL'].includes(s) ? 'DRAFT' : s);
@@ -43,8 +44,8 @@ export function Purchases() {
                 <tr key={p.id}>
                   <td><Link className="row-link" to={`/purchases/${p.id}`}>{p.prNo}</Link><div className="muted" style={{ fontSize: 12 }}>{date(p.createdAt)}</div></td>
                   <td>{p.supplierName ?? '—'}</td>
-                  <td className="num">{tsh(p.totalAmount)}</td>
-                  <td className="num">{tsh(p.paid)}</td>
+                  <td className="num">{p.currency === 'USD' && p.totalUsd ? <>{usd(p.totalUsd)}<div className="muted" style={{ fontSize: 12 }}>{tsh(p.totalAmount)}</div></> : tsh(p.totalAmount)}</td>
+                  <td className="num">{p.currency === 'USD' ? usd(p.paidUsd) : tsh(p.paid)}</td>
                   <td><Badge status={tone(p.status)} label={PR_STATUS[p.status]} /></td>
                   <td>{p.requestedBy}</td>
                 </tr>
@@ -67,13 +68,16 @@ function NewPurchase({ onClose, onDone }: { onClose: () => void; onDone: (id: st
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState([{ inputItemId: '', quantity: '', unitCost: '' }]);
   const { busy, error, run } = useAction();
+  const fx = useFx();
+  const U = fx.usdMode; // chama cha USD: gharama kwa dola
   const total = lines.reduce((s, l) => s + Number(l.quantity || 0) * Number(l.unitCost || 0), 0);
   const valid = notes.trim().length >= 3 && lines.every((l) => l.inputItemId && Number(l.quantity) > 0 && l.unitCost !== '');
   const setLine = (i: number, patch: Partial<(typeof lines)[number]>) => setLines(lines.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   return (
     <Modal open title="Ombi la manunuzi" onClose={onClose}
       footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={!valid} onClick={async () => {
-        const r = await run(() => api<{ purchase: { id: string } }>('/store/purchases', { method: 'POST', body: { supplierId: supplierId || null, neededBy: neededBy || null, notes, lines } }));
+        const body = { supplierId: supplierId || null, neededBy: neededBy || null, notes, lines: lines.map((l) => (U ? { inputItemId: l.inputItemId, quantity: l.quantity, unitCostUsd: l.unitCost } : l)) };
+        const r = await run(() => api<{ purchase: { id: string } }>('/store/purchases', { method: 'POST', body }));
         if (r) onDone(r.purchase.id);
       }}>Tuma kwa Meneja</Button></>}>
       <Alert>{error}</Alert>
@@ -85,12 +89,12 @@ function NewPurchase({ onClose, onDone }: { onClose: () => void; onDone: (id: st
         <div key={i} className="form-grid" style={{ alignItems: 'end' }}>
           <SelectField label={`Bidhaa ${i + 1}`} value={l.inputItemId} onChange={(v) => setLine(i, { inputItemId: v })} placeholder="Chagua…" options={items.data?.data.map((it) => ({ value: it.id, label: `${it.name} (${UNIT_LABEL[it.unit]})` })) ?? []} />
           <TextField label={`Kiasi ${i + 1}`} type="number" min="0" value={l.quantity} onChange={(v) => setLine(i, { quantity: v })} />
-          <TextField label={`Bei kwa kimoja ${i + 1} (TSh)`} type="number" min="0" value={l.unitCost} onChange={(v) => setLine(i, { unitCost: v })} />
+          <TextField label={`Bei kwa kimoja ${i + 1} (${U ? 'USD' : 'TSh'})`} type="number" min="0" step={U ? '0.01' : '1'} value={l.unitCost} onChange={(v) => setLine(i, { unitCost: v })} />
         </div>
       ))}
       <div className="actions" style={{ justifyContent: 'space-between' }}>
         <Button variant="ghost" size="sm" onClick={() => setLines([...lines, { inputItemId: '', quantity: '', unitCost: '' }])}>+ Ongeza bidhaa</Button>
-        <strong>Jumla: {tsh(total)}</strong>
+        <strong>Jumla: {U ? usd(total) : tsh(total)}{U && fx.rate && total > 0 ? <span className="muted" style={{ fontWeight: 400 }}> ≈ {tsh(total * fx.rate)}</span> : null}</strong>
       </div>
       <TextField label="Sababu ya manunuzi *" value={notes} onChange={setNotes} />
     </Modal>
@@ -102,9 +106,9 @@ export function PurchaseDetail() {
   const { may } = useAuth();
   const { data, loading, error, reload } = useFetch<{
     purchase: Purchase;
-    lines: { id: string; quantity: string; unitCost: string; amount: string; receivedQty: string; inputItem: { name: string; unit: string } }[];
+    lines: { id: string; quantity: string; unitCost: string; amount: string; unitCostUsd?: string | null; amountUsd?: string | null; receivedQty: string; inputItem: { name: string; unit: string } }[];
     receipts: { id: string; quantity: string; reference: string | null; batchNo: string | null; expiryDate: string | null; createdAt: string; inputItemId: string }[];
-    payments: { id: string; txnNo: string; amount: string; status: string; kind: string; txnDate: string }[];
+    payments: { id: string; txnNo: string; amount: string; amountUsd?: string | null; status: string; kind: string; txnDate: string }[];
     approval: { requestNo: string; status: string; decisionNote: string | null; decidedAt: string | null } | null;
   }>(`/store/purchases/${id}`);
   const [receive, setReceive] = useState(false);
@@ -122,15 +126,15 @@ export function PurchaseDetail() {
       <Alert kind="ok">{ok}</Alert>
       <div className="stack">
         <div className="grid grid-3">
-          <section className="card kpi"><span className="label">Thamani ya ombi</span><span className="value">{tsh(p.totalAmount)}</span></section>
-          <section className="card kpi"><span className="label">Limelipwa</span><span className="value">{tsh(p.paid)}</span><span className="hint">Malipo yanafanywa na Mhasibu</span></section>
+          <section className="card kpi"><span className="label">Thamani ya ombi</span><span className="value">{p.currency === 'USD' && p.totalUsd ? usd(p.totalUsd) : tsh(p.totalAmount)}</span>{p.currency === 'USD' && <span className="hint">{tsh(p.totalAmount)} kwa kiwango {num(p.fxRate)} · deni kwa mzabuni ni la dola</span>}</section>
+          <section className="card kpi"><span className="label">Limelipwa</span><span className="value">{p.currency === 'USD' ? usd(p.paidUsd) : tsh(p.paid)}</span><span className="hint">{p.currency === 'USD' ? `${tsh(p.paid)} · ` : ''}Malipo yanafanywa na Mhasibu</span></section>
           <section className="card kpi"><span className="label">Idhini</span><span className="value" style={{ fontSize: 18 }}>{data.approval?.requestNo ?? '—'}</span><span className="hint">{data.approval?.decisionNote ? `"${data.approval.decisionNote}"` : data.approval?.status === 'PENDING' ? 'Inasubiri Meneja' : ''}</span></section>
         </div>
         <Section pad={false} title="Bidhaa">
           <div className="table-wrap"><table className="table">
             <thead><tr><th>Bidhaa</th><th className="num">Kiasi</th><th className="num">Bei</th><th className="num">Jumla</th><th className="num">Imepokelewa</th></tr></thead>
             <tbody>{data.lines.map((l) => (
-              <tr key={l.id}><td>{l.inputItem.name}</td><td className="num">{num(l.quantity)} {UNIT_LABEL[l.inputItem.unit]}</td><td className="num">{tsh(l.unitCost)}</td><td className="num">{tsh(l.amount)}</td>
+              <tr key={l.id}><td>{l.inputItem.name}</td><td className="num">{num(l.quantity)} {UNIT_LABEL[l.inputItem.unit]}</td><td className="num">{l.unitCostUsd ? usd(l.unitCostUsd) : tsh(l.unitCost)}</td><td className="num">{l.amountUsd ? usd(l.amountUsd) : tsh(l.amount)}</td>
                 <td className="num">{num(l.receivedQty)} {Number(l.receivedQty) >= Number(l.quantity) ? <span className="badge badge-ok">Kamili</span> : null}</td></tr>
             ))}</tbody>
           </table></div>
@@ -147,7 +151,7 @@ export function PurchaseDetail() {
           <Section pad={false} title="Malipo">
             {data.payments.length === 0 ? <Empty>Bado halijalipwa.</Empty> : (
               <div className="table-wrap"><table className="table"><tbody>{data.payments.map((t) => (
-                <tr key={t.id}><td>{t.txnNo}</td><td>{date(t.txnDate)}</td><td className="num">{tsh(t.amount)}</td><td><Badge status={t.status === 'POSTED' ? 'APPROVED' : 'DRAFT'} label={t.status === 'POSTED' ? 'Imelipwa' : 'Inaandaliwa'} /></td></tr>
+                <tr key={t.id}><td>{t.txnNo}</td><td>{date(t.txnDate)}</td><td className="num">{t.amountUsd ? <>{usd(t.amountUsd)}<div className="muted" style={{ fontSize: 12 }}>{tsh(t.amount)}</div></> : tsh(t.amount)}</td><td><Badge status={t.status === 'POSTED' ? 'APPROVED' : 'DRAFT'} label={t.status === 'POSTED' ? 'Imelipwa' : 'Inaandaliwa'} /></td></tr>
               ))}</tbody></table></div>
             )}
           </Section>

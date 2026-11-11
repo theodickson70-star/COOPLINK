@@ -22,7 +22,8 @@ import {
 import { findMemberScoped } from './members.routes';
 import { currentSeason } from './seasons.routes';
 import { toCsv } from './owner/common';
-import { journalFor } from '../lib/gl';
+import { journalFor, postJournal } from '../lib/gl';
+import { currentRate, inputCurrency, rateProblem, settleUsdDebt, usdSummary } from '../lib/fx';
 import { assertOpen, lockedThrough } from '../lib/periods';
 
 /** Tarehe ya kukamilisha: kama tarehe ya maandalizi iko kwenye kipindi kilichofungwa, tumia leo. */
@@ -214,6 +215,12 @@ financeRouter.post('/income', requireAmcosPerm('finance.record'), ah(async (req,
       memberId: member?.id ?? null, status: 'POSTED', createdById: req.auth!.userId, postedById: req.auth!.userId, postedAt: new Date(),
     }).returning();
     if (member && body.category === 'FARMER_REPAYMENT') {
+      // Deni la pembejeo la dola: linabadilishwa kwa kiwango cha leo, kisha marejesho yanalipunguza kwanza
+      const rate = await currentRate(tx, amcosId);
+      if (rate) {
+        const jl = await settleUsdDebt(tx, req, { amcosId, memberId: member.id, seasonId: season?.id ?? null, rate: rate.usdToTzs, paidTzs: body.amount, ref: t.txnNo, referenceType: 'FINANCE_TXN', referenceId: t.id });
+        if (jl.length) await postJournal(tx, { amcosId, date: t.txnDate, description: `Tofauti ya kiwango cha dola — marejesho ${t.txnNo}`, source: 'FX_REVALUE', sourceId: t.id, reference: t.txnNo, createdById: req.auth!.userId, lines: jl });
+      }
       await ledger.post(tx, {
         amcosId, memberId: member.id, seasonId: season?.id ?? null, type: 'REPAYMENT', credit: body.amount,
         description: `Marejesho ya deni ${t.txnNo}`, referenceType: 'FINANCE_TXN', referenceId: t.id, createdById: req.auth!.userId,
@@ -231,7 +238,7 @@ financeRouter.post('/income', requireAmcosPerm('finance.record'), ah(async (req,
 }));
 
 /** Matumizi / malipo yanayohitaji idhini ya Meneja. */
-async function prepare(req: Request, kind: 'EXPENSE' | 'FARMER_PAYMENT' | 'SUPPLIER_PAYMENT', body: z.infer<typeof baseTxn> & { category: string; memberId?: string | null; supplierId?: string | null; purchaseRequestId?: string | null }, title: string, preApprovedBy?: string | null) {
+async function prepare(req: Request, kind: 'EXPENSE' | 'FARMER_PAYMENT' | 'SUPPLIER_PAYMENT', body: z.infer<typeof baseTxn> & { category: string; memberId?: string | null; supplierId?: string | null; purchaseRequestId?: string | null; amountUsd?: string | null; fxRate?: string | null }, title: string, preApprovedBy?: string | null) {
   const amcosId = await resolveWriteAmcosId(req);
   if (body.accountId) await activeAccount(req, body.accountId, false);
   const amcos = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId) }))!;
@@ -244,6 +251,7 @@ async function prepare(req: Request, kind: 'EXPENSE' | 'FARMER_PAYMENT' | 'SUPPL
       category: body.category, accountId: body.accountId ?? null, amount: body.amount, txnDate: body.txnDate ?? todayStr(),
       description: body.description, reference: body.reference ?? null, payee: body.payee ?? null,
       memberId: body.memberId ?? null, supplierId: body.supplierId ?? null, purchaseRequestId: body.purchaseRequestId ?? null,
+      amountUsd: body.amountUsd ?? null, fxRate: body.fxRate ?? null,
       status: preApprovedBy ? 'APPROVED' : 'PENDING_APPROVAL', approvalId: preApprovedBy ?? null, createdById: req.auth!.userId,
     }).returning();
     await audit(tx, req, { action: `FINANCE_${kind}_PREPARE`, entity: 'FinanceTransaction', entityId: t.id, amcosId, after: t });
@@ -279,7 +287,8 @@ financeRouter.post('/farmer-payments', requireAmcosPerm('finance.record'), ah(as
 
 /** Malipo kwa mzabuni. Yakihusishwa na ombi la manunuzi LILILOIDHINISHWA, idhini hiyo inatosha (hakuna idhini mara mbili). */
 financeRouter.post('/supplier-payments', requireAmcosPerm('finance.record'), ah(async (req, res) => {
-  const body = baseTxn.extend({ supplierId: z.string().uuid(), purchaseRequestId: z.string().uuid().nullable().optional() }).parse(req.body);
+  const body = baseTxn.extend({ supplierId: z.string().uuid(), purchaseRequestId: z.string().uuid().nullable().optional(), amountUsd: decimalSchema({ min: 0.01 }).nullable().optional() }).parse(req.body);
+  let usdPart: { amountUsd: string; fxRate: string } | null = null;
   const [supplier] = await db.select().from(schema.suppliers).where(and(eq(schema.suppliers.id, body.supplierId), amcosScope(req, schema.suppliers.amcosId)));
   if (!supplier) throw notFound('Mzabuni');
   let preApproved: string | null = null;
@@ -292,11 +301,26 @@ financeRouter.post('/supplier-payments', requireAmcosPerm('finance.record'), ah(
       .where(and(eq(T.purchaseRequestId, pr.id), eq(T.kind, 'SUPPLIER_PAYMENT'), inArray(T.status, ['PENDING_APPROVAL', 'APPROVED', 'POSTED'])));
     const reversed = await db.select({ v: sql<string>`coalesce(sum(${T.amount}), 0)` }).from(T)
       .where(and(eq(T.purchaseRequestId, pr.id), eq(T.kind, 'REVERSAL')));
-    const remaining = D(pr.totalAmount).minus(committed).plus(reversed[0].v);
-    if (D(body.amount).greaterThan(remaining)) throw badRequest(`Kiasi kinazidi deni la ombi hili. Kilichobaki: TSh ${fmt2(remaining)}`);
+    if (pr.currency === 'USD' && pr.totalUsd) {
+      // Ombi la dola: kinacholipwa ni dola; TSh = dola x kiwango cha leo
+      if (!body.amountUsd) throw badRequest('Ombi hili la manunuzi ni la dola — weka kiasi kwa USD');
+      const [u] = await db.select({
+        paid: sql<string>`coalesce(sum(${T.amountUsd}) filter (where ${T.kind} = 'SUPPLIER_PAYMENT' and ${T.status} in ('PENDING_APPROVAL', 'APPROVED', 'POSTED')), 0)`,
+        rev: sql<string>`coalesce(sum(${T.amountUsd}) filter (where ${T.kind} = 'REVERSAL'), 0)`,
+      }).from(T).where(eq(T.purchaseRequestId, pr.id));
+      const leftUsd = D(pr.totalUsd).minus(u.paid).plus(u.rev);
+      if (D(body.amountUsd).gt(leftUsd)) throw badRequest(`Kiasi kinazidi deni la ombi hili. Kilichobaki: $${fmt2(leftUsd)}`);
+      const rate = await currentRate(db, pr.amcosId);
+      if (!rate) throw badRequest('Kiwango cha dola hakijawekwa');
+      usdPart = { amountUsd: fmt2(body.amountUsd), fxRate: D(rate.usdToTzs).toFixed(4) };
+      body.amount = fmt2(D(body.amountUsd).times(rate.usdToTzs));
+    } else {
+      const remaining = D(pr.totalAmount).minus(committed).plus(reversed[0].v);
+      if (D(body.amount).greaterThan(remaining)) throw badRequest(`Kiasi kinazidi deni la ombi hili. Kilichobaki: TSh ${fmt2(remaining)}`);
+    }
     preApproved = pr.approvalId;
   }
-  res.status(201).json(await prepare(req, 'SUPPLIER_PAYMENT', { ...body, category: 'SUPPLIER', payee: supplier.name }, `Malipo kwa ${supplier.name}: ${tshText(body.amount)}`, preApproved));
+  res.status(201).json(await prepare(req, 'SUPPLIER_PAYMENT', { ...body, ...usdPart, category: 'SUPPLIER', payee: supplier.name }, `Malipo kwa ${supplier.name}: ${usdPart ? `$${usdPart.amountUsd} (${tshText(body.amount)})` : tshText(body.amount)}`, preApproved));
 }));
 
 /** Mhasibu anakamilisha malipo yaliyoidhinishwa (fedha zimetoka kweli). */
@@ -368,6 +392,46 @@ financeRouter.post('/transactions/:id/reverse', requireAmcosPerm('finance.record
  * Bajeti ya msimu dhidi ya matumizi halisi: kwa kila kundi — bajeti, kilichotumika, kinachobaki, asilimia,
  * matumizi ya kila mwezi, na hali (SAWA / KARIBU / IMEZIDI / KASI) ikilinganishwa na muda wa msimu uliopita.
  */
+// ------------------------------ KIWANGO CHA DOLA NA SARAFU YA PEMBEJEO ------------------------------
+financeRouter.get('/fx', requireAmcosPerm('finance.read', 'stock.read', 'issues.request', 'purchases.request', 'sales.read'), ah(async (req, res) => {
+  const amcosId = await resolveWriteAmcosId(req);
+  const [currency, cur] = await Promise.all([inputCurrency(db, amcosId), currentRate(db, amcosId)]);
+  const history = await db.select({ id: schema.fxRates.id, usdToTzs: schema.fxRates.usdToTzs, note: schema.fxRates.note, createdAt: schema.fxRates.createdAt, setBy: schema.users.fullName })
+    .from(schema.fxRates).leftJoin(schema.users, eq(schema.users.id, schema.fxRates.setById))
+    .where(eq(schema.fxRates.amcosId, amcosId)).orderBy(desc(schema.fxRates.createdAt)).limit(30);
+  const [usd] = (await db.execute<{ debt: string | null; farmers: number }>(sql`
+    select sum(x.u)::numeric(14,2)::text as debt, count(*)::int as farmers from (select member_id, sum(usd) as u from member_usd_ledger where amcos_id = ${amcosId} group by member_id having sum(usd) > 0) x`)).rows;
+  res.json({ currency, rate: cur ? { usdToTzs: cur.usdToTzs, createdAt: cur.createdAt } : null, history, farmersUsdDebt: usd?.debt ?? '0', farmersWithUsdDebt: usd?.farmers ?? 0 });
+}));
+
+/** Mhasibu anaweka kiwango kipya. Kinatumika kwa ugawaji/manunuzi/marejesho yanayofuata (ya zamani yanabaki na kiwango chao). */
+financeRouter.post('/fx', requireAmcosPerm('finance.accounts'), ah(async (req, res) => {
+  const b = z.object({ usdToTzs: decimalSchema({ min: 1 }), note: z.string().trim().max(200).optional() }).parse(req.body);
+  const bad = rateProblem(b.usdToTzs);
+  if (bad) throw badRequest(bad);
+  const amcosId = await resolveWriteAmcosId(req);
+  const before = await currentRate(db, amcosId);
+  const row = await db.transaction(async (tx) => {
+    const [r] = await tx.insert(schema.fxRates).values({ amcosId, usdToTzs: D(b.usdToTzs).toFixed(4), note: b.note ?? null, setById: req.auth!.userId }).returning();
+    await audit(tx, req, { action: 'FX_RATE_SET', entity: 'FxRate', entityId: r.id, amcosId, before: before ? { usdToTzs: before.usdToTzs } : null, after: { usdToTzs: r.usdToTzs, note: r.note } });
+    return r;
+  });
+  res.status(201).json({ rate: row });
+}));
+
+/** Sarafu ya pembejeo ya chama (TSh au USD). Inaathiri bei, ugawaji na manunuzi MAPYA tu. */
+financeRouter.put('/fx/currency', requireAmcosPerm('finance.accounts'), ah(async (req, res) => {
+  const { currency } = z.object({ currency: z.enum(['TZS', 'USD']) }).parse(req.body);
+  const amcosId = await resolveWriteAmcosId(req);
+  if (currency === 'USD' && !(await currentRate(db, amcosId))) throw badRequest('Weka kiwango cha dola kwanza');
+  const before = await inputCurrency(db, amcosId);
+  await db.transaction(async (tx) => {
+    await tx.update(schema.amcos).set({ inputCurrency: currency }).where(eq(schema.amcos.id, amcosId));
+    await audit(tx, req, { action: 'INPUT_CURRENCY_SET', entity: 'Amcos', entityId: amcosId, amcosId, before: { inputCurrency: before }, after: { inputCurrency: currency } });
+  });
+  res.json({ currency });
+}));
+
 financeRouter.get('/budgets', requireAmcosPerm('finance.read'), ah(async (req, res) => {
   const { seasonId } = z.object({ seasonId: z.string().uuid().optional() }).parse(req.query);
   const season = seasonId ? (await db.select().from(schema.seasons).where(eq(schema.seasons.id, seasonId)))[0] : await currentSeason();
@@ -615,7 +679,9 @@ export async function farmerStatement(m: typeof schema.members.$inferSelect, sea
     byItem.set(x.l.inputItemId, cur);
   }
   const amcos = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, m.amcosId) }))!;
+  const usd = await usdSummary(m.amcosId, m.id);
   return {
+    usd,
     member: { id: m.id, memberNo: m.memberNo, firstName: m.firstName, middleName: m.middleName, lastName: m.lastName, village: m.village, status: m.status, group: grp?.name ?? null },
     amcos: { name: amcos.name, code: amcos.code },
     seasons: seasonList, season: season ?? null, opening: fmt2(opening), totals,
@@ -623,7 +689,8 @@ export async function farmerStatement(m: typeof schema.members.$inferSelect, sea
     balance: fmt2(run), amountOwed: fmt2(run.lt(0) ? run.neg() : 0),
     inputsSummary: [...byItem.values()].map((v) => ({ name: v.name, unit: v.unit, quantity: fmt2(v.quantity), amount: fmt2(v.amount) })),
     issues: issues.map((i) => ({ id: i.id, issueNo: i.issueNo, issuedAt: i.issuedAt, status: i.status, totalAmount: i.totalAmount, cancelReason: i.cancelReason,
-      lines: lines.filter((x) => x.l.inputIssueId === i.id).map((x) => ({ name: x.name, unit: x.unit, quantity: x.l.quantity, unitPrice: x.l.unitPrice, amount: x.l.amount })) })),
+      currency: i.currency, totalUsd: i.totalUsd, fxRate: i.fxRate,
+      lines: lines.filter((x) => x.l.inputIssueId === i.id).map((x) => ({ name: x.name, unit: x.unit, quantity: x.l.quantity, unitPrice: x.l.unitPrice, amount: x.l.amount, unitPriceUsd: x.l.unitPriceUsd, amountUsd: x.l.amountUsd })) })),
     statement,
   };
 }

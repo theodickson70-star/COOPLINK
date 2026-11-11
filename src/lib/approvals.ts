@@ -11,6 +11,7 @@ import { schema, type Tx } from '../db';
 import { AppError, badRequest, conflict, forbidden, notFound } from './errors';
 import { audit } from './audit';
 import { missingRoles } from './amcos-permissions';
+import { currentRate, recordUsd, toTzs } from './fx';
 import { nextNumber, pad } from './counter';
 import { D, fmt2 } from './money';
 import * as ledger from './ledger';
@@ -167,6 +168,11 @@ async function onInputIssue(tx: Tx, req: Request, a: Approval, o: Outcome, note:
     description: `Pembejeo ${issue.issueNo}: ${lines.map((l) => `${l.inputItem.name} x${l.quantity}`).join(', ')}`,
     referenceType: 'INPUT_ISSUE', referenceId: issue.id, createdById: req.auth!.userId,
   });
+  // Deni la dola: linaandikwa kwa dola na thamani yake ya TSh kwa kiwango cha siku ya ugawaji
+  if (issue.currency === 'USD' && issue.totalUsd) {
+    await recordUsd(tx, { amcosId: a.amcosId, memberId: issue.memberId, seasonId: issue.seasonId, kind: 'ISSUE', usd: issue.totalUsd, tzs: issue.totalAmount, rate: issue.fxRate,
+      description: `Pembejeo ${issue.issueNo}`, referenceType: 'INPUT_ISSUE', referenceId: issue.id, createdById: req.auth!.userId });
+  }
   const [upd] = await tx.update(I).set({ status: 'ISSUED', issuedAt: new Date(), approvalId: a.id, approvedById: req.auth!.userId, approvedAt: new Date() })
     .where(and(eq(I.id, issue.id), eq(I.status, 'PENDING_APPROVAL'))).returning();
   await audit(tx, req, { action: 'INPUT_ISSUE_APPROVED', entity: 'InputIssue', entityId: issue.id, amcosId: a.amcosId, before: { status: issue.status }, after: { status: upd.status, note } });
@@ -194,7 +200,7 @@ async function reverseOne(tx: Tx, req: Request, a: Approval, orig: typeof schema
     direction: orig.direction === 'IN' ? 'OUT' : 'IN', category: orig.category, accountId: orig.accountId, amount: orig.amount,
     txnDate: darToday(), description: `Kusahihisha ${orig.txnNo}: ${a.reason ?? ''}`.trim(),
     reference: orig.txnNo, payee: orig.payee, memberId: orig.memberId, supplierId: orig.supplierId, purchaseRequestId: orig.purchaseRequestId,
-    contraGlAccountId: orig.contraGlAccountId, transferGroupId: orig.transferGroupId, marketId: orig.marketId,
+    contraGlAccountId: orig.contraGlAccountId, transferGroupId: orig.transferGroupId, marketId: orig.marketId, amountUsd: orig.amountUsd, fxRate: orig.fxRate,
     status: 'POSTED', approvalId: a.id, reversalOfId: orig.id, createdById: a.requestedById, postedById: req.auth!.userId, postedAt: new Date(),
   }).returning();
   const entries = await tx.select().from(schema.memberLedgerEntries).where(and(
@@ -253,6 +259,8 @@ async function onTransfer(tx: Tx, req: Request, a: Approval, o: Outcome, note: s
 interface ReceiptPayload {
   inputItemId: string | null; newItem: { name: string; category: (typeof schema.inputCategoryEnum.enumValues)[number]; unit: (typeof schema.inputUnitEnum.enumValues)[number]; reorderLevel?: string | null } | null;
   purchaseRequestId: string | null; purchaseLineId: string | null; prNo: string | null; itemName: string; seasonId: string; quantity: string; unitPrice: string; currentPrice: string | null; unitCost: string | null;
+  /** Chama cha USD: bei ya mkulima na gharama kwa dola (unitPrice/unitCost ni TSh kwa kiwango cha siku ya ombi) */
+  unitPriceUsd?: string | null; unitCostUsd?: string | null; currentPriceUsd?: string | null;
   reference: string; source: string | null; batchNo: string | null; expiryDate: string | null; supplierId: string | null; notes: string | null;
 }
 
@@ -287,18 +295,25 @@ async function onStockReceipt(tx: Tx, req: Request, a: Approval, o: Outcome, not
     await tx.update(PR).set({ status: done ? 'RECEIVED' : 'PARTIALLY_RECEIVED' }).where(eq(PR.id, pr.id));
     await audit(tx, req, { action: 'PURCHASE_GOODS_RECEIVED', entity: 'PurchaseRequest', entityId: pr.id, amcosId: a.amcosId, before: { status: pr.status }, after: { status: done ? 'RECEIVED' : 'PARTIALLY_RECEIVED', reference: p.reference, quantity, approval: a.requestNo } });
   }
-  const unitPrice = changes?.unitPrice ?? p.unitPrice;
-  const adjusted = [quantity !== p.quantity && `idadi ${p.quantity} → ${quantity}`, unitPrice !== p.unitPrice && `bei ${p.unitPrice} → ${unitPrice}`].filter(Boolean).join(', ');
+  // Chama cha USD: Meneja akibadilisha bei, anaandika dola; TSh inahesabiwa kwa kiwango cha sasa
+  const usd = !!p.unitPriceUsd;
+  const rateRow = usd ? await currentRate(tx, a.amcosId) : null;
+  const unitPriceUsd = usd ? D(changes?.unitPrice ?? p.unitPriceUsd!).toFixed(4) : null;
+  const unitPrice = usd ? fmt2(toTzs(unitPriceUsd!, rateRow?.usdToTzs ?? D(p.unitPrice).div(p.unitPriceUsd!))) : changes?.unitPrice ?? p.unitPrice;
+  // Mzigo wa ombi la manunuzi: gharama ya ombi (kiwango cha ombi). Mzigo wa kawaida wa dola: kiwango cha sasa.
+  const unitCost = usd && p.unitCostUsd && !p.purchaseLineId ? fmt2(toTzs(p.unitCostUsd, rateRow?.usdToTzs ?? D(p.unitPrice).div(p.unitPriceUsd!))) : p.unitCost;
+  const adjusted = [quantity !== p.quantity && `idadi ${p.quantity} → ${quantity}`,
+    usd ? (unitPriceUsd !== D(p.unitPriceUsd!).toFixed(4) && `bei $${p.unitPriceUsd} → $${unitPriceUsd}`) : (unitPrice !== p.unitPrice && `bei ${p.unitPrice} → ${unitPrice}`)].filter(Boolean).join(', ');
   const [mv] = await tx.insert(schema.stockMovements).values({
     amcosId: a.amcosId, seasonId: p.seasonId, inputItemId: item.id, type: 'RECEIPT', quantity, reference: p.reference, purchaseRequestId: p.purchaseRequestId ?? null,
     notes: [p.source && `Kutoka: ${p.source}`, p.notes, `Idhini ${a.requestNo}: ${note}`, adjusted && `Meneja alirekebisha ${adjusted}`].filter(Boolean).join(' · '),
-    batchNo: p.batchNo, expiryDate: p.expiryDate, supplierId: p.supplierId, unitCost: p.unitCost, approvalId: a.id, createdById: a.requestedById,
+    batchNo: p.batchNo, expiryDate: p.expiryDate, supplierId: p.supplierId, unitCost, unitCostUsd: p.unitCostUsd ?? null, approvalId: a.id, createdById: a.requestedById,
   }).returning();
   const P = schema.inputPrices;
   const before = await tx.query.inputPrices.findFirst({ where: and(eq(P.seasonId, p.seasonId), eq(P.inputItemId, item.id)) });
-  if (!before || before.unitPrice !== unitPrice) {
-    const [pr] = await tx.insert(P).values({ amcosId: a.amcosId, seasonId: p.seasonId, inputItemId: item.id, unitPrice })
-      .onConflictDoUpdate({ target: [P.seasonId, P.inputItemId], set: { unitPrice, updatedAt: new Date() } }).returning();
+  if (!before || (usd ? before.unitPriceUsd == null || D(before.unitPriceUsd).toFixed(4) !== unitPriceUsd : before.unitPrice !== unitPrice)) {
+    const [pr] = await tx.insert(P).values({ amcosId: a.amcosId, seasonId: p.seasonId, inputItemId: item.id, unitPrice, unitPriceUsd })
+      .onConflictDoUpdate({ target: [P.seasonId, P.inputItemId], set: { unitPrice, unitPriceUsd, updatedAt: new Date() } }).returning();
     await audit(tx, req, { action: 'INPUT_PRICE_SET', entity: 'InputPrice', entityId: pr.id, amcosId: a.amcosId, before: before ?? null, after: { ...pr, approval: a.requestNo } });
   }
   await audit(tx, req, { action: 'STOCK_RECEIPT_APPROVED', entity: 'StockMovement', entityId: mv.id, amcosId: a.amcosId, after: { ...mv, unitPrice, adjusted: adjusted || null, note } });

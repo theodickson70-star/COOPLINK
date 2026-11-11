@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usd } from '../lib/fx';
 import { useT } from '../lib/prefs';
 import { Link } from 'react-router-dom';
 import { api, type Paged } from '../lib/api';
@@ -90,9 +91,13 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
   const t = useT();
   const { user, may } = useAuth();
   const [note, setNote] = useState('');
-  const rp = a.type === 'STOCK_RECEIPT' ? (a.payload as { quantity: string; unitPrice: string; currentPrice: string | null; unitCost: string | null; unit: string; itemName: string; source: string | null; reference: string; newItem: { name: string; category: string; unit: string } | null; prNo: string | null } | null) : null;
+  const rp = a.type === 'STOCK_RECEIPT' ? (a.payload as { quantity: string; unitPrice: string; currentPrice: string | null; unitCost: string | null; unitPriceUsd?: string | null; unitCostUsd?: string | null; currentPriceUsd?: string | null; unit: string; itemName: string; source: string | null; reference: string; newItem: { name: string; category: string; unit: string } | null; prNo: string | null } | null) : null;
   const [qty, setQty] = useState(rp ? String(Number(rp.quantity)) : '');
-  const [price, setPrice] = useState(rp ? String(Number(rp.unitPrice)) : '');
+  // Mzigo wa chama cha USD: bei ni ya dola (Meneja akibadilisha, anaandika dola)
+  const rpUsd = !!rp?.unitPriceUsd;
+  const basePrice = rp ? (rpUsd ? rp.unitPriceUsd! : rp.unitPrice) : '';
+  const [price, setPrice] = useState(rp ? String(Number(basePrice)) : '');
+  const pm = (v: string | number | null | undefined) => (rpUsd ? usd(v) : tsh(v ?? 0));
   const [pw, setPw] = useState('');
   const [code, setCode] = useState('');
   const { busy, error, run } = useAction();
@@ -106,7 +111,7 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
   const act = async (decision: 'APPROVED' | 'REJECTED' | 'CANCEL') => {
     const r = await run(() => decision === 'CANCEL'
       ? api(`/approvals/${a.id}/cancel`, { method: 'POST', body: { note } })
-      : api(`/approvals/${a.id}/decide`, { method: 'POST', body: { decision, note, ...(decision === 'APPROVED' ? { confirmPassword: pw, confirmCode: user?.totpEnabled ? code : undefined } : {}), ...(rp && decision === 'APPROVED' && (Number(qty) !== Number(rp.quantity) || Number(price) !== Number(rp.unitPrice)) ? { changes: { quantity: qty, unitPrice: price } } : {}) } }));
+      : api(`/approvals/${a.id}/decide`, { method: 'POST', body: { decision, note, ...(decision === 'APPROVED' ? { confirmPassword: pw, confirmCode: user?.totpEnabled ? code : undefined } : {}), ...(rp && decision === 'APPROVED' && (Number(qty) !== Number(rp.quantity) || Number(price) !== Number(basePrice)) ? { changes: { quantity: qty, unitPrice: price } } : {}) } }));
     if (!r) setPw('');
     if (r) onDone(decision === 'APPROVED' ? `${a.requestNo} imeidhinishwa` : decision === 'REJECTED' ? `${a.requestNo} imekataliwa` : `${a.requestNo} imeondolewa`);
   };
@@ -136,14 +141,14 @@ export function DecideModal({ approval: a, onClose, onDone }: { approval: Approv
           <dl className="dl">
             <dt>{t('Bidhaa')}</dt><dd>{rp.itemName}{rp.newItem && <> <span className="badge badge-warn">{t('Bidhaa mpya — itasajiliwa ukiidhinisha')}</span></>}</dd>
             {rp.source && <><dt>{t('Kutoka')}</dt><dd>{rp.source} · hati {rp.reference}</dd></>}
-            <dt>{t('Bei ya sasa')}</dt><dd>{rp.currentPrice ? tsh(rp.currentPrice) : 'Haijawekwa'}</dd>
-            {rp.unitCost && <><dt>{t('Gharama ya chama')}</dt><dd>{tsh(rp.unitCost)} kwa kipimo</dd></>}
+            <dt>{t('Bei ya sasa')}</dt><dd>{(rpUsd ? rp.currentPriceUsd : rp.currentPrice) ? pm(rpUsd ? rp.currentPriceUsd : rp.currentPrice) : 'Haijawekwa'}</dd>
+            {(rpUsd ? rp.unitCostUsd : rp.unitCost) && <><dt>{t('Gharama ya chama')}</dt><dd>{pm(rpUsd ? rp.unitCostUsd : rp.unitCost)} kwa kipimo</dd></>}
           </dl>
           {canDecide && <div className="form-grid">
             <TextField label="Idadi iliyopokelewa *" type="number" min="0" value={qty} onChange={setQty} />
-            <TextField label="Bei ya kumkopesha mkulima (TSh) *" type="number" min="1" value={price} onChange={setPrice} />
+            <TextField label={rpUsd ? 'Bei ya kumkopesha mkulima (USD) *' : 'Bei ya kumkopesha mkulima (TSh) *'} type="number" min={rpUsd ? '0.01' : '1'} step={rpUsd ? '0.01' : '1'} value={price} onChange={setPrice} />
           </div>}
-          {canDecide && <p className="muted" style={{ margin: 0 }}>{t('Thamani:')} <strong>{tsh(Number(qty || 0) * Number(price || 0))}</strong>{t('. Ukibadilisha idadi au bei, mabadiliko yako ndiyo yatakayotumika na yatahifadhiwa kwenye kumbukumbu.')}</p>}
+          {canDecide && <p className="muted" style={{ margin: 0 }}>{t('Thamani:')} <strong>{pm(Number(qty || 0) * Number(price || 0))}</strong>{t('. Ukibadilisha idadi au bei, mabadiliko yako ndiyo yatakayotumika na yatahifadhiwa kwenye kumbukumbu.')}</p>}
         </>
       )}
       {a.type === 'OPENING_BALANCE' && p?.totals && (

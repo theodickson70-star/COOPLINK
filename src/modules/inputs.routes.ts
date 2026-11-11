@@ -20,6 +20,7 @@ import { D, fmt2, tshText } from '../lib/money';
 import { findMemberScoped } from './members.routes';
 import { lockItems, stockBalance } from '../lib/stock';
 import { createApproval } from '../lib/approvals';
+import { inputCurrency, recordUsd, requireRate, toTzs } from '../lib/fx';
 import { currentSeason } from './seasons.routes';
 import { activeGroups } from '../lib/groups';
 
@@ -117,15 +118,26 @@ inputsRouter.put(
   '/prices',
   requireAmcosPerm('prices.manage'),
   ah(async (req, res) => {
-    const body = z.object({ seasonId: z.string().uuid().optional(), inputItemId: z.string().uuid(), unitPrice: decimalSchema({ min: 0.01 }) }).parse(req.body);
+    const body = z.object({ seasonId: z.string().uuid().optional(), inputItemId: z.string().uuid(), unitPrice: decimalSchema({ min: 0.01 }).optional(), unitPriceUsd: decimalSchema({ min: 0.0001 }).optional() }).parse(req.body);
     const item = await findItemScoped(req, body.inputItemId);
     const season = await resolveOpenSeason(body.seasonId);
+    // Chama cha USD: bei ni ya dola; TSh inayohifadhiwa ni ya kiwango cha leo (kwa taarifa tu — ugawaji unatumia kiwango cha siku ya ugawaji)
+    const usdMode = (await inputCurrency(db, item.amcosId)) === 'USD';
+    let unitPrice: string, unitPriceUsd: string | null = null;
+    if (usdMode) {
+      if (!body.unitPriceUsd) throw badRequest('Chama hiki kinakopesha pembejeo kwa dola — weka bei kwa USD');
+      unitPriceUsd = D(body.unitPriceUsd).toFixed(4);
+      unitPrice = fmt2(toTzs(unitPriceUsd, await requireRate(db, item.amcosId)));
+    } else {
+      if (!body.unitPrice) throw badRequest('Weka bei kwa TSh');
+      unitPrice = body.unitPrice;
+    }
     const before = await db.query.inputPrices.findFirst({ where: and(eq(prices.seasonId, season.id), eq(prices.inputItemId, item.id)) });
     const price = await db.transaction(async (tx) => {
       const [row] = await tx
         .insert(prices)
-        .values({ amcosId: item.amcosId, seasonId: season.id, inputItemId: item.id, unitPrice: body.unitPrice })
-        .onConflictDoUpdate({ target: [prices.seasonId, prices.inputItemId], set: { unitPrice: body.unitPrice, updatedAt: new Date() } })
+        .values({ amcosId: item.amcosId, seasonId: season.id, inputItemId: item.id, unitPrice, unitPriceUsd })
+        .onConflictDoUpdate({ target: [prices.seasonId, prices.inputItemId], set: { unitPrice, unitPriceUsd, updatedAt: new Date() } })
         .returning();
       await audit(tx, req, { action: 'INPUT_PRICE_SET', entity: 'InputPrice', entityId: row.id, amcosId: item.amcosId, before, after: row });
       return row;
@@ -222,6 +234,8 @@ inputsRouter.post(
       reference: z.string().trim().min(2, 'Weka namba ya hati ya mzigo (delivery note)'),
       unitPrice: decimalSchema({ min: 0.01 }).nullable().optional(),    // bei ya kumkopesha mkulima (kwa kipimo kimoja)
       unitCost: decimalSchema({ min: 0 }).nullable().optional(),        // gharama ya chama (hiari)
+      unitPriceUsd: decimalSchema({ min: 0.0001 }).nullable().optional(), // chama cha USD: bei ya mkulima kwa dola
+      unitCostUsd: decimalSchema({ min: 0 }).nullable().optional(),       // chama cha USD: gharama kwa dola
       source: z.string().trim().nullable().optional(),                  // mf. Chama Kikuu, mzabuni
       batchNo: z.string().trim().nullable().optional(),
       expiryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
@@ -259,8 +273,19 @@ inputsRouter.post(
     } else throw badRequest('Chagua bidhaa au andika bidhaa mpya');
 
     const current = item ? await db.query.inputPrices.findFirst({ where: and(eq(prices.seasonId, season.id), eq(prices.inputItemId, item.id)) }) : undefined;
-    if (!body.unitPrice && !current) throw badRequest('Weka bei ya kumkopesha mkulima');
-    const unitPrice = body.unitPrice ?? current!.unitPrice;
+    const usdMode = (await inputCurrency(db, amcosId)) === 'USD';
+    let unitPrice: string, unitPriceUsd: string | null = null, unitCostUsd: string | null = null, rate: ReturnType<typeof D> | null = null;
+    if (usdMode) {
+      rate = await requireRate(db, amcosId);
+      const pUsd = body.unitPriceUsd ?? current?.unitPriceUsd ?? null;
+      if (!pUsd) throw badRequest('Weka bei ya kumkopesha mkulima kwa USD');
+      unitPriceUsd = D(pUsd).toFixed(4);
+      unitPrice = fmt2(toTzs(unitPriceUsd, rate));
+      unitCostUsd = line?.unitCostUsd ?? (body.unitCostUsd != null ? D(body.unitCostUsd).toFixed(4) : null);
+    } else {
+      if (!body.unitPrice && !current) throw badRequest('Weka bei ya kumkopesha mkulima');
+      unitPrice = body.unitPrice ?? current!.unitPrice;
+    }
     if (item) {
       const [dup] = await db.select({ id: APR.id }).from(APR).where(and(eq(APR.amcosId, amcosId), eq(APR.type, 'STOCK_RECEIPT'), eq(APR.status, 'PENDING'),
         eq(APR.entityId, item.id), sql`${APR.payload}->>'reference' = ${body.reference}`));
@@ -268,16 +293,19 @@ inputsRouter.post(
     }
     const name = item?.name ?? body.newItem!.name;
     const unit = item?.unit ?? body.newItem!.unit;
-    const unitCost = line?.unitCost ?? body.unitCost ?? null;
+    // Mzigo wa ombi la manunuzi: gharama ni ya ombi (TSh kwa kiwango cha ombi) ili deni la mzabuni lilingane na ombi
+    const unitCost = line?.unitCost ?? (unitCostUsd && rate ? fmt2(toTzs(unitCostUsd, rate)) : body.unitCost ?? null);
     const source = pr ? `Manunuzi ${pr.prNo}` : body.source ?? null;
     const approval = await db.transaction(async (tx) => {
       const a = await createApproval(tx, req, {
         amcosId, type: 'STOCK_RECEIPT', entityType: 'InputItem', entityId: item?.id, amount: fmt2(D(body.quantity).times(unitPrice)),
-        title: `${item ? 'Mzigo' : 'Bidhaa mpya na mzigo'}: ${name} — ${body.quantity} ${unit.toLowerCase()} × ${tshText(unitPrice)}${current && current.unitPrice !== unitPrice ? ` (bei ya sasa ${tshText(current.unitPrice)})` : ''}`,
+        title: usdMode
+          ? `${item ? 'Mzigo' : 'Bidhaa mpya na mzigo'}: ${name} — ${body.quantity} ${unit.toLowerCase()} × $${D(unitPriceUsd!).toFixed()}${current?.unitPriceUsd && D(current.unitPriceUsd).toFixed(4) !== unitPriceUsd ? ` (bei ya sasa $${D(current.unitPriceUsd).toFixed()})` : ''}`
+          : `${item ? 'Mzigo' : 'Bidhaa mpya na mzigo'}: ${name} — ${body.quantity} ${unit.toLowerCase()} × ${tshText(unitPrice)}${current && current.unitPrice !== unitPrice ? ` (bei ya sasa ${tshText(current.unitPrice)})` : ''}`,
         reason: [source && `Kutoka: ${source}`, `Hati: ${body.reference}`, body.notes].filter(Boolean).join(' · '),
         payload: {
           inputItemId: item?.id ?? null, newItem: item ? null : body.newItem, itemName: name, unit, seasonId: season.id, quantity: body.quantity, unitPrice,
-          currentPrice: current?.unitPrice ?? null, unitCost, reference: body.reference, source, batchNo: body.batchNo ?? null, expiryDate: body.expiryDate ?? null,
+          currentPrice: current?.unitPrice ?? null, unitCost, unitPriceUsd, unitCostUsd, currentPriceUsd: current?.unitPriceUsd ?? null, reference: body.reference, source, batchNo: body.batchNo ?? null, expiryDate: body.expiryDate ?? null,
           supplierId: pr?.supplierId ?? body.supplierId ?? null, purchaseRequestId: pr?.id ?? null, purchaseLineId: line?.id ?? null, prNo: pr?.prNo ?? null, notes: body.notes ?? null,
         },
       });
@@ -405,15 +433,24 @@ inputIssuesRouter.post(
     if (inactive) throw badRequest(`${inactive.name} imesitishwa`);
 
     const priceRows = await db.select().from(prices).where(and(eq(prices.seasonId, season.id), inArray(prices.inputItemId, itemIds)));
-    const priceOf = new Map(priceRows.map((p) => [p.inputItemId, p.unitPrice]));
+    // Chama cha USD: deni ni la dola (bei ya dola x idadi); TSh = dola x kiwango cha leo (kinahifadhiwa kwenye ugawaji)
+    const usdMode = (await inputCurrency(db, amcosId)) === 'USD';
+    const rate = usdMode ? await requireRate(db, amcosId) : null;
+    const priceOf = new Map(priceRows.filter((p) => !usdMode || p.unitPriceUsd).map((p) => [p.inputItemId, p]));
     const missing = itemRows.filter((i) => !priceOf.has(i.id)).map((i) => i.name);
-    if (missing.length) throw badRequest(`Bei haijawekwa kwa msimu huu: ${missing.join(', ')}`);
+    if (missing.length) throw badRequest(`Bei ${usdMode ? 'ya dola ' : ''}haijawekwa kwa msimu huu: ${missing.join(', ')}`);
 
     const lines = body.lines.map((l) => {
-      const unitPrice = priceOf.get(l.inputItemId)!;
-      return { ...l, unitPrice, amount: fmt2(D(l.quantity).times(unitPrice)) };
+      const p = priceOf.get(l.inputItemId)!;
+      if (rate) {
+        const amountUsd = D(l.quantity).times(p.unitPriceUsd!).toDecimalPlaces(2);
+        const amount = toTzs(amountUsd, rate);
+        return { ...l, unitPriceUsd: p.unitPriceUsd, amountUsd: fmt2(amountUsd), unitPrice: fmt2(amount.div(l.quantity)), amount: fmt2(amount) };
+      }
+      return { ...l, unitPriceUsd: null as string | null, amountUsd: null as string | null, unitPrice: p.unitPrice, amount: fmt2(D(l.quantity).times(p.unitPrice)) };
     });
     const total = fmt2(lines.reduce((s, l) => s.plus(l.amount), D(0)));
+    const totalUsd = rate ? fmt2(lines.reduce((s, l) => s.plus(l.amountUsd ?? 0), D(0))) : null;
     const nameOf = new Map(itemRows.map((i) => [i.id, i.name]));
 
     const issueId = await db.transaction(async (tx) => {
@@ -436,13 +473,14 @@ inputIssuesRouter.post(
         groupId: grp?.groupId ?? null,
         amcosId, seasonId: season.id, memberId: member.id, issueNo: `${amcos.code}-P-${pad(n)}`,
         totalAmount: total, notes: body.notes, clientRef: body.clientRef, issuedById: req.auth!.userId, status: 'PENDING_APPROVAL',
+        currency: rate ? 'USD' : 'TZS', fxRate: rate ? rate.toFixed(4) : null, totalUsd,
       }).returning();
 
       await tx.insert(schema.inputIssueLines).values(lines.map((l) => ({ inputIssueId: issue.id, ...l })));
       await audit(tx, req, { action: 'INPUT_ISSUE_REQUEST', entity: 'InputIssue', entityId: issue.id, amcosId, after: { ...issue, lines } });
       const approval = await createApproval(tx, req, {
         amcosId, type: 'INPUT_ISSUE', entityType: 'InputIssue', entityId: issue.id, amount: total,
-        title: `Pembejeo kwa ${member.firstName} ${member.lastName} (${member.memberNo}): ${lines.map((l) => `${nameOf.get(l.inputItemId)} x${l.quantity}`).join(', ')}`,
+        title: `Pembejeo kwa ${member.firstName} ${member.lastName} (${member.memberNo}): ${lines.map((l) => `${nameOf.get(l.inputItemId)} x${l.quantity}`).join(', ')}${totalUsd ? ` — $${totalUsd} (kiwango ${rate!.toFixed()})` : ''}`,
         reason: body.notes ?? null,
       });
       await tx.update(issues).set({ approvalId: approval.id }).where(eq(issues.id, issue.id));
@@ -488,6 +526,11 @@ inputIssuesRouter.post(
       ));
       for (const e of entries) {
         await ledger.reverse(tx, e.id, `Kufutwa kwa ${issue.issueNo}: ${reason}`, req.auth!.userId);
+      }
+      // Deni la dola linafutwa kwa kiasi kile kile kilichoandikwa siku ya ugawaji
+      if (issue.currency === 'USD' && issue.totalUsd) {
+        await recordUsd(tx, { amcosId: issue.amcosId, memberId: issue.memberId, seasonId: issue.seasonId, kind: 'CANCEL', usd: D(issue.totalUsd).neg(), tzs: D(issue.totalAmount).neg(), rate: issue.fxRate,
+          description: `Kufutwa kwa ${issue.issueNo}`, referenceType: 'INPUT_ISSUE', referenceId: id, createdById: req.auth!.userId });
       }
       await audit(tx, req, { action: 'INPUT_ISSUE_CANCEL', entity: 'InputIssue', entityId: id, amcosId: issue.amcosId, before: issue, after: { ...upd, reason } });
     });

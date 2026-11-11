@@ -8,6 +8,7 @@ import { createApp } from '../src/app';
 import { db, pool } from '../src/db';
 import { hashPassword } from '../src/lib/security';
 import { clearStaffingCache } from '../src/lib/amcos-permissions';
+import { D } from '../src/lib/money';
 import { paye } from '../src/lib/payroll';
 
 let base = '';
@@ -807,4 +808,81 @@ test('Chama chenye Meneja pekee: anapata kazi za Mhasibu/Stokipa na anajiidhinis
   const me2 = (await call('GET', '/api/v1/auth/me', manager)).body.user;
   assert.deepEqual(me2.covering, []);
   assert.equal((await call('POST', '/api/v1/finance/expenses', manager, { category: 'OFFICE', amount: '1000', accountId: bank.id, description: 'Kalamu' })).status, 403);
+});
+
+test('Pembejeo kwa dola: bei USD, ugawaji, marejesho kwa kiwango kipya, makato ya soko kwa kiwango cha soko, manunuzi ya dola, vitabu vinalingana', async () => {
+  // Kiwango + sarafu (Mhasibu)
+  assert.equal((await call('PUT', '/api/v1/finance/fx/currency', accountant, { currency: 'USD' })).status, 400, 'Kiwango kwanza');
+  assert.equal((await call('POST', '/api/v1/finance/fx', accountant, { usdToTzs: '30' })).status, 400, 'kiwango si halisi');
+  assert.equal((await call('POST', '/api/v1/finance/fx', manager, { usdToTzs: '2500' })).status, 403, 'Meneja haweki kiwango');
+  assert.equal((await call('POST', '/api/v1/finance/fx', accountant, { usdToTzs: '2500', note: 'BoT' })).status, 201);
+  assert.equal((await call('PUT', '/api/v1/finance/fx/currency', accountant, { currency: 'USD' })).status, 200);
+  const fx = (await call('GET', '/api/v1/finance/fx', storekeeper)).body;
+  assert.equal(fx.currency, 'USD'); assert.equal(fx.rate.usdToTzs, '2500.0000');
+
+  // Bei ya dola: $20 kwa mfuko
+  const farmerU = await newMember('Uledi');
+  const item = (await call('POST', '/api/v1/inputs/items', storekeeper, { name: 'CAN USD ' + RUN, category: 'FERTILIZER', unit: 'BAG' })).body.item;
+  assert.equal((await call('POST', '/api/v1/inputs/stock/receipts', storekeeper, { inputItemId: item.id, quantity: 10, unitPrice: '50000', reference: 'DNU-' + RUN })).status, 400, 'Chama cha USD: bei ni ya dola');
+  const rc = await call('POST', '/api/v1/inputs/stock/receipts', storekeeper, { inputItemId: item.id, quantity: 10, unitPriceUsd: '20', unitCostUsd: '16', reference: 'DNU-' + RUN });
+  assert.equal(rc.status, 202, JSON.stringify(rc.body));
+  await approve(item.id);
+  const price = (await call('GET', '/api/v1/inputs/prices', storekeeper)).body.data.find((x: any) => x.inputItemId === item.id);
+  assert.equal(price.unitPriceUsd, '20.0000'); assert.equal(price.unitPrice, '50000.00');
+  const gl0 = await gl();
+
+  // Ugawaji wa mifuko 2 = $40 = TSh 100,000 kwa kiwango 2,500
+  const iss = await call('POST', '/api/v1/input-issues', storekeeper, { memberId: farmerU.id, lines: [{ inputItemId: item.id, quantity: 2 }] });
+  assert.equal(iss.status, 201, JSON.stringify(iss.body));
+  assert.equal(iss.body.issue.currency, 'USD'); assert.equal(iss.body.issue.totalUsd, '40.00'); assert.equal(iss.body.issue.totalAmount, '100000.00');
+  await approve(iss.body.issue.id);
+  let st = (await call('GET', `/api/v1/finance/farmers/${farmerU.id}`, accountant)).body;
+  assert.equal(st.usd.debtUsd, '40.00'); assert.equal(st.balance, '-100000.00');
+
+  // Kiwango kinapanda 2,600; mkulima analipa TSh 26,000 taslimu -> deni linabadilishwa (+4,000) kisha $10 zinalipwa
+  assert.equal((await call('POST', '/api/v1/finance/fx', accountant, { usdToTzs: '2600' })).status, 201);
+  const rp = await call('POST', '/api/v1/finance/income', accountant, { category: 'FARMER_REPAYMENT', memberId: farmerU.id, amount: '26000', accountId: bank.id, description: 'Marejesho ya taslimu' });
+  assert.equal(rp.status, 201, JSON.stringify(rp.body));
+  st = (await call('GET', `/api/v1/finance/farmers/${farmerU.id}`, accountant)).body;
+  assert.equal(st.usd.debtUsd, '30.00', 'Dola 10 zimelipwa');
+  assert.equal(st.balance, '-78000.00', '$30 x 2,600');
+  assert.ok(st.statement.some((e: any) => e.type === 'FX_ADJUSTMENT' && e.debit === '4000.00'));
+  await call('POST', '/api/v1/accounting/sync', accountant, {}).catch(() => null);
+  let rows = await gl();
+  assert.equal(D(bal(rows, '4700')).minus(bal(gl0, '4700')).toFixed(2), '4000.00', 'Faida ya kiwango kwenye daftari kuu');
+  await assertBooksBalance();
+
+  // Soko kwa kiwango 2,400: deni ($30) linakatwa kama TSh 72,000 (hasara ya kiwango 6,000)
+  const mk = await call('POST', '/api/v1/sales/markets', accountant, { marketDate: today, buyerName: 'TLTC', exchangeRate: '2400' });
+  assert.equal(mk.status, 201, JSON.stringify(mk.body));
+  const mid = mk.body.market.id;
+  assert.equal((await call('POST', `/api/v1/sales/markets/${mid}/bales`, accountant, { bales: [{ memberId: farmerU.id, baleNo: 'U1-' + RUN, grossKg: '100', priceUsd: '2.0' }] })).status, 201);
+  const pv = (await call('GET', `/api/v1/sales/markets/${mid}/preview`, accountant)).body;
+  const u = pv.rows.find((r: any) => r.memberId === farmerU.id);
+  const loanLine = u.deductions.find((d: any) => d.basis === 'OUTSTANDING_LOAN');
+  assert.equal(loanLine.amount, '72000.00', '$30 x 2,400');
+  assert.equal((await call('POST', `/api/v1/sales/markets/${mid}/settlements`, accountant, {})).status, 201);
+  await approve(mid);
+  st = (await call('GET', `/api/v1/finance/farmers/${farmerU.id}`, accountant)).body;
+  assert.equal(st.usd.debtUsd, '0.00', 'Deni la dola limekwisha');
+  assert.ok(st.statement.some((e: any) => e.type === 'FX_ADJUSTMENT' && e.credit === '6000.00'));
+  rows = await gl();
+  assert.equal(D(bal(rows, '5700')).minus(bal(gl0, '5700')).toFixed(2), '6000.00', 'Hasara ya kiwango kwenye daftari kuu');
+  await assertBooksBalance();
+
+  // Manunuzi ya dola: gharama $15 x 4 = $60 = TSh 144,000 kwa kiwango 2,400
+  await call('POST', '/api/v1/finance/fx', accountant, { usdToTzs: '2400' });
+  const pr = await call('POST', '/api/v1/store/purchases', storekeeper, { notes: 'Mbolea ya ziada', lines: [{ inputItemId: item.id, quantity: 4, unitCostUsd: '15' }] });
+  assert.equal(pr.status, 201, JSON.stringify(pr.body));
+  assert.equal(pr.body.purchase.currency, 'USD'); assert.equal(pr.body.purchase.totalUsd, '60.00'); assert.equal(pr.body.purchase.totalAmount, '144000.00');
+
+  // Kufuta ugawaji wa dola kunarudisha deni la dola
+  const iss2 = await call('POST', '/api/v1/input-issues', storekeeper, { memberId: farmerU.id, lines: [{ inputItemId: item.id, quantity: 1 }] });
+  await approve(iss2.body.issue.id);
+  assert.equal((await call('GET', `/api/v1/finance/farmers/${farmerU.id}`, accountant)).body.usd.debtUsd, '20.00');
+  assert.equal((await call('POST', `/api/v1/input-issues/${iss2.body.issue.id}/cancel`, manager, { reason: 'Imetolewa kwa makosa' })).status, 200);
+  assert.equal((await call('GET', `/api/v1/finance/farmers/${farmerU.id}`, accountant)).body.usd.debtUsd, '0.00');
+
+  // Rudisha chama kwenye TSh (majaribio mengine)
+  assert.equal((await call('PUT', '/api/v1/finance/fx/currency', accountant, { currency: 'TZS' })).status, 200);
 });

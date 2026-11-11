@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { useT } from '../lib/prefs';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, apiDownload, type Paged } from '../lib/api';
+import { usd, useFx } from '../lib/fx';
 import { useAction, useDebounced, useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
 import { ACCOUNT_KIND_LABEL, APPROVAL_TYPE_LABEL, date, dateTime, num, TXN_KIND_LABEL, tsh } from '../lib/format';
 import { Alert, Badge, Button, Empty, Loading, MemberPicker, Modal, PageHead, Pager, Select, SelectField, TextField, type MemberLite } from '../components/ui';
 import { Kpi, Section, Tabs } from '../components/owner-ui';
 import { GlSelect, useChart } from './acc-common';
+import { FxPanel } from '../components/FxPanel';
 
 interface Txn {
   id: string; txnNo: string; kind: string; direction: 'IN' | 'OUT'; category: string; accountId: string | null; accountName: string | null;
@@ -23,14 +25,15 @@ const tone = (s: string) => (s === 'POSTED' ? 'APPROVED' : s === 'APPROVED' || s
 const todayStr = () => new Date().toLocaleDateString('en-CA');
 
 export function Finance() {
-  const [tab, setTab] = useState<'txns' | 'accounts' | 'budget' | 'reports'>(() => (new URLSearchParams(window.location.search).get('tab') === 'budget' ? 'budget' : 'txns'));
+  const [tab, setTab] = useState<'txns' | 'accounts' | 'budget' | 'fx' | 'reports'>(() => { const q = new URLSearchParams(window.location.search).get('tab'); return q === 'budget' || q === 'fx' ? q : 'txns'; });
   return (
     <>
       <PageHead title="Fedha za Chama" sub="Mapato, matumizi, malipo, akaunti na ripoti. Fedha za chama hazichanganywi na za mtu yeyote." />
-      <Tabs value={tab} onChange={setTab} items={[['txns', 'Miamala'], ['accounts', 'Akaunti na Cashbook'], ['budget', 'Bajeti'], ['reports', 'Ripoti']]} />
+      <Tabs value={tab} onChange={setTab} items={[['txns', 'Miamala'], ['accounts', 'Akaunti na Cashbook'], ['budget', 'Bajeti'], ['fx', 'Dola (USD)'], ['reports', 'Ripoti']]} />
       {tab === 'txns' && <Transactions />}
       {tab === 'accounts' && <Accounts />}
       {tab === 'budget' && <Budget />}
+      {tab === 'fx' && <FxPanel />}
       {tab === 'reports' && <Reports />}
     </>
   );
@@ -104,7 +107,8 @@ function TxnForm({ kind, onClose, onDone }: { kind: 'INCOME' | 'EXPENSE' | 'FARM
   const cats = useFetch<Cats>('/finance/categories');
   const accounts = useFetch<{ data: Account[] }>('/finance/accounts');
   const suppliers = useFetch<{ data: { id: string; name: string }[] }>(kind === 'SUPPLIER_PAYMENT' ? '/store/suppliers' : null);
-  const purchases = useFetch<Paged<{ id: string; prNo: string; status: string; supplierId: string | null; totalAmount: string; paid: string }>>(kind === 'SUPPLIER_PAYMENT' ? '/store/purchases' : null, { pageSize: 100 });
+  const purchases = useFetch<Paged<{ id: string; prNo: string; status: string; supplierId: string | null; totalAmount: string; paid: string; currency?: 'TZS' | 'USD'; totalUsd?: string | null; paidUsd?: string }>>(kind === 'SUPPLIER_PAYMENT' ? '/store/purchases' : null, { pageSize: 100 });
+  const fx = useFx();
   const [category, setCategory] = useState(kind === 'FARMER_PAYMENT' ? 'PAYMENT' : '');
   const [amount, setAmount] = useState('');
   const [txnDate, setTxnDate] = useState(todayStr());
@@ -127,13 +131,15 @@ function TxnForm({ kind, onClose, onDone }: { kind: 'INCOME' | 'EXPENSE' | 'FARM
   const dAmount = useDebounced(amount, 400);
   const budgetCheck = useFetch<{ budget: string | null; label?: string; actual?: string; after?: string; percentAfter?: number | null; exceeds?: boolean; over?: string }>(
     kind === 'EXPENSE' && category ? '/finance/budgets/check' : null, { category, amount: Number(dAmount) || 0 });
+  // Ombi la manunuzi la dola: kiasi kinaandikwa kwa USD; TSh = dola x kiwango cha leo
+  const usdPr = kind === 'SUPPLIER_PAYMENT' ? purchases.data?.data.find((p) => p.id === prId && p.currency === 'USD') : undefined;
   const valid = Number(amount) > 0 && description.trim().length >= 3 && (kind === 'SUPPLIER_PAYMENT' ? !!supplierId : !!category) && (!needsMember || !!member) && (kind !== 'INCOME' || !!accountId);
 
   const save = async () => {
     const path = { INCOME: '/finance/income', EXPENSE: '/finance/expenses', FARMER_PAYMENT: '/finance/farmer-payments', SUPPLIER_PAYMENT: '/finance/supplier-payments' }[kind];
     const body = {
       amount, txnDate, description, reference: reference || null, payee: payee || null, accountId: accountId || null,
-      ...(kind === 'SUPPLIER_PAYMENT' ? { supplierId, purchaseRequestId: prId || null } : { category }),
+      ...(kind === 'SUPPLIER_PAYMENT' ? { supplierId, purchaseRequestId: prId || null, ...(usdPr ? { amountUsd: amount, amount: fx.rate ? (Number(amount) * fx.rate).toFixed(2) : amount } : {}) } : { category }),
       ...(needsMember && member ? { memberId: member.id } : {}),
       ...(contra && (kind === 'EXPENSE' || (kind === 'INCOME' && !['FARMER_REPAYMENT', 'MEMBER_FEES'].includes(category))) ? { contraGlAccountId: contra } : {}),
     };
@@ -149,8 +155,9 @@ function TxnForm({ kind, onClose, onDone }: { kind: 'INCOME' | 'EXPENSE' | 'FARM
         {catMap && <SelectField label="Kundi *" value={category} onChange={setCategory} placeholder="Chagua…" options={Object.entries(catMap).map(([value, label]) => ({ value, label }))} />}
         {kind === 'SUPPLIER_PAYMENT' && <SelectField label="Mzabuni *" value={supplierId} onChange={(v) => { setSupplierId(v); setPrId(''); }} placeholder="Chagua…" options={suppliers.data?.data.map((s) => ({ value: s.id, label: s.name })) ?? []} />}
         {kind === 'SUPPLIER_PAYMENT' && <SelectField label="Ombi la manunuzi (hiari)" value={prId} onChange={setPrId} placeholder="Bila ombi"
-          options={openPrs.map((p) => ({ value: p.id, label: `${p.prNo} · ${tsh(p.totalAmount)} (limelipwa ${tsh(p.paid)})` }))} />}
-        <TextField label="Kiasi (TSh) *" type="number" min="1" value={amount} onChange={setAmount} />
+          options={openPrs.map((p) => ({ value: p.id, label: p.currency === 'USD' && p.totalUsd ? `${p.prNo} · ${usd(p.totalUsd)} (limelipwa ${usd(p.paidUsd)})` : `${p.prNo} · ${tsh(p.totalAmount)} (limelipwa ${tsh(p.paid)})` }))} />}
+        <TextField label={usdPr ? 'Kiasi (USD) *' : 'Kiasi (TSh) *'} type="number" min={usdPr ? '0.01' : '1'} step={usdPr ? '0.01' : '1'} value={amount} onChange={setAmount}
+          help={usdPr ? (fx.rate ? `≈ ${tsh(Number(amount || 0) * fx.rate)} kwa kiwango cha leo (${num(fx.rate)}). Tofauti na kiwango cha ombi inaandikwa kama faida/hasara ya kiwango.` : 'Kiwango cha dola hakijawekwa') : undefined} />
         <TextField label="Tarehe" type="date" value={txnDate} onChange={setTxnDate} />
         <SelectField label={kind === 'INCOME' ? 'Akaunti iliyopokea *' : 'Akaunti ya kulipa (hiari sasa)'} value={accountId} onChange={setAccountId} placeholder="Chagua…"
           options={accounts.data?.data.filter((a) => a.isActive).map((a) => ({ value: a.id, label: `${a.name} · ${tsh(a.balance)}` })) ?? []} />
