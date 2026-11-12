@@ -898,6 +898,8 @@ export const EN: Record<string, string> = {
   'Hajaoa': 'Single',
   'Hajaolewa': 'Single',
   'Hali ya mafunzo: data ya chama hiki ni ya mazoezi na itafutwa yote kabla ya kuanza matumizi halisi. Akaunti zenu zitabaki.': 'Training mode: this society\'s data is practice data and will all be deleted before real use starts. Your accounts will be kept.',
+  // v0.28 — chapa
+  'KWA VYAMA VYA USHIRIKA TANZANIA': 'FOR COOPERATIVES IN TANZANIA',
   // v0.27 — SMS
   'Thibitisha kwa SMS': 'Verify by SMS',
   'Tumetuma namba ya tarakimu 6 kwa SMS kwenda': 'We sent a 6-digit code by SMS to',

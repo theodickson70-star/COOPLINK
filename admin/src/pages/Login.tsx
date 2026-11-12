@@ -4,7 +4,7 @@ import { homeFor, useAuth, type User } from '../lib/auth';
 import { api } from '../lib/api';
 import { playTone, unlockAudio } from '../lib/tone';
 import { LegalLinks } from '../components/LegalLinks';
-import { LogoMark, Wordmark } from '../components/Logo';
+import { LogoMark } from '../components/Logo';
 import { Alert, Button, TextField } from '../components/ui';
 import { PrefSwitches, useT } from '../lib/prefs';
 
@@ -64,15 +64,17 @@ function AuthHero() {
       </div>
       <div className="hero-scrim" aria-hidden="true" />
 
-      <div className="hero-content">
-        <LogoMark size={190} animate />
-        <div className="hero-word"><Wordmark size={72} animate /></div>
-        <div className="tagline">{t('Uwazi · Haki · Maendeleo')}</div>
-        <p className="sub">{t('Mfumo wa kisasa wa kusimamia Vyama vya Msingi: wanachama, pembejeo, masoko na malipo, kila shilingi ikiwa wazi.')}</p>
+      <div className="hero-brand">
+        <LogoMark size={46} animate />
+        <div><b>Coop<i>Link</i></b><small>COOPERATIVE MANAGEMENT SYSTEM</small></div>
+      </div>
+      <div className="hero-head">
+        <div className="hero-kicker">{t('KWA VYAMA VYA USHIRIKA TANZANIA')}</div>
+        <h2>Connecting Cooperatives.<em>Empowering Farmers</em></h2>
       </div>
 
       <div className="hero-caption">
-        <p aria-live="polite"><strong>{t(s.title)}</strong><span> · {t(s.text)}</span></p>
+        <p className="sr-only" aria-live="polite">{t(s.title)} · {t(s.text)}</p>
         <div className="hero-dots" role="group" aria-label={t('Chagua picha')}>
           {SLIDES.map((sl, i) => (
             <button key={sl.src} type="button" aria-label={`${t('Picha')} ${i + 1}: ${t(sl.title)}`} aria-pressed={i === idx}

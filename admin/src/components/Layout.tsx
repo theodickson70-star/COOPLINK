@@ -159,7 +159,7 @@ export function Layout() {
           <LogoMark size={42} animate />
           <div>
             <Wordmark size={24} animate delay={0.9} />
-            <div style={{ fontSize: 11, color: '#8FB3A1', marginTop: 4, letterSpacing: '.08em' }}>{t('VYAMA VYA MSINGI')}</div>
+            <div style={{ fontSize: 8, color: '#8FB3A1', marginTop: 5, letterSpacing: '.1em', fontWeight: 600, whiteSpace: 'nowrap' }}>COOPERATIVE MANAGEMENT SYSTEM</div>
           </div>
         </div>
         <nav className="nav nav-animated" ref={navRef}>
@@ -181,7 +181,7 @@ export function Layout() {
             );
           }); })()}
         </nav>
-        <div className="sidebar-foot">CoopLink<br />{t('Uwazi · Haki · Maendeleo')}<br /><SupportLine /><LegalLinks /></div>
+        <div className="sidebar-foot">CoopLink<br />Connecting Cooperatives. Empowering Farmers<br /><SupportLine /><LegalLinks /></div>
       </aside>
       {open && <button type="button" className="nav-scrim"  aria-label={t('Funga menyu')} onClick={() => setOpen(false)} />}
 
