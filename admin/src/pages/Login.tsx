@@ -72,6 +72,9 @@ function AuthHero() {
         <div className="hero-kicker">{t('KWA VYAMA VYA USHIRIKA TANZANIA')}</div>
         <h2>Connecting Cooperatives.<em>Empowering Farmers</em></h2>
       </div>
+      <div className="hero-chips" aria-hidden="true">
+        {['Wanachama', 'Pembejeo', 'Mikopo', 'Mauzo', 'Malipo', 'Ripoti'].map((c) => <span key={c}>{t(c)}</span>)}
+      </div>
 
       <div className="hero-caption">
         <p className="sr-only" aria-live="polite">{t(s.title)} · {t(s.text)}</p>
@@ -188,6 +191,7 @@ export function Login() {
       <section className="auth-form">
         <div className="auth-prefs"><PrefSwitches /></div>
         <form className="auth-card" onSubmit={submit}>
+          <div className="form-brand"><LogoMark size={36} /><b>Coop<i>Link</i></b></div>
           {status?.maintenance.enabled && <Alert kind="warn"><strong>{t('Matengenezo:')}</strong> {status.maintenance.message}</Alert>}
           {status?.banner && <Alert kind={status.banner.tone === 'warn' ? 'warn' : 'ok'}>{status.banner.message}</Alert>}
           {step === 'login' && (
@@ -203,7 +207,8 @@ export function Login() {
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--muted)', marginTop: -8 }}>
                 <input type="checkbox" checked={showPw} onChange={(e) => setShowPw(e.target.checked)} /> {t('Onyesha nenosiri')}
               </label>
-              <Button type="submit" variant="primary" busy={busy} style={{ minHeight: 48 }}>{t('Ingia')}</Button>
+              <Button type="submit" variant="primary" busy={busy} style={{ minHeight: 52 }}>{t('Ingia')}</Button>
+              <div className="secure-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2" /><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" /></svg>{t('Muunganisho salama')}{status?.sms?.passwordReset ? ` · ${t('OTP kwa SMS')}` : ''}</div>
               {status?.sms?.passwordReset && <Button variant="ghost" onClick={() => go('forgot')}>{t('Umesahau nenosiri?')}</Button>}
             </>
           )}
@@ -303,6 +308,7 @@ export function ChangePassword() {
       <section className="auth-form">
         <div className="auth-prefs"><PrefSwitches /></div>
         <form className="auth-card" onSubmit={submit}>
+          <div className="form-brand"><LogoMark size={36} /><b>Coop<i>Link</i></b></div>
           <div>
             <h1>{t('Weka nenosiri jipya')}</h1>
             <p className="muted" style={{ margin: '6px 0 0' }}>
