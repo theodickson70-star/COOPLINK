@@ -899,6 +899,10 @@ export const EN: Record<string, string> = {
   'Hajaolewa': 'Single',
   'Hali ya mafunzo: data ya chama hiki ni ya mazoezi na itafutwa yote kabla ya kuanza matumizi halisi. Akaunti zenu zitabaki.': 'Training mode: this society\'s data is practice data and will all be deleted before real use starts. Your accounts will be kept.',
   // v0.28 — chapa
+  'Kwa usalama, mfumo umefungwa baada ya dakika {n} bila kutumika. Weka nenosiri lako kuendelea.': 'For security, the system locked after {n} minutes of inactivity. Enter your password to continue.',
+  'Fungua mfumo': 'Unlock',
+  'Si wewe? Toka': 'Not you? Sign out',
+  'Mfumo umefungwa': 'System locked',
   'Tuko tayari kukusaidia': 'We are ready to help',
   'Mauzo na Mikopo': 'Sales and Loans',
   'Mawasiliano': 'Communication',

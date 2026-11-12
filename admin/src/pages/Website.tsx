@@ -94,7 +94,7 @@ const GROUPS: { t: T; d: T; items: Item[] }[] = [
 ];
 const TX = {
   nav: { home: S('Mwanzo', 'Home'), about: S('Kuhusu Sisi', 'About'), services: S('Huduma za Mfumo', 'Services'), who: S('Wanaonufaika', 'Who benefits'), how: S('Jinsi Inavyofanya Kazi', 'How it works'), contact: S('Wasiliana Nasi', 'Contact') },
-  login: S('Ingia kwenye mfumo', 'Sign in'), demo: S('Omba maonyesho', 'Request a demo'), demoFor: S('Omba maonyesho kwa chama chako', 'Request a demo for your society'),
+  login: S('Ingia kwenye mfumo', 'Sign in'), cont: S('Endelea kwenye mfumo', 'Continue to the system'), demo: S('Omba maonyesho', 'Request a demo'), demoFor: S('Omba maonyesho kwa chama chako', 'Request a demo for your society'),
   pill: S('Toleo la kwanza linafanya kazi sasa', 'Version 1 is live'),
   lead: S('COOPLINK ni mfumo wa kidijitali wa kusimamia Vyama vya Msingi vya Ushirika wa Masoko ya Mazao (AMCOS) — wakulima, pembejeo kwa mkopo, mauzo kwa madaraja, makato, malipo na hesabu za chama, kila hatua ikiidhinishwa na kurekodiwa.',
     'COOPLINK is a digital system for Agricultural Marketing Cooperative Societies (AMCOS) — farmers, inputs on credit, sales by grade, deductions, payments and society accounts, with every step approved and recorded.'),
@@ -186,7 +186,7 @@ function DemoModal({ lang, onClose }: { lang: L; onClose: () => void }) {
   );
 }
 
-export function Website() {
+export function Website({ signedIn = false, onEnter }: { signedIn?: boolean; onEnter?: () => void } = {}) {
   const { lang: l0, setLang } = usePrefs();
   const lang: L = l0 === 'en' ? 'en' : 'sw';
   const c = useContact();
@@ -222,6 +222,10 @@ export function Website() {
     <button type="button" className={`ws-it ${mega === k ? 'on' : ''}`} aria-expanded={mega === k}
       onMouseEnter={() => setMega(k)} onClick={() => setMega(mega === k ? null : k)}>{label}{I.down}</button>
   );
+  // Aliyeingia tayari: "Endelea kwenye mfumo" (anarudi kazini); mgeni: "Ingia kwenye mfumo"
+  const Enter = ({ wide = false }: { wide?: boolean }) => signedIn
+    ? <button type="button" className={`ws-btn gold${wide ? ' wide' : ''}`} onClick={() => { setDrawer(false); onEnter?.(); }}>{TX.cont[lang]} {I.arrow}</button>
+    : <Link className={`ws-btn gold${wide ? ' wide' : ''}`} to="/login">{TX.login[lang]} {I.arrow}</Link>;
   const Lang = () => (
     <div className="ws-lang" role="group" aria-label="Lugha">
       <button type="button" className={lang === 'sw' ? 'on' : ''} onClick={() => setLang('sw')}>SW</button>
@@ -249,7 +253,7 @@ export function Website() {
           <button type="button" className="ws-it" onMouseEnter={() => setMega(null)} onClick={() => go('wasiliana')}>{TX.nav.contact[lang]}</button>
           <span className="ws-sp" />
           <Lang />
-          <Link className="ws-btn gold" to="/login">{TX.login[lang]} {I.arrow}</Link>
+          <Enter />
         </nav>
         {M && (
           <div className="ws-mega" key={mega}>
@@ -277,7 +281,7 @@ export function Website() {
           <button type="button" className="ws-acc-t" onClick={() => pick('wasiliana')}>{TX.nav.contact[lang]}</button>
           <div className="ws-drawer-ft">
             <Lang />
-            <Link className="ws-btn gold wide" to="/login">{TX.login[lang]} {I.arrow}</Link>
+            <Enter wide />
             <button type="button" className="ws-btn ghost wide" onClick={() => { setDrawer(false); setDemo(true); }}>{TX.demo[lang]}</button>
           </div>
         </div>
@@ -290,7 +294,7 @@ export function Website() {
           <h1>Connecting Cooperatives.<em>Empowering Farmers</em></h1>
           <p>{TX.lead[lang]}</p>
           <div className="ws-cta">
-            <Link className="ws-btn gold" to="/login">{TX.login[lang]} {I.arrow}</Link>
+            <Enter />
             <button type="button" className="ws-btn ghost" onClick={() => setDemo(true)}>{TX.demoFor[lang]}</button>
           </div>
         </div>

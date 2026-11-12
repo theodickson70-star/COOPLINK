@@ -352,6 +352,17 @@ authRouter.post(
   }),
 );
 
+// Kufungua skrini iliyofungwa (mtumishi hakutumia mfumo kwa muda): nenosiri (+2FA kama imewashwa).
+// Makosa mengi yanafunga uthibitisho kwa dakika 15 (requireReauth) na mfumo wa mbele unamtoa nje.
+authRouter.post(
+  '/unlock',
+  authenticate,
+  ah(async (req, res) => {
+    await requireReauth(req);
+    res.json({ ok: true });
+  }),
+);
+
 // Toka kwenye kifaa hiki
 authRouter.post(
   '/logout',

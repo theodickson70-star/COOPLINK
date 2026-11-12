@@ -409,7 +409,6 @@ table.table { width: 100%; border-collapse: collapse; }
   .auth-card > * { animation-name: authFade !important; animation-duration: .45s !important; }
   .auth-hero .hero-slide.on { animation-duration: 24s; }
 }
-}
 @media (prefers-reduced-motion: reduce) {
   .hero-slide, .hero-slide.on { transition: none; animation: none; transform: none; }
   .auth-hero, .hero-brand, .hero-caption, .hero-kicker, .hero-kicker::before, .hero-head h2 .hl > span, .hero-chips span, .auth-card > *, .auth-prefs, .form-brand .cl-mark, .auth-card button[type="submit"]::after { animation: none !important; }
@@ -1581,3 +1580,38 @@ tr.row-msg.row-warn td { color: var(--warn-ink); }
 .sb-help-t { display: flex; flex-direction: column; font-weight: 700; font-family: var(--font-head); font-size: 15px; line-height: 1.2; min-width: 0; }
 .sb-help-t small { font-family: var(--font-body); font-weight: 400; font-size: 11.5px; color: #A9C9B8; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sb-help .nav-count { margin-left: auto; }
+
+/* v0.34 — Skrini ya kufunga (mtumishi hakutumia mfumo kwa muda) */
+.lock { position: fixed; inset: 0; z-index: 2000; display: grid; grid-template-columns: 1fr minmax(360px, 420px); align-items: center; gap: 40px; padding: 40px 64px; color: #fff; animation: authFade .35s both; }
+.lock-bg { position: absolute; inset: 0; background: #0B2F23 url(/login/uvunaji.webp) 55% 30% / cover; animation: heroZoom 40s linear infinite alternate; }
+.lock-sh { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(6, 34, 24, .92) 0%, rgba(6, 34, 24, .7) 55%, rgba(6, 34, 24, .55)); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+.lock > *:not(.lock-bg):not(.lock-sh) { position: relative; }
+.lock-brand { position: absolute !important; top: 28px; left: 64px; display: flex; align-items: center; gap: 12px; }
+.lock-brand b { display: block; font-family: var(--font-head); font-size: 26px; line-height: 1; font-weight: 700; }
+.lock-brand b i { font-style: normal; color: var(--gold); }
+.lock-brand small { display: block; font-size: 9.5px; letter-spacing: .26em; color: #CFE7DA; margin-top: 5px; font-weight: 600; }
+.lock-time { font-family: var(--font-head); font-size: clamp(56px, 7vw, 96px); font-weight: 700; line-height: 1; letter-spacing: -.03em; }
+.lock-day { font-size: 18px; color: #CFE7DA; margin: 8px 0 34px; text-transform: capitalize; }
+.lock-side h2 { font-family: var(--font-head); font-size: clamp(30px, 3.4vw, 50px); line-height: 1.05; letter-spacing: -.02em; color: #fff; margin: 0; }
+.lock-side h2 em { display: block; font-style: normal; color: var(--gold); }
+.lock-card { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; padding: 34px 30px 26px; border-radius: 26px; color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 92%, transparent); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); border: 1px solid rgba(255, 255, 255, .5); box-shadow: 0 30px 80px rgba(0, 0, 0, .4); animation: authUp .5s .1s both; }
+.lock-ic { position: absolute; top: -22px; width: 44px; height: 44px; border-radius: 50%; background: var(--gold); color: var(--forest); display: grid; place-items: center; box-shadow: 0 8px 20px rgba(0, 0, 0, .25); }
+.lock-ic svg { width: 22px; height: 22px; }
+.lock-av { width: 68px; height: 68px; border-radius: 50%; display: grid; place-items: center; background: var(--green); color: #fff; font-family: var(--font-head); font-size: 28px; font-weight: 700; margin-top: 8px; box-shadow: 0 0 0 5px color-mix(in srgb, var(--green) 18%, transparent); }
+.lock-name { font-family: var(--font-head); font-size: 20px; color: var(--forest) !important; }
+:root[data-theme="dark"] .lock-name { color: #EEF5F0 !important; }
+.lock-msg { margin: 0 0 4px; font-size: 14px; color: var(--muted); line-height: 1.5; }
+.lock-card .input { width: 100%; min-height: 50px; font-size: 16px; text-align: center; border-radius: 14px; }
+.lock-go { width: 100%; min-height: 52px; border-radius: 14px; font-size: 16px; justify-content: center; }
+.lock-out { background: none; border: 0; color: var(--muted); font-size: 14px; cursor: pointer; padding: 6px; text-decoration: underline; }
+.lock-err { width: 100%; background: var(--danger-bg, #FDECEA); color: var(--danger, #9B2C1F); border-radius: 10px; padding: 9px 12px; font-size: 13.5px; }
+@media (max-width: 860px) {
+  .lock { grid-template-columns: 1fr; align-content: end; gap: 22px; padding: 90px 16px calc(20px + env(safe-area-inset-bottom)); overflow-y: auto; }
+  .lock-brand { top: calc(18px + env(safe-area-inset-top)); left: 18px; }
+  .lock-sh { background: linear-gradient(0deg, rgba(6, 34, 24, .96) 40%, rgba(6, 34, 24, .55)); }
+  .lock-time { font-size: 56px; } .lock-day { margin-bottom: 12px; font-size: 15px; }
+  .lock-side h2 { font-size: 26px; }
+  .lock-card { padding: 30px 20px 20px; }
+}
+@media (prefers-reduced-motion: reduce) { .lock, .lock-bg, .lock-card { animation: none; } }

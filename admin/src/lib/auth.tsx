@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { markActive, markSiteSeen } from './session';
 import { api, getToken, setSelectedAmcos, setToken } from './api';
 
 export type Role =
@@ -120,6 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const finish = async (token: string) => {
     setToken(token);
+    markActive(); markSiteSeen(); // ameingia sasa hivi: skrini haijafungwa, na tovuti haionyeshwi tena kikao hiki
     setSelectedAmcos(null);
     const me = await api<{ user: User; amcos: Amcos | null }>('/auth/me');
     setUser(me.user);

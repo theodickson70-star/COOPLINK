@@ -1,4 +1,6 @@
-import { Suspense, lazy, useEffect, type ComponentType, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useState, type ComponentType, type ReactNode } from 'react';
+import { IdleLock } from './components/IdleLock';
+import { markSiteSeen, siteSeen } from './lib/session';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth, ROLE_GROUPS, homeFor, isPlatform, isStaff, type Role } from './lib/auth';
 import { Layout } from './components/Layout';
@@ -178,17 +180,22 @@ function Protected({ children, roles, area = 'amcos' }: { children: ReactNode; r
     return () => window.removeEventListener('cl:password-change', go);
   }, [nav]);
   const loc = useLocation();
+  const [, bump] = useState(0);
   if (loading) return <Splash />;
   // Mgeni kwenye anwani kuu anaona tovuti ya COOPLINK; kurasa nyingine zinampeleka kuingia
   if (!user) return area === 'amcos' && loc.pathname === '/' ? <Suspense fallback={<Splash />}><Website /></Suspense> : <Navigate to="/login" replace />;
   if (user.mustChangePassword) return <Navigate to="/change-password" replace />;
+  // Kila mtu anapofungua mfumo (kikao kipya cha kivinjari) anaona tovuti ya COOPLINK kwanza, kisha "Endelea kwenye mfumo"
+  if (area === 'amcos' && loc.pathname === '/' && !siteSeen()) {
+    return <Suspense fallback={<Splash />}><Website signedIn onEnter={() => { markSiteSeen(); bump((x) => x + 1); nav(homeFor(user), { replace: true }); window.scrollTo(0, 0); }} /></Suspense>;
+  }
   // Masharti ya Huduma na Sera ya Faragha: kila mtumiaji anakubali toleo la sasa kabla ya kuendelea
   if (user.termsRequired) return <Suspense fallback={<Splash />}><TermsGate /></Suspense>;
   // Wafanyakazi wa jukwaa hawaingii upande wa vyama; watumiaji wa vyama hawaingii Owner Panel.
   if (area === 'amcos' && isStaff(user.role)) return <Navigate to="/owner" replace />;
   if (area === 'owner' && !isPlatform(user.role)) return <Navigate to="/" replace />;
   if (roles && !can(...roles)) return <Empty>Huna ruhusa ya kuona ukurasa huu.</Empty>;
-  return <>{children}</>;
+  return <IdleLock>{children}</IdleLock>;
 }
 
 function Perm({ p, children }: { p: Permission; children: ReactNode }) {
