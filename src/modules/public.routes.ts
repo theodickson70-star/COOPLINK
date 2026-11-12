@@ -1,6 +1,9 @@
 // Njia zisizohitaji kuingia, na matangazo kwa watumiaji wa vyama
 import { LEGAL_EFFECTIVE, LEGAL_EFFECTIVE_EN, LEGAL_VERSION } from '../lib/legal';
-import { smsConfigured, smsEnabled } from '../lib/sms';
+import { normPhone, sendNow, smsConfigured, smsEnabled, toGsm } from '../lib/sms';
+import rateLimit from 'express-rate-limit';
+import { z } from 'zod';
+import { badRequest } from '../lib/errors';
 import { Router } from 'express';
 import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { db, schema } from '../db';
@@ -21,6 +24,35 @@ publicRouter.get('/status', ah(async (_req, res) => {
     legal: { version: LEGAL_VERSION, effective: LEGAL_EFFECTIVE, effectiveEn: LEGAL_EFFECTIVE_EN, companyName: p.companyName, phone: p.phone, email: p.email, address: p.address, tin: p.tin, website: p.website, supportPhone: p.supportPhone, supportEmail: p.supportEmail },
     // mawasiliano ya kampuni yanayoonyeshwa kwenye mfumo (kuingia, msaada, risiti)
     contact: { companyName: p.companyName, address: p.address, phone: p.phone, email: p.email, website: p.website, supportPhone: p.supportPhone, supportEmail: p.supportEmail } });
+}));
+
+// ---------------------------------------------------------------------
+//  OMBI LA MAONYESHO (tovuti ya umma): chama kinaomba kuonyeshwa COOPLINK.
+//  Bila kuingia, kwa hiyo: kikomo cha maombi kwa IP, sehemu ya mtego (honeypot) dhidi ya roboti,
+//  na taarifa fupi kwa SMS kwenda namba ya kampuni (kama huduma ya SMS ya tahadhari imewashwa).
+const demoLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: 'draft-7', legacyHeaders: false,
+  message: { error: { code: 'TOO_MANY_REQUESTS', message: 'Maombi mengi kutoka mtandao huu. Jaribu tena baadaye au tupigie simu.' } },
+});
+const demoBody = z.object({
+  name: z.string().trim().min(3, 'Andika jina lako').max(80),
+  phone: z.string().trim().min(9, 'Andika namba sahihi ya simu').max(20),
+  amcosName: z.string().trim().min(3, 'Andika jina la chama').max(120),
+  region: z.string().trim().max(80).optional(),
+  message: z.string().trim().max(600).optional(),
+  website: z.string().max(0).optional(), // honeypot: binadamu haioni sehemu hii
+});
+publicRouter.post('/demo-request', demoLimiter, ah(async (req, res) => {
+  const b = demoBody.parse(req.body);
+  const phone = normPhone(b.phone);
+  if (!phone) throw badRequest('Andika namba sahihi ya simu (mf. 0712 345 678)');
+  const [row] = await db.insert(schema.demoRequests).values({
+    name: b.name, phone, amcosName: b.amcosName, region: b.region || null, message: b.message || null, ip: req.ip ?? null,
+  }).returning({ id: schema.demoRequests.id });
+  const p = await getSetting('business.profile');
+  const to = p.supportPhone || p.phone;
+  if (to) void sendNow({ kind: 'SYSTEM_ALERT', phone: to, text: toGsm(`CoopLink: Ombi jipya la maonyesho - ${b.amcosName} (${b.region || 'eneo halijatajwa'}). ${b.name}, ${phone}.`) }).catch(() => {});
+  res.status(201).json({ ok: true, id: row.id });
 }));
 
 export const announcementsRouter = Router();

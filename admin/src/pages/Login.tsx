@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { homeFor, useAuth, type User } from '../lib/auth';
 import { api } from '../lib/api';
 import { playTone, unlockAudio } from '../lib/tone';
@@ -64,10 +64,10 @@ function AuthHero() {
       </div>
       <div className="hero-scrim" aria-hidden="true" />
 
-      <div className="hero-brand">
+      <Link to="/" className="hero-brand" title={t('Rudi kwenye tovuti ya COOPLINK')}>
         <LogoMark size={46} animate />
         <div><b>Coop<i>Link</i></b></div>
-      </div>
+      </Link>
       <div className="hero-head">
         <h2><span className="hl"><span>Connecting Cooperatives.</span></span><em className="hl"><span>Empowering Farmers</span></em></h2>
       </div>

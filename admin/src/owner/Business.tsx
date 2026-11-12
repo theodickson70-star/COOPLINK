@@ -15,15 +15,16 @@ interface Analytics {
 const METRIC: Record<string, string> = { REVENUE: 'Mapato (TSh)', NEW_AMCOS: 'AMCOS mpya', ACTIVE_SUBSCRIPTIONS: 'Subscriptions hai zinazolipiwa' };
 
 export function OwnerBusiness() {
-  const [tab, setTab] = useState<'analytics' | 'targets' | 'profile'>('analytics');
+  const [tab, setTab] = useState<'analytics' | 'demo' | 'targets' | 'profile'>('analytics');
   return (
     <>
       <PageHead title="DUKALANGU SOLUTION — Business Center" sub="Ukuaji wa CoopLink, malengo ya biashara na wasifu wa kampuni">
         <Button variant="secondary" className="no-print" onClick={() => window.print()}>Chapisha / PDF</Button>
       </PageHead>
-      <div className="no-print"><Tabs value={tab} onChange={setTab} items={[['analytics', 'Uchambuzi wa ukuaji'], ['targets', 'Malengo'], ['profile', 'Wasifu wa kampuni']]} /></div>
+      <div className="no-print"><Tabs value={tab} onChange={setTab} items={[['analytics', 'Uchambuzi wa ukuaji'], ['demo', 'Maombi ya maonyesho'], ['targets', 'Malengo'], ['profile', 'Wasifu wa kampuni']]} /></div>
       <div className="print-area">
         {tab === 'analytics' && <AnalyticsView />}
+        {tab === 'demo' && <DemoRequests />}
         {tab === 'targets' && <Targets />}
         {tab === 'profile' && <ProfileView />}
       </div>
@@ -135,6 +136,47 @@ function ProfileView() {
         {F('supportPhone', 'Simu ya msaada wa kiufundi')}{F('supportEmail', 'Email ya msaada wa kiufundi')}
       </div>
       {!ro && <div className="actions no-print" style={{ marginTop: 12 }}><Button busy={act.busy} onClick={async () => { if (await act.run(() => api('/owner/business/profile', { method: 'PUT', body: p }))) { setOk(true); reload(); } }}>Hifadhi wasifu</Button></div>}
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------------
+//  Maombi ya maonyesho kutoka tovuti ya umma (vyama vinavyotaka kujiunga)
+interface DemoReq { id: string; name: string; phone: string; amcosName: string; region: string | null; message: string | null; status: 'NEW' | 'CONTACTED' | 'CLOSED'; note: string | null; handledBy: string | null; handledAt: string | null; createdAt: string }
+const DR_LABEL = { NEW: 'Jipya', CONTACTED: 'Amepigiwa', CLOSED: 'Limefungwa' } as const;
+function DemoRequests() {
+  const [status, setStatus] = useState('');
+  const r = useFetch<{ newCount: number; data: DemoReq[] }>('/owner/business/demo-requests', { status: status || undefined });
+  const act = useAction();
+  const set = async (d: DemoReq, st: DemoReq['status']) => { const ok = await act.run(() => api(`/owner/business/demo-requests/${d.id}`, { method: 'PATCH', body: { status: st, note: d.note ?? undefined } })); if (ok) r.reload(); };
+  const fmt = (x: string) => new Date(x).toLocaleString('sw-TZ', { dateStyle: 'medium', timeStyle: 'short' });
+  return (
+    <Section title={`Maombi ya maonyesho${r.data?.newCount ? ` · ${r.data.newCount} mapya` : ''}`} pad={false}>
+      <div style={{ padding: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <select className="select" style={{ maxWidth: 200 }} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Yote</option><option value="NEW">Mapya</option><option value="CONTACTED">Wamepigiwa</option><option value="CLOSED">Yamefungwa</option></select>
+        <span className="muted small">Yanatoka kwenye fomu ya "Omba maonyesho" ya tovuti ya COOPLINK.</span>
+      </div>
+      <Alert>{act.error}</Alert>
+      {r.loading && !r.data ? <Loading /> : !r.data?.data.length ? <Empty>Bado hakuna ombi.</Empty> : (
+        <div className="table-wrap"><table className="table">
+          <thead><tr><th>Chama</th><th>Mwombaji</th><th>Simu</th><th>Ujumbe</th><th>Tarehe</th><th>Hali</th><th /></tr></thead>
+          <tbody>{r.data.data.map((d) => (
+            <tr key={d.id}>
+              <td><strong>{d.amcosName}</strong>{d.region && <div className="muted small">{d.region}</div>}</td>
+              <td>{d.name}</td>
+              <td className="nowrap"><a href={`tel:+${d.phone}`}>{d.phone.replace(/^255/, '0')}</a></td>
+              <td style={{ minWidth: 200, whiteSpace: 'normal' }}>{d.message || '—'}</td>
+              <td className="nowrap">{fmt(d.createdAt)}</td>
+              <td><span className={`badge ${d.status === 'NEW' ? 'badge-warn' : d.status === 'CONTACTED' ? 'badge-ok' : ''}`}>{DR_LABEL[d.status]}</span>{d.handledBy && <div className="muted small">{d.handledBy}</div>}</td>
+              <td className="nowrap">
+                {d.status === 'NEW' && <Button size="sm" busy={act.busy} onClick={() => set(d, 'CONTACTED')}>Nimempigia</Button>}
+                {d.status === 'CONTACTED' && <Button size="sm" variant="secondary" busy={act.busy} onClick={() => set(d, 'CLOSED')}>Funga</Button>}
+                {d.status === 'CLOSED' && <Button size="sm" variant="ghost" busy={act.busy} onClick={() => set(d, 'NEW')}>Fungua tena</Button>}
+              </td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      )}
     </Section>
   );
 }

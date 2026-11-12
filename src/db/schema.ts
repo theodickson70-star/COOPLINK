@@ -1600,3 +1600,19 @@ export const supportAttachments = pgTable('support_attachments', {
   sizeBytes: integer().notNull(),
   createdAt: createdAt(),
 }, (t) => [index().on(t.messageId)]);
+
+// Maombi ya maonyesho kutoka tovuti ya umma (vyama vinavyotaka kujiunga na COOPLINK)
+export const demoRequests = pgTable('demo_requests', {
+  id: id(),
+  name: text().notNull(),
+  phone: text().notNull(),
+  amcosName: text().notNull(),
+  region: text(),
+  message: text(),
+  status: text().notNull().default('NEW'),          // NEW | CONTACTED | CLOSED
+  note: text(),
+  ip: text(),
+  handledById: uuid().references(() => users.id),
+  handledAt: timestamp({ withTimezone: true }),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.status, t.createdAt)]);

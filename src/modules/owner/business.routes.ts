@@ -1,7 +1,7 @@
 // DUKALANGU SOLUTION BUSINESS CENTER — wasifu wa biashara, malengo na uchambuzi wa ukuaji
 import { Router } from 'express';
 import { z } from 'zod';
-import { eq, sql } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import { db, schema } from '../../db';
 import { ah, decimalSchema, uuidParam } from '../../lib/http';
 import { notFound } from '../../lib/errors';
@@ -117,4 +117,26 @@ businessRouter.get('/analytics', requirePermission('business.read'), ah(async (r
       arpu12m: finance && paying ? (Number(totals.revenue_12m) / paying).toFixed(2) : null,
     },
   });
+}));
+
+// ---------------------------------------------------------------------
+//  MAOMBI YA MAONYESHO kutoka tovuti ya umma — timu ya mauzo inafuatilia kila ombi
+const DR = schema.demoRequests;
+businessRouter.get('/demo-requests', requirePermission('business.read'), ah(async (req, res) => {
+  const q = z.object({ status: z.enum(['NEW', 'CONTACTED', 'CLOSED']).optional() }).parse(req.query);
+  const rows = await db.select({ r: DR, by: schema.users.fullName }).from(DR).leftJoin(schema.users, eq(schema.users.id, DR.handledById))
+    .where(q.status ? eq(DR.status, q.status) : undefined).orderBy(desc(DR.createdAt)).limit(200);
+  const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(DR).where(eq(DR.status, 'NEW'));
+  res.json({ newCount: n, data: rows.map((x) => ({ ...x.r, ip: undefined, handledBy: x.by })) });
+}));
+businessRouter.patch('/demo-requests/:id', requirePermission('business.read'), ah(async (req, res) => {
+  const { id } = uuidParam.parse(req.params);
+  const b = z.object({ status: z.enum(['NEW', 'CONTACTED', 'CLOSED']), note: z.string().trim().max(500).optional() }).parse(req.body);
+  const out = await db.transaction(async (tx) => {
+    const [row] = await tx.update(DR).set({ status: b.status, note: b.note ?? null, handledById: req.auth!.userId, handledAt: new Date() }).where(eq(DR.id, id)).returning();
+    if (!row) throw notFound('Ombi');
+    await audit(tx, req, { action: 'DEMO_REQUEST_UPDATE', entity: 'DemoRequest', entityId: id, after: { status: b.status } });
+    return row;
+  });
+  res.json({ request: out });
 }));

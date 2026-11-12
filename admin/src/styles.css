@@ -1564,3 +1564,4 @@ tr.row-msg.row-warn td { color: var(--warn-ink); }
 .sidebar > .nav::-webkit-scrollbar-thumb { background: rgba(246, 240, 225, .2); border-radius: 6px; }
 .sidebar > .nav::-webkit-scrollbar-thumb:hover { background: rgba(246, 240, 225, .35); }
 .sidebar .sidebar-foot { flex: none; margin-top: 0; border-top: 1px solid rgba(246, 240, 225, 0.1); padding-top: 12px; }
+.hero-brand { text-decoration: none; }

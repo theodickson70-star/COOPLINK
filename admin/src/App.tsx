@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, type ComponentType, type ReactNode } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth, ROLE_GROUPS, homeFor, isPlatform, isStaff, type Role } from './lib/auth';
 import { Layout } from './components/Layout';
 import { LogoMark } from './components/Logo';
@@ -62,6 +62,8 @@ const load_FarmerDebts_pages = () => import('./pages/FarmerDebts');
 const FarmerDebtDetail = lazyPage(load_FarmerDebts_pages, 'FarmerDebtDetail');
 const FarmerDebts = lazyPage(load_FarmerDebts_pages, 'FarmerDebts');
 PAGE_LOADERS.push(load_FarmerDebts_pages);
+const load_Website = () => import('./pages/Website');
+const Website = lazyPage(load_Website, 'Website');
 const load_SmsBroadcasts_pages = () => import('./pages/SmsBroadcasts');
 const SmsBroadcasts = lazyPage(load_SmsBroadcasts_pages, 'SmsBroadcasts');
 PAGE_LOADERS.push(load_SmsBroadcasts_pages);
@@ -175,8 +177,10 @@ function Protected({ children, roles, area = 'amcos' }: { children: ReactNode; r
     window.addEventListener('cl:password-change', go);
     return () => window.removeEventListener('cl:password-change', go);
   }, [nav]);
+  const loc = useLocation();
   if (loading) return <Splash />;
-  if (!user) return <Navigate to="/login" replace />;
+  // Mgeni kwenye anwani kuu anaona tovuti ya COOPLINK; kurasa nyingine zinampeleka kuingia
+  if (!user) return area === 'amcos' && loc.pathname === '/' ? <Suspense fallback={<Splash />}><Website /></Suspense> : <Navigate to="/login" replace />;
   if (user.mustChangePassword) return <Navigate to="/change-password" replace />;
   // Masharti ya Huduma na Sera ya Faragha: kila mtumiaji anakubali toleo la sasa kabla ya kuendelea
   if (user.termsRequired) return <Suspense fallback={<Splash />}><TermsGate /></Suspense>;
