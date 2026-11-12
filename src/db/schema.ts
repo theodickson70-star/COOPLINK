@@ -114,6 +114,16 @@ export const amcos = pgTable('amcos', {
   inputCurrency: currencyEnum().notNull().default('TZS'),
   kgPerAcre: numeric({ precision: 10, scale: 2 }).notNull().default('560'), // makisio: kilo za tumbaku kwa ekari (mf. @560)
   postalAddress: text(),                                                      // mf. S.L.P 149 Urambo (kwa fomu zilizochapishwa)
+  // Profaili ya chama (Mipangilio → Profaili; Meneja). Jina, code na namba ya usajili ni za Owner tu.
+  tin: text(),                       // TIN ya TRA
+  regDate: date(),                   // tarehe ya usajili
+  leaders: jsonb().$type<{ role: string; name: string; phone: string | null }[]>(), // viongozi wa bodi
+  logo: text(),                      // nembo ndogo (data URL ya picha, imebanwa ukubwa) — kwa nyaraka
+  // Fedha (Mhasibu): akaunti kuu ya benki ya chama — inaonekana kwenye nyaraka (kama imeruhusiwa)
+  mainAccountId: uuid(),
+  // Nyaraka (risiti, vocha, taarifa)
+  docFooter: text(),
+  docShowBank: boolean().notNull().default(false),
   // Chama cha mafunzo: Owner anaweza kufuta data yote ya mafunzo mara moja (watumishi wanabaki); kisha kinakuwa hai
   training: boolean().notNull().default(false),
   trainingResetAt: timestamp({ withTimezone: true }),

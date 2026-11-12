@@ -50,7 +50,7 @@ interface Rule { id: string; name: string; code: string; basis: string; basisLab
 export function Sales() {
   const t = useT();
   const { may } = useAuth();
-  const [tab, setTab] = useState<'markets' | 'buyers' | 'rules' | 'grades'>(() => { const q = new URLSearchParams(window.location.search).get('tab'); return q === 'buyers' || q === 'grades' ? q : 'markets'; });
+  const [tab, setTab] = useState<'markets' | 'buyers' | 'rules' | 'grades'>(() => { const q = new URLSearchParams(window.location.search).get('tab'); return q === 'buyers' || q === 'grades' || q === 'rules' ? q : 'markets'; });
   const sum = useFetch<{ season: { name: string }; pending: { markets: number; open: number; waiting: number; bales: number; kg: string; usd: string; tzs: string }; farmers: number; kg: string; grossTzs: string; deductions: string; netTzs: string; paid: string; unpaid: string; deductionsByRule: { name: string; amount: string }[] }>('/sales/summary');
   return (
     <>

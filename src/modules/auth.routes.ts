@@ -285,7 +285,12 @@ authRouter.get(
   ah(async (req, res) => {
     const user = await db.query.users.findFirst({ where: eq(schema.users.id, req.auth!.userId) });
     const amcos = user?.amcosId ? await db.query.amcos.findFirst({ where: eq(schema.amcos.id, user.amcosId) }) : null;
-    res.json({ user: await publicUser(user!), amcos });
+    // Akaunti kuu ya benki inaonekana kwenye nyaraka tu kama Mhasibu/Meneja ameruhusu (Mipangilio → Nyaraka)
+    const [mainBank] = amcos?.docShowBank && amcos.mainAccountId
+      ? await db.select({ name: schema.financeAccounts.name, bankName: schema.financeAccounts.bankName, accountNumber: schema.financeAccounts.accountNumber })
+        .from(schema.financeAccounts).where(and(eq(schema.financeAccounts.id, amcos.mainAccountId), eq(schema.financeAccounts.amcosId, amcos.id), eq(schema.financeAccounts.isActive, true)))
+      : [];
+    res.json({ user: await publicUser(user!), amcos: amcos ? { ...amcos, mainBank: mainBank ?? null } : null });
   }),
 );
 

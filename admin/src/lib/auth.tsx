@@ -42,7 +42,13 @@ export interface User {
   /** Meneja wa chama kisicho na Mhasibu/Storekeeper: vyeo anavyovifanyia kazi kwa muda */
   covering?: ('ACCOUNTANT' | 'CLERK')[];
 }
-export interface Amcos { id: string; name: string; code: string; district?: string | null; training?: boolean }
+export interface Amcos {
+  id: string; name: string; code: string; district?: string | null; training?: boolean;
+  // Chapa ya nyaraka (Mipangilio → Profaili / Nyaraka)
+  regNumber?: string | null; region?: string | null; ward?: string | null; village?: string | null; phone?: string | null; email?: string | null;
+  postalAddress?: string | null; tin?: string | null; logo?: string | null; docFooter?: string | null; docShowBank?: boolean;
+  mainBank?: { name: string; bankName: string | null; accountNumber: string | null } | null;
+}
 
 export const PLATFORM_ROLES: Role[] = ['SUPER_ADMIN', 'FINANCE_MANAGER', 'TECH_SUPPORT', 'CUSTOMER_SUPPORT', 'MARKETING_MANAGER'];
 export const STAFF_ROLES: Role[] = ['FINANCE_MANAGER', 'TECH_SUPPORT', 'CUSTOMER_SUPPORT', 'MARKETING_MANAGER'];

@@ -25,6 +25,7 @@ const I = {
   money: <><rect x="2.5" y="6" width="19" height="12" rx="2" /><circle cx="12" cy="12" r="2.8" /><path d="M6 9v.01M18 15v.01" /></>,
   users: <><circle cx="12" cy="8" r="4" /><path d="M4 21c.8-4 4-6 8-6s7.2 2 8 6" /></>,
   org: <><path d="M3 21h18M5 21V9l7-5 7 5v12" /><path d="M9 21v-6h6v6" /></>,
+  settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></>,
   audit: <><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.5-4.5M8 11h6M11 8v6" /></>,
   menu: <path d="M3 6h18M3 12h18M3 18h18" />,
   check: <><path d="M9 11l3 3 8-8" /><path d="M20 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></>,
@@ -105,6 +106,7 @@ const NAV: { section?: string; items: NavItem[] }[] = [
       { to: '/billing', label: 'Ada ya CoopLink', icon: I.wallet, roles: ['AMCOS_ADMIN', 'ACCOUNTANT'] },
       { to: '/organizations', label: 'Vyama na Misimu', icon: I.org, roles: ROLE_GROUPS.ORGS },
       { to: '/audit', label: 'Kumbukumbu (Audit)', icon: I.audit, perm: ['audit.read'] },
+      { to: '/settings', label: 'Mipangilio', icon: I.settings, roles: ['AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK'] },
     ],
   },
 ];
@@ -234,10 +236,17 @@ export function Layout() {
               </Button>
             )}
             <PrefSwitches compact />
-            <div className="user-chip">
-              <span className="avatar" aria-hidden="true">{user.fullName.charAt(0)}</span>
-              <span className="who">{user.fullName}<small>{t(ROLE_LABEL[user.role])}{amcos && user.amcosId ? ` · ${amcos.code}` : ''}</small></span>
-            </div>
+            {user.amcosId ? (
+              <Link className="user-chip" to="/settings" title={t('Mipangilio na akaunti yangu')}>
+                <span className="avatar" aria-hidden="true">{user.fullName.charAt(0)}</span>
+                <span className="who">{user.fullName}<small>{t(ROLE_LABEL[user.role])}{amcos ? ` · ${amcos.code}` : ''}</small></span>
+              </Link>
+            ) : (
+              <div className="user-chip">
+                <span className="avatar" aria-hidden="true">{user.fullName.charAt(0)}</span>
+                <span className="who">{user.fullName}<small>{t(ROLE_LABEL[user.role])}</small></span>
+              </div>
+            )}
             <Button variant="ghost" size="sm" onClick={logout}>{t('Toka')}</Button>
           </div>
           <button type="button" className="tb-avatar" aria-label={t('Akaunti yangu')} onClick={() => setSheet(true)}>
@@ -253,6 +262,7 @@ export function Layout() {
           {hasGuide(loc.pathname, user.role) && (
             <button type="button" className="us-btn" onClick={() => { setSheet(false); window.dispatchEvent(new Event(OPEN_GUIDE)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>💡 {t('Mwongozo wa ukurasa huu')}</button>
           )}
+          {user.amcosId && <Link className="us-btn" to="/settings">⚙️ {t('Mipangilio na akaunti yangu')}</Link>}
           {user.role === 'SUPER_ADMIN' && <Link className="us-btn" to="/owner">Owner Panel</Link>}
           <button type="button" className="us-btn danger" onClick={logout}>{t('Toka')}</button>
         </UserSheet>

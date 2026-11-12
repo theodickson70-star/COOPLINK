@@ -26,6 +26,7 @@ import { approvalsRouter } from './modules/approvals.routes';
 import { financeRouter } from './modules/finance.routes';
 import { storeRouter } from './modules/store.routes';
 import { workspaceRouter } from './modules/workspace.routes';
+import { settingsRouter } from './modules/settings.routes';
 import { accountingRouter } from './modules/accounting.routes';
 import { bankRouter } from './modules/bank.routes';
 import { salesRouter } from './modules/sales.routes';
@@ -123,6 +124,7 @@ export function createApp() {
   api.use('/payroll', payrollRouter);           // Mishahara
   api.use('/assets', assetsRouter);             // Mali za chama na uchakavu
   api.use('/workspace', workspaceRouter);       // Dashibodi za watumishi
+  api.use('/settings', settingsRouter);         // Mipangilio ya chama (watumishi wote; ruhusa kwa kila sehemu)
 
   app.use('/api/v1', api);
 

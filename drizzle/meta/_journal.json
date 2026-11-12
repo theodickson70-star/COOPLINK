@@ -225,6 +225,13 @@
       "when": 1794517097858,
       "tag": "0031_demo_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794525379155,
+      "tag": "0032_amcos_settings",
+      "breakpoints": true
     }
   ]
 }

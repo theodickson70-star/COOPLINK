@@ -11,7 +11,7 @@ import { ACCOUNT_KIND_LABEL, date, dateTime, tsh } from '../lib/format';
 import { amountInWords } from '../lib/words';
 import { Alert, Button, Empty, Loading, Modal, PageHead, SelectField, TextField } from '../components/ui';
 import { Section } from '../components/owner-ui';
-import { PrintButton, Signatures, today } from './acc-common';
+import { DocHead, PrintButton, Signatures, today } from './acc-common';
 
 interface Account { id: string; name: string; kind: string; bankName: string | null; accountNumber: string | null; openingBalance: string; balance: string; isActive: boolean }
 
@@ -168,18 +168,7 @@ export function Voucher() {
       </div>
       {t.status !== 'POSTED' && <Alert kind="warn">Muamala huu bado haujakamilika ({t.status}). Vocha rasmi inachapishwa baada ya kukamilika.</Alert>}
       <article className="card card-pad print-doc voucher">
-        <div className="doc-head">
-          <div>
-            <div className="doc-org">{a.name}</div>
-            <div className="doc-org-sub">{[a.regNumber && `Usajili: ${a.regNumber}`, a.village, a.ward, a.district, a.region].filter(Boolean).join(' · ')}</div>
-            <div className="doc-org-sub">{[a.phone, a.email].filter(Boolean).join(' · ')}</div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div className="doc-title">{receipt ? 'RISITI YA MALIPO' : 'VOCHA YA MALIPO'}</div>
-            <div className="doc-no">Na. {t.txnNo}</div>
-            <div className="doc-org-sub">Tarehe: {date(t.txnDate)}</div>
-          </div>
-        </div>
+        <DocHead title={receipt ? 'RISITI YA MALIPO' : 'VOCHA YA MALIPO'} no={`Na. ${t.txnNo}`} sub={`Tarehe: ${date(t.txnDate)}`} org={a} />
         <dl className="dl voucher-dl">
           <dt>{receipt ? 'Tumepokea kutoka kwa' : 'Lipa kwa'}</dt><dd><strong>{t.payee ?? t.memberName ?? '—'}</strong></dd>
           <dt>Kiasi</dt><dd><strong className="voucher-amt">{tsh(t.amount)}</strong></dd>

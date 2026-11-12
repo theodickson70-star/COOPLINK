@@ -25,7 +25,7 @@ const tone = (s: string) => (s === 'POSTED' ? 'APPROVED' : s === 'APPROVED' || s
 const todayStr = () => new Date().toLocaleDateString('en-CA');
 
 export function Finance() {
-  const [tab, setTab] = useState<'txns' | 'accounts' | 'budget' | 'fx' | 'reports'>(() => { const q = new URLSearchParams(window.location.search).get('tab'); return q === 'budget' || q === 'fx' ? q : 'txns'; });
+  const [tab, setTab] = useState<'txns' | 'accounts' | 'budget' | 'fx' | 'reports'>(() => { const q = new URLSearchParams(window.location.search).get('tab'); return q === 'budget' || q === 'fx' || q === 'accounts' ? q : 'txns'; });
   return (
     <>
       <PageHead title="Fedha za Chama" sub="Mapato, matumizi, malipo, akaunti na ripoti. Fedha za chama hazichanganywi na za mtu yeyote." />

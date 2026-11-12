@@ -149,6 +149,10 @@ amcosRouter.patch(
       throw forbidden('Ni Msimamizi wa mfumo pekee anayeweza kubadilisha hili');
     }
     const before = await db.query.amcos.findFirst({ where: eq(schema.amcos.id, id) });
+    // Jina na namba ya usajili ni utambulisho rasmi — Meneja hawezi kuvibadilisha (CoopLink tu)
+    if (req.auth!.role === 'AMCOS_ADMIN' && before && ((body.name !== undefined && body.name !== before.name) || (body.regNumber !== undefined && (body.regNumber || null) !== (before.regNumber || null)))) {
+      throw forbidden('Jina na namba ya usajili wa chama vinabadilishwa na CoopLink tu');
+    }
     const row = await db.transaction(async (tx) => {
       const [a] = await tx.update(schema.amcos).set(body).where(eq(schema.amcos.id, id)).returning();
       await audit(tx, req, { action: 'AMCOS_UPDATE', entity: 'Amcos', entityId: id, amcosId: id, before, after: a });

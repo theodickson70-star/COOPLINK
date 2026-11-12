@@ -143,6 +143,9 @@ PAGE_LOADERS.push(load_Business_owner);
 const load_Settings_owner = () => import('./owner/Settings');
 const OwnerSettings = lazyPage(load_Settings_owner, 'OwnerSettings');
 PAGE_LOADERS.push(load_Settings_owner);
+const load_Settings_pages = () => import('./pages/Settings');
+const Settings = lazyPage(load_Settings_pages, 'Settings');
+PAGE_LOADERS.push(load_Settings_pages);
 const load_MemberImport_pages = () => import('./pages/MemberImport');
 const MemberImport = lazyPage(load_MemberImport_pages, 'MemberImport');
 PAGE_LOADERS.push(load_MemberImport_pages);
@@ -308,6 +311,7 @@ export default function App() {
             <Route path="users" element={<Protected roles={['SUPER_ADMIN', 'UNION_ADMIN', 'AMCOS_ADMIN']}><Users /></Protected>} />
             <Route path="organizations" element={<Protected roles={ROLE_GROUPS.ORGS}><Organizations /></Protected>} />
             <Route path="audit" element={<Need p={['audit.read']}><Audit /></Need>} />
+            <Route path="settings" element={<Protected roles={['AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK']}><Settings /></Protected>} />
             <Route path="*" element={<Empty>Ukurasa haupo.</Empty>} />
           </Route>
         </Routes>

@@ -23,7 +23,7 @@ export function OwnerSettings() {
   );
 }
 
-function Profile() {
+export function Profile({ ownerNote = true }: { ownerNote?: boolean }) {
   const { user, refresh } = useAuth();
   const [fullName, setFullName] = useState(user?.fullName ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
@@ -40,7 +40,7 @@ function Profile() {
         <TextField label="Simu (namba ya kuingia)" value={phone(user.phone)} disabled onChange={() => undefined} />
         <TextField label="Nafasi" value={user.role === 'SUPER_ADMIN' ? OWNER_ROLE_LABEL : ROLE_LABEL[user.role] ?? user.role} disabled onChange={() => undefined} />
       </div>
-      <p className="muted" style={{ fontSize: 12 }}>Namba ya simu ya Owner inabadilishwa kupitia <code>SEED_ADMIN_PHONE</code> kwenye Railway, si hapa.</p>
+      {ownerNote && <p className="muted" style={{ fontSize: 12 }}>Namba ya simu ya Owner inabadilishwa kupitia <code>SEED_ADMIN_PHONE</code> kwenye Railway, si hapa.</p>}
       <div className="actions"><Button busy={act.busy} disabled={fullName.trim().length < 3} onClick={async () => {
         if (await act.run(() => api('/auth/me', { method: 'PATCH', body: { fullName: fullName.trim(), email: email.trim() || null } }))) { setOk(true); await refresh(); }
       }}>Hifadhi</Button></div>
@@ -48,7 +48,7 @@ function Profile() {
   );
 }
 
-function Password() {
+export function Password() {
   const { changePassword } = useAuth();
   const [cur, setCur] = useState('');
   const [next, setNext] = useState('');
@@ -73,7 +73,7 @@ function Password() {
   );
 }
 
-function TwoFactor() {
+export function TwoFactor() {
   const { user, refresh } = useAuth();
   const [setup, setSetup] = useState<{ secret: string; otpauthUri: string } | null>(null);
   const [code, setCode] = useState('');
@@ -92,7 +92,7 @@ function TwoFactor() {
         </>
       ) : !setup ? (
         <>
-          <p style={{ marginTop: 0 }}>Linda akaunti ya Owner kwa msimbo wa muda kutoka app kama <strong>Google Authenticator</strong>, <strong>Microsoft Authenticator</strong> au <strong>Authy</strong>. Inapendekezwa sana.</p>
+          <p style={{ marginTop: 0 }}>Linda akaunti yako kwa msimbo wa muda kutoka app kama <strong>Google Authenticator</strong>, <strong>Microsoft Authenticator</strong> au <strong>Authy</strong>. Inapendekezwa sana.</p>
           <Button busy={act.busy} onClick={async () => { setMsg(null); const r = await act.run(() => api<{ secret: string; otpauthUri: string }>('/auth/2fa/setup', { method: 'POST' })); if (r) setSetup(r); }}>Anza kuwasha 2FA</Button>
         </>
       ) : (
@@ -121,7 +121,7 @@ function TwoFactor() {
   );
 }
 
-function Sessions() {
+export function Sessions() {
   const s = useFetch<{ data: { id: string; ip: string | null; userAgent: string | null; createdAt: string; lastSeenAt: string; current: boolean }[] }>('/auth/sessions');
   const h = useFetch<{ data: { id: string; success: boolean; reason: string; ip: string | null; userAgent: string | null; createdAt: string; suspicious: boolean }[] }>('/auth/login-history');
   const act = useAction();

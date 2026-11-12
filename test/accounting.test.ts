@@ -1250,6 +1250,66 @@ test('Tovuti: ombi la maonyesho linafika Business Center', async () => {
   assert.equal(u.status, 200); assert.equal(u.body.request.status, 'CONTACTED');
 });
 
+// v0.35 — Mipangilio: kila mtumishi anaona sehemu zake; ruhusa zinalindwa kwenye server, si kwa kuficha menu
+test('Mipangilio: ruhusa kwa kila cheo, utambulisho ni wa Owner, kila badiliko kwenye audit', async () => {
+  const m = (await call('GET', '/api/v1/settings', manager)).body;
+  const a = (await call('GET', '/api/v1/settings', accountant)).body;
+  const k = (await call('GET', '/api/v1/settings', storekeeper)).body;
+  assert.equal(m.access.edit.profile, true); assert.equal(a.access.edit.profile, false); assert.equal(k.access.edit.profile, false);
+  assert.equal(a.access.edit.finance, true); assert.equal(k.access.view.finance, false); assert.equal(k.finance, null, 'Storekeeper haoni fedha');
+  assert.equal(k.access.edit.stock, true); assert.equal(k.access.view.sms, false); assert.equal(k.sms, null);
+  assert.equal(a.access.edit.docs, true); assert.equal(k.access.edit.docs, false);
+  assert.ok(m.profile.completeness.pct >= 0 && m.profile.completeness.missing.length > 0);
+
+  // Profaili: Meneja tu; jina/namba ya usajili ni za Owner (hata kupitia /amcos/:id)
+  assert.equal((await call('PUT', '/api/v1/settings/profile', accountant, { region: 'Tabora' })).status, 403, 'Mhasibu hawezi');
+  assert.equal((await call('PUT', '/api/v1/settings/profile', manager, { name: 'Jina Jipya AMCOS' })).status, 403, 'Meneja habadilishi jina');
+  assert.equal((await call('PATCH', `/api/v1/amcos/${amcosId}`, manager, { name: 'Jina Jipya AMCOS' })).status, 403, 'Hata kupitia njia ya zamani');
+  assert.equal((await call('PUT', '/api/v1/settings/profile', manager, { name: m.profile.name, region: 'Tabora' })).status, 200, 'Jina lile lile linakubalika');
+  assert.equal((await call('PUT', '/api/v1/settings/profile', manager, { tin: '12' })).status, 400, 'TIN si sahihi');
+  assert.equal((await call('PUT', '/api/v1/settings/profile', manager, { leaders: [{ role: 'CHAIR', name: 'Ali Juma' }, { role: 'CHAIR', name: 'Juma Ali' }] })).status, 400, 'Nafasi moja mara mbili');
+  const p = await call('PUT', '/api/v1/settings/profile', manager, {
+    district: 'Urambo', postalAddress: 'S.L.P 149 Urambo', phone: '0712 000 111', tin: '123-456-789', regDate: '2010-05-04',
+    leaders: [{ role: 'CHAIR', name: 'Ali Juma Hamisi', phone: '0754000111' }, { role: 'SECRETARY', name: 'Neema Paulo', phone: '' }],
+  });
+  assert.equal(p.status, 200, JSON.stringify(p.body));
+  const m2 = (await call('GET', '/api/v1/settings', manager)).body;
+  assert.equal(m2.profile.phone, '255712000111'); assert.equal(m2.profile.leaders[0].phone, '255754000111'); assert.equal(m2.profile.leaders[1].phone, null);
+  assert.ok(m2.profile.completeness.pct > m.profile.completeness.pct);
+
+  // Fedha: akaunti kuu iwe ya benki ya chama hiki; Meneja hawezi
+  const accs = (await call('GET', '/api/v1/finance/accounts', accountant)).body.data;
+  const bankAcc = accs.find((x: any) => x.kind === 'BANK'); const cashAcc = accs.find((x: any) => x.kind === 'CASH');
+  assert.equal((await call('PUT', '/api/v1/settings/finance', manager, { mainAccountId: bankAcc.id })).status, 403);
+  assert.equal((await call('PUT', '/api/v1/settings/finance', accountant, { mainAccountId: cashAcc.id })).status, 400, 'Si benki');
+  assert.equal((await call('PUT', '/api/v1/settings/finance', accountant, { mainAccountId: bankAcc.id })).status, 200);
+
+  // Nyaraka: Mhasibu anaweza; nembo lazima iwe picha salama (si SVG); benki inaonekana kwenye /auth/me ikiruhusiwa
+  assert.equal((await call('PUT', '/api/v1/settings/docs', storekeeper, { footer: 'x' })).status, 403);
+  assert.equal((await call('PUT', '/api/v1/settings/docs', accountant, { logo: 'data:image/svg+xml;base64,PHN2Zz4=' })).status, 400, 'SVG hairuhusiwi');
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  assert.equal((await call('PUT', '/api/v1/settings/docs', accountant, { footer: 'Asante kwa ushirikiano', showBank: true, logo: png })).status, 200);
+  const me = (await call('GET', '/api/v1/auth/me', storekeeper)).body;
+  assert.equal(me.amcos.docFooter, 'Asante kwa ushirikiano'); assert.equal(me.amcos.logo, png); assert.equal(me.amcos.mainBank.accountNumber, bankAcc.accountNumber);
+
+  // Stoo: Storekeeper anaweka kiwango kupitia endpoint iliyopo; Mhasibu hawezi
+  const item = k.stock.items[0];
+  if (item) {
+    assert.equal((await call('PATCH', `/api/v1/inputs/items/${item.id}`, accountant, { reorderLevel: '5' })).status, 403);
+    assert.equal((await call('PATCH', `/api/v1/inputs/items/${item.id}`, storekeeper, { reorderLevel: '100000' })).status, 200);
+    const k2 = (await call('GET', '/api/v1/settings', storekeeper)).body;
+    assert.equal(k2.stock.items.find((x: any) => x.id === item.id).low, true, 'Stock ndogo');
+  }
+
+  // Audit: nembo haiwekwi yote; mabadiliko ya karibuni yanaonekana
+  const logs = (await call('GET', '/api/v1/settings', manager)).body.recent;
+  for (const act of ['AMCOS_PROFILE_UPDATE', 'AMCOS_MAIN_ACCOUNT_SET', 'AMCOS_DOCS_UPDATE']) assert.ok(logs.some((l: any) => l.action === act), act);
+  const al = await call('GET', `/api/v1/audit-logs?action=AMCOS_DOCS_UPDATE&amcosId=${amcosId}`, owner);
+  assert.equal(al.status, 200, JSON.stringify(al.body));
+  const audit = al.body.data[0];
+  assert.ok(audit && /nembo/.test(JSON.stringify(audit.after)) && !JSON.stringify(audit.after).includes('base64'), 'Picha haiwekwi kwenye audit');
+});
+
 // v0.26 — LAZIMA liwe la mwisho: linafuta data yote ya chama cha majaribio -----------------------------
 test('Chama cha mafunzo: Owner pekee anafuta data yote, watumishi wanabaki, namba zinaanza upya, kinga zinabaki', async () => {
   const path = `/api/v1/owner/amcos/${amcosId}`;
