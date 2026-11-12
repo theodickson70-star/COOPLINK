@@ -127,6 +127,14 @@ export function Layout() {
   const decider = may('approvals.decide');
   const t = useT();
   const navRef = useRef<HTMLElement>(null);
+  // Ukibadili ukurasa: kipengele kilichochaguliwa kionekane ndani ya menyu (menyu pekee inasogea, si ukurasa)
+  const navPath = useLocation().pathname;
+  useEffect(() => {
+    const nav = navRef.current, a = nav?.querySelector('a.active') as HTMLElement | null;
+    if (!nav || !a) return;
+    if (a.offsetTop < nav.scrollTop + 8) nav.scrollTop = a.offsetTop - 8;
+    else if (a.offsetTop + a.offsetHeight > nav.scrollTop + nav.clientHeight - 8) nav.scrollTop = a.offsetTop + a.offsetHeight - nav.clientHeight + 8;
+  }, [navPath]);
   const indicator = useNavIndicator(navRef);
   const pending = useFetch<{ total: number }>(user?.amcosId && may('approvals.read') ? '/approvals/summary' : null);
   const [open, setOpen] = useState(false);

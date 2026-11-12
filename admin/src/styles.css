@@ -1524,3 +1524,18 @@ tr.row-msg.row-warn td { color: var(--warn-ink); }
   .grid-kpi { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
 }
 @media (max-width: 760px) and (prefers-reduced-motion: reduce) { .user-sheet, .sheet-scrim { animation: none; } }
+
+/* v0.31.1 — Menyu ya pembeni: nembo inabaki juu, menyu pekee ndiyo inasogea (scroll) */
+.sidebar { overflow: hidden; }
+.sidebar .brand { flex: none; }
+.sidebar > .nav {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+  margin: -6px -8px; padding: 6px 8px;
+  scrollbar-width: thin; scrollbar-color: rgba(246, 240, 225, .22) transparent;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 14px, #000 calc(100% - 18px), transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0, #000 14px, #000 calc(100% - 18px), transparent 100%);
+}
+.sidebar > .nav::-webkit-scrollbar { width: 6px; }
+.sidebar > .nav::-webkit-scrollbar-thumb { background: rgba(246, 240, 225, .2); border-radius: 6px; }
+.sidebar > .nav::-webkit-scrollbar-thumb:hover { background: rgba(246, 240, 225, .35); }
+.sidebar .sidebar-foot { flex: none; margin-top: 0; border-top: 1px solid rgba(246, 240, 225, 0.1); padding-top: 12px; }
