@@ -1565,3 +1565,19 @@ tr.row-msg.row-warn td { color: var(--warn-ink); }
 .sidebar > .nav::-webkit-scrollbar-thumb:hover { background: rgba(246, 240, 225, .35); }
 .sidebar .sidebar-foot { flex: none; margin-top: 0; border-top: 1px solid rgba(246, 240, 225, 0.1); padding-top: 12px; }
 .hero-brand { text-decoration: none; }
+
+/* v0.33 — Help & Support: chini kabisa ya menyu ya pembeni, haisogei pamoja na orodha */
+.sb-help {
+  flex: none; display: flex; align-items: center; gap: 12px; margin: 2px 0 0; padding: 12px 12px;
+  border-radius: 14px; text-decoration: none; color: #fff;
+  background: linear-gradient(135deg, rgba(246, 240, 225, .1), rgba(246, 240, 225, .04));
+  border: 1px solid rgba(246, 240, 225, .14); transition: background .2s, border-color .2s, transform .15s;
+}
+.sb-help:hover { background: rgba(246, 240, 225, .14); border-color: rgba(227, 168, 58, .5); }
+.sb-help.active { background: var(--gold); color: var(--forest); border-color: var(--gold); }
+.sb-help.active small { color: rgba(11, 47, 35, .75); }
+.sb-help-ic { width: 38px; height: 38px; border-radius: 11px; flex: none; display: grid; place-items: center; background: rgba(246, 240, 225, .12); }
+.sb-help.active .sb-help-ic { background: rgba(11, 47, 35, .12); }
+.sb-help-t { display: flex; flex-direction: column; font-weight: 700; font-family: var(--font-head); font-size: 15px; line-height: 1.2; min-width: 0; }
+.sb-help-t small { font-family: var(--font-body); font-weight: 400; font-size: 11.5px; color: #A9C9B8; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-help .nav-count { margin-left: auto; }

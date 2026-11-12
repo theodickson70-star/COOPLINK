@@ -57,17 +57,24 @@ const NAV: { section?: string; items: NavItem[] }[] = [
     items: [
       { to: '/members', label: 'Wakulima (wanachama)', icon: I.members, perm: ['members.read'] },
       { to: '/groups', label: 'Vikundi vya wakulima', icon: I.org, perm: ['members.read'] },
-      { to: '/sms', label: 'Matangazo kwa SMS', icon: I.sms, perm: ['members.approve'] },
-      { to: '/estimates', label: 'Makisio', icon: I.estimate, perm: ['members.read'] },
+      { to: '/estimates', label: 'Makisio ya msimu', icon: I.estimate, perm: ['members.read'] },
       { to: '/balances', label: 'Madeni na Salio', icon: I.money, perm: ['ledger.read'] },
     ],
   },
   {
-    section: 'Stoo',
+    section: 'Pembejeo na Stoo',
     items: [
       { to: '/inputs', label: 'Bidhaa na Stoo', icon: I.inputs, perm: ['stock.read'] },
       { to: '/input-issues', label: 'Ugawaji wa Pembejeo', icon: I.issue, perm: ['stock.read'] },
       { to: '/purchases', label: 'Manunuzi na Wazabuni', icon: I.cart, perm: ['purchases.request', 'purchases.receive', 'approvals.decide'] },
+    ],
+  },
+  {
+    section: 'Mauzo na Mikopo',
+    items: [
+      { to: '/sales', label: 'Mauzo ya tumbaku', icon: I.leaf, perm: ['sales.manage'] },
+      { to: '/kuni', label: 'Mikopo', icon: I.money, perm: ['finance.record'] },
+      { to: '/farmer-debts', label: 'Madeni ya wakulima', icon: I.members, perm: ['accounting.manage'] },
     ],
   },
   {
@@ -76,9 +83,6 @@ const NAV: { section?: string; items: NavItem[] }[] = [
     items: [
       { to: '/accounting', label: 'Dashibodi ya fedha', icon: I.gauge, perm: ['accounting.manage'] },
       { to: '/finance', label: 'Miamala na vocha', icon: I.wallet, perm: ['finance.record'] },
-      { to: '/sales', label: 'Mauzo ya tumbaku', icon: I.leaf, perm: ['sales.manage'] },
-      { to: '/kuni', label: 'Mikopo', icon: I.money, perm: ['finance.record'] },
-      { to: '/farmer-debts', label: 'Madeni ya wakulima', icon: I.members, perm: ['accounting.manage'] },
       { to: '/ledger', label: 'Daftari kuu', icon: I.book, perm: ['accounting.manage'] },
       { to: '/bank', label: 'Benki na usuluhishi', icon: I.bank, perm: ['accounting.manage'] },
       { to: '/payables', label: 'Madeni ya chama', icon: I.money, perm: ['accounting.manage'] },
@@ -89,16 +93,23 @@ const NAV: { section?: string; items: NavItem[] }[] = [
     ],
   },
   {
+    section: 'Mawasiliano',
+    items: [
+      { to: '/sms', label: 'Matangazo kwa SMS', icon: I.sms, perm: ['members.approve'] },
+    ],
+  },
+  {
     section: 'Usimamizi',
     items: [
       { to: '/users', label: 'Watumishi', icon: I.users, roles: ['SUPER_ADMIN', 'UNION_ADMIN', 'AMCOS_ADMIN'] },
       { to: '/billing', label: 'Ada ya CoopLink', icon: I.wallet, roles: ['AMCOS_ADMIN', 'ACCOUNTANT'] },
-      { to: '/support', label: 'Msaada', icon: I.help, roles: ['AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK', 'AMCOS_VIEWER'] },
       { to: '/organizations', label: 'Vyama na Misimu', icon: I.org, roles: ROLE_GROUPS.ORGS },
       { to: '/audit', label: 'Kumbukumbu (Audit)', icon: I.audit, perm: ['audit.read'] },
     ],
   },
 ];
+// Help & Support: kimebanwa chini kabisa ya menyu (hakisogei pamoja na orodha)
+const SUPPORT_ROLES: Role[] = ['AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK', 'AMCOS_VIEWER'];
 
 /** Kwa Super/Union admin: chagua chama unachofanyia kazi. */
 function AmcosSwitcher() {
@@ -190,13 +201,19 @@ export function Layout() {
                   <NavLink key={it.to} to={it.to} end={it.to === '/' || it.to === '/accounting'} style={{ animationDelay: `${60 + n++ * 35}ms` }}>
                     <span className="nav-icon"><Icon d={it.icon} /></span>{it.to === '/approvals' && !decider ? t('Maombi yangu') : t(it.label)}
                     {it.to === '/approvals' && decider && !!pending.data?.total && <span className="nav-count">{pending.data.total}</span>}
-                    {it.to === '/support' && !!support.data?.count && <span className="nav-count" title={t('Majibu mapya')}>{support.data.count}</span>}
                   </NavLink>
                 ))}
               </div>
             );
           }); })()}
         </nav>
+        {can(...SUPPORT_ROLES) && (
+          <NavLink to="/support" className="sb-help">
+            <span className="sb-help-ic"><LogoMark size={26} ring={false} /></span>
+            <span className="sb-help-t">Help &amp; Support<small>{t('Tuko tayari kukusaidia')}</small></span>
+            {!!support.data?.count && <span className="nav-count" title={t('Majibu mapya')}>{support.data.count}</span>}
+          </NavLink>
+        )}
       </aside>
       {open && <button type="button" className="nav-scrim"  aria-label={t('Funga menyu')} onClick={() => setOpen(false)} />}
 

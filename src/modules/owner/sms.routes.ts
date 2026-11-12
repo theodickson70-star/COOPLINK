@@ -10,7 +10,7 @@ import { ah, paged, paginationQuery } from '../../lib/http';
 import { badRequest, forbidden } from '../../lib/errors';
 import { requirePermission, requireReauth } from '../../middleware/auth';
 import { audit } from '../../lib/audit';
-import { getSetting, setSetting } from '../../lib/settings';
+import { clearSettingsCache, getSetting, setSetting } from '../../lib/settings';
 import { flushSms, providerStatus, sendNow, SMS_GROUPS, SMS_KINDS, type SmsKind } from '../../lib/sms';
 
 export const ownerSmsRouter = Router();
@@ -54,6 +54,7 @@ ownerSmsRouter.put('/events', requirePermission('system.manage'), ah(async (req,
     const changed = KINDS.filter((k) => before[k] !== after[k]).map((k) => `${k}: ${after[k] ? 'ON' : 'OFF'}`);
     await audit(tx, req, { action: 'SMS_EVENTS_SET', entity: 'PlatformSettings', after: { changed } });
   });
+  clearSettingsCache(); // baada ya commit: swichi mpya zinatumika mara moja
   res.json({ events: after });
 }));
 
@@ -72,6 +73,7 @@ ownerSmsRouter.put('/limits', requirePermission('system.manage'), ah(async (req,
     await setSetting(tx, 'sms.limits', after, req.auth!.userId);
     await audit(tx, req, { action: 'SMS_LIMITS_SET', entity: 'PlatformSettings', before, after });
   });
+  clearSettingsCache();
   res.json({ limits: after });
 }));
 

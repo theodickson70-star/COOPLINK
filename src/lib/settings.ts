@@ -70,6 +70,9 @@ export async function setSetting<K extends Key>(tx: DbOrTx, key: K, value: Val<K
     .values({ key, value, updatedById: userId })
     .onConflictDoUpdate({ target: schema.platformSettings.key, set: { value, updatedById: userId, updatedAt: new Date() } });
   cache.delete(key);
+  // Mara nyingi setSetting inaitwa ndani ya transaction: ombi jingine (mf. kazi ya SMS ya nyuma) likisoma kabla ya commit,
+  // lingehifadhi thamani ya zamani kwa sekunde 15. Futa tena baada ya commit ili mabadiliko yaonekane mara moja.
+  setTimeout(() => cache.delete(key), 1500).unref?.();
 }
 
 export const clearSettingsCache = () => cache.clear();
