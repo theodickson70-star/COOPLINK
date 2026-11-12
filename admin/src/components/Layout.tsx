@@ -15,6 +15,7 @@ import { hasGuide, OPEN_GUIDE, PageGuide } from './PageGuide';
 import { prefetchPages } from '../lib/prefetch';
 import type { BillingData } from '../pages/Billing';
 import { date, tsh } from '../lib/format';
+import { BottomNav, UserSheet, useTableCards, type BottomItem } from './MobileUi';
 
 const I = {
   home: <path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />,
@@ -129,6 +130,9 @@ export function Layout() {
   const indicator = useNavIndicator(navRef);
   const pending = useFetch<{ total: number }>(user?.amcosId && may('approvals.read') ? '/approvals/summary' : null);
   const [open, setOpen] = useState(false);
+  const [sheet, setSheet] = useState(false);
+  const contentRef = useRef<HTMLElement>(null);
+  useTableCards(contentRef);
   const loc = useLocation();
   // Tiketi zenye majibu mapya ya timu ya CoopLink (inasomwa upya ukibadili ukurasa)
   const support = useFetch<{ count: number }>(user?.amcosId ? '/support/unread' : null, { p: loc.pathname.startsWith('/support') ? loc.pathname : 'x' });
@@ -150,6 +154,11 @@ export function Layout() {
   const multi = !user.amcosId;
   const feeLocked = isPayer ? !!fees.data?.lock : !!lockMsg || (feeRole && !!fees.error && /imefungwa/i.test(fees.error));
   if (isPayer && feeLocked && !loc.pathname.startsWith('/billing') && !loc.pathname.startsWith('/support')) return <Navigate to="/billing" replace />;
+  // Menyu ya chini (simu): vitu vikuu vya cheo hiki kwa mpangilio wa kipaumbele
+  const allItems = NAV.flatMap((g) => g.items).filter((it) => (!it.roles || can(...it.roles)) && (!it.perm || may(...it.perm)));
+  const PRIORITY: Record<string, string> = { '/': 'Nyumbani', '/approvals': decider ? 'Idhini' : 'Maombi', '/members': 'Wakulima', '/input-issues': 'Pembejeo', '/finance': 'Fedha', '/sales': 'Mauzo', '/inputs': 'Stoo', '/accounting/reports': 'Ripoti' };
+  const bottomItems: BottomItem[] = Object.keys(PRIORITY).map((to) => allItems.find((it) => it.to === to)).filter(Boolean)
+    .map((it) => ({ to: it!.to, label: PRIORITY[it!.to], icon: <Icon d={it!.icon} />, badge: it!.to === '/approvals' && decider ? pending.data?.total : undefined }));
   const due = feeRole && !feeLocked ? fees.data?.fees.find((f) => (f.status === 'UNPAID' || f.status === 'PARTIAL') && (Date.parse(f.dueDate) - Date.now()) / 86_400_000 <= 30) : undefined;
 
   return (
@@ -188,7 +197,7 @@ export function Layout() {
       <div className="main">
         <header className="topbar">
           <Button variant="secondary" size="sm" className="menu-btn" onClick={() => setOpen(true)} aria-label={t('Fungua menyu')}><Icon d={I.menu} /></Button>
-          {multi ? <AmcosSwitcher /> : <strong style={{ fontFamily: 'var(--font-head)', color: 'var(--head)' }}>{amcos?.name}</strong>}
+          {multi ? <AmcosSwitcher /> : <strong className="tb-title" style={{ fontFamily: 'var(--font-head)', color: 'var(--head)' }}>{amcos?.name}</strong>}
           <div className="grow" />
           {user.role === 'SUPER_ADMIN' && <Link className="btn btn-primary btn-sm hide-sm" to="/owner">Owner Panel</Link>}
           {user.amcosId && !loc.pathname.startsWith('/support') && (
@@ -196,21 +205,38 @@ export function Layout() {
               <Icon d={I.help} /><span className="hide-sm">{t('Pata msaada')}</span>
             </Link>
           )}
-          {hasGuide(loc.pathname, user.role) && (
-            <Button variant="ghost" size="sm" className="help-btn" title={t('Onyesha mwongozo wa ukurasa huu')} onClick={() => { window.dispatchEvent(new Event(OPEN_GUIDE)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
-              💡<span className="hide-sm">{t('Mwongozo')}</span>
-            </Button>
-          )}
-          <PrefSwitches compact />
-          <div className="user-chip">
-            <span className="avatar" aria-hidden="true">{user.fullName.charAt(0)}</span>
-            <span className="who">{user.fullName}<small>{t(ROLE_LABEL[user.role])}{amcos && user.amcosId ? ` · ${amcos.code}` : ''}</small></span>
+          <div className="tb-desk">
+            {hasGuide(loc.pathname, user.role) && (
+              <Button variant="ghost" size="sm" className="help-btn" title={t('Onyesha mwongozo wa ukurasa huu')} onClick={() => { window.dispatchEvent(new Event(OPEN_GUIDE)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
+                💡<span className="hide-sm">{t('Mwongozo')}</span>
+              </Button>
+            )}
+            <PrefSwitches compact />
+            <div className="user-chip">
+              <span className="avatar" aria-hidden="true">{user.fullName.charAt(0)}</span>
+              <span className="who">{user.fullName}<small>{t(ROLE_LABEL[user.role])}{amcos && user.amcosId ? ` · ${amcos.code}` : ''}</small></span>
+            </div>
+            <Button variant="ghost" size="sm" onClick={logout}>{t('Toka')}</Button>
           </div>
-          <Button variant="ghost" size="sm" onClick={logout}>{t('Toka')}</Button>
+          <button type="button" className="tb-avatar" aria-label={t('Akaunti yangu')} onClick={() => setSheet(true)}>
+            <span className="avatar" aria-hidden="true">{user.fullName.charAt(0)}</span>
+          </button>
         </header>
+        <UserSheet open={sheet} onClose={() => setSheet(false)}>
+          <div className="us-head">
+            <span className="avatar" aria-hidden="true">{user.fullName.charAt(0)}</span>
+            <div><strong>{user.fullName}</strong><small>{t(ROLE_LABEL[user.role])}{amcos && user.amcosId ? ` · ${amcos.name}` : ''}</small></div>
+          </div>
+          <div className="us-row"><span>{t('Mwonekano na lugha')}</span><div className="us-prefs"><PrefSwitches /></div></div>
+          {hasGuide(loc.pathname, user.role) && (
+            <button type="button" className="us-btn" onClick={() => { setSheet(false); window.dispatchEvent(new Event(OPEN_GUIDE)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>💡 {t('Mwongozo wa ukurasa huu')}</button>
+          )}
+          {user.role === 'SUPER_ADMIN' && <Link className="us-btn" to="/owner">Owner Panel</Link>}
+          <button type="button" className="us-btn danger" onClick={logout}>{t('Toka')}</button>
+        </UserSheet>
         <SystemBanner />
         {amcos?.training && user.amcosId && <div className="training-strip" role="status">🎓 {t('Hali ya mafunzo: data ya chama hiki ni ya mazoezi na itafutwa yote kabla ya kuanza matumizi halisi. Akaunti zenu zitabaki.')}</div>}
-        <main className="content">
+        <main className="content" ref={contentRef}>
           {user.amcosId && <AnnouncementBar />}
           {due && !loc.pathname.startsWith('/billing') && (
             <div className="fee-banner">
@@ -227,6 +253,7 @@ export function Layout() {
           ) : <><PageGuide /><Suspense fallback={<Loading />}><Outlet /></Suspense></>}
         </main>
       </div>
+      {!feeLocked && <BottomNav items={bottomItems} onMore={() => setOpen(true)} />}
       <MaintenanceOverlay />
     </div>
   );

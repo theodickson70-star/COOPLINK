@@ -1425,3 +1425,102 @@ tr.row-msg.row-warn td { color: var(--warn-ink); }
 .sticky-actions span { margin-right: auto; font-weight: 600; }
 .otp-box { display: grid; gap: 10px; padding: 14px; border: 1px dashed var(--line); border-radius: 12px; background: var(--tint); }
 .sms-preview { white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 13px; padding: 10px 12px; border-radius: 10px; background: var(--tint); border: 1px solid var(--line); }
+
+/* =====================================================================
+   SIMU (v0.31): menyu ya chini, topbar fupi, majedwali kama kadi, nafasi rahisi kugusa
+   ===================================================================== */
+.tb-desk { display: contents; }
+.tb-avatar, .bottom-nav, .user-sheet, .sheet-scrim { display: none; }
+@media (max-width: 760px) {
+  /* Topbar: menyu · jina la chama · msaada · akaunti */
+  .topbar { flex-wrap: nowrap; gap: 8px; padding: 10px 12px; padding-top: max(10px, env(safe-area-inset-top)); }
+  .tb-desk { display: none; }
+  .topbar .tb-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
+  .topbar .grow { display: none; }
+  .tb-avatar { display: inline-flex; background: none; border: 0; padding: 0; cursor: pointer; border-radius: 50%; }
+  .tb-avatar .avatar { width: 38px; height: 38px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 18%, transparent); }
+  .topbar .help-btn { width: 40px; height: 40px; padding: 0; justify-content: center; }
+
+  /* Menyu ya mtumiaji (inafunguka kutoka juu kulia) */
+  .sheet-scrim { display: block; position: fixed; inset: 0; z-index: 40; background: rgba(5, 25, 18, .35); border: 0; animation: authFade .2s both; }
+  .user-sheet {
+    display: flex; flex-direction: column; gap: 10px; position: fixed; z-index: 41; top: calc(8px + env(safe-area-inset-top)); right: 8px; left: 8px;
+    background: var(--paper); border: 1px solid var(--line); border-radius: 20px; padding: 16px; box-shadow: 0 24px 60px rgba(0, 0, 0, .25);
+    animation: sheetIn .22s cubic-bezier(.2, .8, .2, 1) both;
+  }
+  @keyframes sheetIn { from { opacity: 0; transform: translateY(-10px) scale(.98); } to { opacity: 1; transform: none; } }
+  .us-head { display: flex; align-items: center; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .us-head .avatar { width: 46px; height: 46px; font-size: 19px; }
+  .us-head strong { display: block; font-family: var(--font-head); color: var(--head); font-size: 17px; }
+  .us-head small { color: var(--muted); font-size: 13px; }
+  .us-row { display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--muted); }
+  .us-prefs { display: flex; gap: 8px; flex-wrap: wrap; }
+  .us-btn { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); color: var(--head); font-weight: 600; font-size: 15px; text-decoration: none; cursor: pointer; font-family: inherit; }
+  .us-btn.danger { color: var(--danger); justify-content: center; }
+
+  /* Menyu ya chini */
+  .bottom-nav {
+    display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    background: color-mix(in srgb, var(--paper) 95%, transparent); -webkit-backdrop-filter: blur(16px) saturate(150%); backdrop-filter: blur(16px) saturate(150%);
+    border-top: 1px solid var(--line); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); box-shadow: 0 -6px 24px rgba(11, 47, 35, .08);
+  }
+  .bn-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 52px; border: 0; background: none; color: var(--muted); text-decoration: none; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; border-radius: 14px; -webkit-tap-highlight-color: transparent; }
+  .bn-ic { position: relative; width: 44px; height: 30px; display: grid; place-items: center; border-radius: 99px; transition: background .2s; }
+  .bn-ic svg { width: 22px; height: 22px; }
+  .bn-item.active { color: var(--forest); }
+  [data-theme="dark"] .bn-item.active { color: #fff; }
+  .bn-item.active .bn-ic { background: color-mix(in srgb, var(--gold) 30%, transparent); }
+  .bn-item:active .bn-ic { transform: scale(.92); }
+  .bn-lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .bn-badge { position: absolute; top: -4px; right: 2px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--danger); color: #fff; font-size: 10.5px; font-weight: 700; display: grid; place-items: center; border: 2px solid var(--paper); }
+  .content { padding: 16px 14px calc(96px + env(safe-area-inset-bottom)); }
+
+  /* Vichwa vya kurasa na vitufe */
+  .page-head { gap: 12px; margin-bottom: 16px; }
+  .page-head h1 { font-size: 24px; }
+  .page-head p { font-size: 14px; }
+  .page-head .actions { display: flex; gap: 8px; flex-wrap: wrap; width: 100%; }
+  .page-head .actions > .btn, .page-head .actions > button, .page-head .actions > a { flex: 1 1 auto; justify-content: center; }
+  .tabs { scrollbar-width: none; -webkit-overflow-scrolling: touch; margin-left: -14px; margin-right: -14px; padding: 0 14px; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button { flex: none; white-space: nowrap; }
+
+  /* Fomu: herufi 16px (simu isivute karibu), sehemu kubwa za kugusa */
+  .input, .select, textarea.input, input.input { font-size: 16px; min-height: 46px; }
+  .btn { min-height: 44px; }
+
+  /* Matangazo ya CoopLink: mafupi kwenye simu */
+  .ann-stack { gap: 8px; margin-bottom: 14px; }
+  .ann { padding: 10px 12px; border-radius: 14px; }
+  .ann p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 13.5px; margin: 2px 0 0; }
+  .ann small { display: none; }
+
+  /* Majedwali -> kadi */
+  .table-wrap:has(> .tbl-cards) { overflow: visible; }
+  .card:has(.tbl-cards) { background: transparent; border: 0; box-shadow: none; }
+  table.tbl-cards, .tbl-cards tbody { display: block; width: 100%; }
+  .tbl-cards thead { display: none; }
+  .tbl-cards tbody tr {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin: 0 0 10px; padding: 14px 16px;
+    background: var(--paper); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 2px 10px rgba(11, 47, 35, .05);
+  }
+  .tbl-cards tbody tr:hover { background: var(--paper); }
+  .tbl-cards td { display: block; padding: 0; border: 0 !important; text-align: left !important; min-width: 0; overflow-wrap: anywhere; font-size: 14.5px; }
+  .tbl-cards td::before { content: attr(data-label); display: block; font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-bottom: 2px; }
+  .tbl-cards td[data-label=""]::before { display: none; }
+  .tbl-cards td:first-child { grid-column: 1 / -1; font-weight: 700; color: var(--head); font-size: 15.5px; padding-bottom: 8px; border-bottom: 1px solid var(--line-2) !important; }
+  .tbl-cards td:first-child::before { display: none; }
+  .tbl-cards td[colspan] { grid-column: 1 / -1; text-align: center !important; }
+  .tbl-cards td .btn, .tbl-cards td button { min-height: 40px; }
+  .tbl-cards td:has(> .btn:only-child), .tbl-cards td:has(> button:only-child) { grid-column: 1 / -1; }
+  .tbl-cards td:has(> .btn:only-child) .btn, .tbl-cards td:has(> button:only-child) button { width: 100%; justify-content: center; }
+  .tbl-cards td:has(> input), .tbl-cards td:has(> select), .tbl-cards td:has(> .input) { grid-column: 1 / -1; }
+  .tbl-cards tfoot { display: block; }
+  .tbl-cards tfoot tr { display: flex; justify-content: space-between; gap: 10px; padding: 12px 16px; border-radius: 14px; background: var(--tint); font-weight: 700; }
+  .tbl-cards tfoot td { border: 0; padding: 0; }
+  .pager { padding: 6px 2px; }
+
+  /* Kadi za takwimu: mbili kwa mstari, zimeshikamana */
+  .grid-kpi { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
+}
+@media (max-width: 760px) and (prefers-reduced-motion: reduce) { .user-sheet, .sheet-scrim { animation: none; } }
