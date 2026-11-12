@@ -83,7 +83,7 @@ function LockScreen({ onUnlock }: { onUnlock: () => void }) {
   return (
     <div className="lock" role="dialog" aria-modal="true" aria-label={t('Mfumo umefungwa')}>
       <div className="lock-bg" /><div className="lock-sh" />
-      <div className="lock-brand"><LogoMark size={44} animate /><span><b>Coop<i>Link</i></b><small>COOPERATIVE MANAGEMENT SYSTEM</small></span></div>
+      <div className="lock-brand"><LogoMark size={44} animate /><span><b>Coop<i>Link</i></b></span></div>
       <div className="lock-side">
         <div className="lock-time">{time}</div>
         <div className="lock-day">{day}</div>

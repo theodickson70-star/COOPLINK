@@ -186,7 +186,6 @@ export function Layout() {
           <LogoMark size={42} animate />
           <div>
             <Wordmark size={24} animate delay={0.9} />
-            <div style={{ fontSize: 8, color: '#8FB3A1', marginTop: 5, letterSpacing: '.1em', fontWeight: 600, whiteSpace: 'nowrap' }}>COOPERATIVE MANAGEMENT SYSTEM</div>
           </div>
         </div>
         <nav className="nav nav-animated" ref={navRef}>

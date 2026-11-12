@@ -197,7 +197,7 @@ export function Website({ signedIn = false, onEnter }: { signedIn?: boolean; onE
   const [scrolled, setScrolled] = useState(false);
   const headRef = useRef<HTMLElement>(null);
   useOutside(headRef, () => setMega(null));
-  useEffect(() => { document.title = 'COOPLINK — Cooperative Management System'; }, []);
+  useEffect(() => { document.title = 'COOPLINK'; }, []);
   useEffect(() => { const s = () => setScrolled(window.scrollY > 20); s(); window.addEventListener('scroll', s, { passive: true }); return () => window.removeEventListener('scroll', s); }, []);
   useEffect(() => { document.body.style.overflow = drawer || demo ? 'hidden' : ''; return () => { document.body.style.overflow = ''; }; }, [drawer, demo]);
   // Sehemu zinaonekana taratibu zikifika kwenye skrini
@@ -239,7 +239,7 @@ export function Website({ signedIn = false, onEnter }: { signedIn?: boolean; onE
         <div className="ws-bar">
           <a className="ws-brand" href="#mwanzo" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
             <LogoMark size={44} animate />
-            <span><b>Coop<i>Link</i></b><small>COOPERATIVE MANAGEMENT SYSTEM</small></span>
+            <span><b>Coop<i>Link</i></b></span>
           </a>
           <div className="ws-slogan">Connecting Cooperatives. <em>Empowering Farmers</em></div>
           <button type="button" className="ws-burger" aria-label="Menyu" onClick={() => setDrawer(true)}>{I.menu}</button>
@@ -367,7 +367,7 @@ export function Website({ signedIn = false, onEnter }: { signedIn?: boolean; onE
 
       <footer className="ws-foot">
         <div>
-          <span className="ws-brand"><LogoMark size={40} /><span><b>Coop<i>Link</i></b><small>COOPERATIVE MANAGEMENT SYSTEM</small></span></span>
+          <span className="ws-brand"><LogoMark size={40} /><span><b>Coop<i>Link</i></b></span></span>
           <p>{TX.fDesc[lang]}</p>
         </div>
         <div><h5>{TX.fSys[lang]}</h5><button type="button" onClick={() => go('huduma')}>{TX.nav.services[lang]}</button><button type="button" onClick={() => go('jinsi')}>{TX.nav.how[lang]}</button><Link to="/login">{TX.login[lang]}</Link><Link to="/mkulima">{TX.farmer[lang]}</Link></div>
