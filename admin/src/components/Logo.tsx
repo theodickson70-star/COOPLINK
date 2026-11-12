@@ -1,16 +1,26 @@
-import { useId, type CSSProperties } from 'react';
+import { useEffect, useId, useState, type CSSProperties } from 'react';
 // Alama ya CoopLink: majani matatu ya tumbaku yanayounda duara moja
 // (mkulima, chama, soko), kiini cha chama katikati, na duara la wanachama.
 const LEAF = 'M60 60 C 43 47 42 24 60 6 C 78 24 77 47 60 60 Z';
 const VEIN = 'M60 54 L60 14';
 
-export function LogoMark({ size = 40, animate = false, spin = false, onDark = true, ring = true }: {
-  /** animate: majani yanakua kwa mfuatano; spin: majani yanazunguka (skrini ya kusubiri) */
-  size?: number; animate?: boolean; spin?: boolean; onDark?: boolean; ring?: boolean;
+/** Animation ya nembo inarudiwa kila baada ya sekunde 14 */
+export const LOGO_REPLAY_MS = 14_000;
+
+export function LogoMark({ size = 40, animate = false, spin = false, onDark = true, ring = true, repeat = animate ? LOGO_REPLAY_MS : 0 }: {
+  /** animate: majani yanakua kwa mfuatano; spin: majani yanazunguka (skrini ya kusubiri); repeat: rudia animation kila ms hizi (0 = mara moja) */
+  size?: number; animate?: boolean; spin?: boolean; onDark?: boolean; ring?: boolean; repeat?: number;
 }) {
   const vein = onDark ? '#0B2F23' : '#F6F0E1';
+  // Kuirudia animation: svg inachorwa upya (key mpya) kila baada ya muda uliowekwa
+  const [round, setRound] = useState(0);
+  useEffect(() => {
+    if (!animate || !repeat) return;
+    const id = setInterval(() => { if (!document.hidden) setRound((r) => r + 1); }, repeat);
+    return () => clearInterval(id);
+  }, [animate, repeat]);
   return (
-    <svg viewBox="0 0 120 120" width={size} height={size} role="img" aria-label="Alama ya CoopLink"
+    <svg key={round} viewBox="0 0 120 120" width={size} height={size} role="img" aria-label="Alama ya CoopLink"
       className={`cl-mark${animate ? ' cl-anim' : ''}${spin ? ' cl-spin' : ''}`}>
       {ring && <circle className="mk-ring" cx="60" cy="60" r="56" fill="none" stroke="#E3A83A" strokeWidth="1.8" strokeLinecap="round" strokeDasharray="0.1 7.2" />}
       <g className="mk-leaves">
