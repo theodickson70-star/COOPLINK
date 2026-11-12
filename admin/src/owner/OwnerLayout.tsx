@@ -112,10 +112,6 @@ export function OwnerLayout() {
             ));
           })()}
         </nav>
-        <div className="sidebar-foot">
-          Powered by <strong>DUKALANGU SOLUTION</strong><br />
-          <em>Connecting Cooperatives. Empowering Farmers.</em><br /><LegalLinks />
-        </div>
       </aside>
 
       {open && <button type="button" className="nav-scrim" aria-label={t('Funga menyu')} onClick={() => setOpen(false)} />}

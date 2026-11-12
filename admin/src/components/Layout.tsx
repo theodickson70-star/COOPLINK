@@ -10,7 +10,6 @@ import { Button, Loading } from './ui';
 import { AnnouncementBar, MaintenanceOverlay, SystemBanner } from './Notices';
 import { PrefSwitches, useT } from '../lib/prefs';
 import { LegalLinks } from './LegalLinks';
-import { SupportLine } from './CompanyContact';
 import { hasGuide, OPEN_GUIDE, PageGuide } from './PageGuide';
 import { prefetchPages } from '../lib/prefetch';
 import type { BillingData } from '../pages/Billing';
@@ -198,7 +197,6 @@ export function Layout() {
             );
           }); })()}
         </nav>
-        <div className="sidebar-foot">CoopLink<br />Connecting Cooperatives. Empowering Farmers<br /><SupportLine /><LegalLinks /></div>
       </aside>
       {open && <button type="button" className="nav-scrim"  aria-label={t('Funga menyu')} onClick={() => setOpen(false)} />}
 
