@@ -1927,3 +1927,8 @@ a.user-chip:hover { background: var(--line-2); }
 .pw-choice span { display: flex; flex-direction: column; gap: 2px; }
 .pw-choice small { color: var(--muted); font-size: 12.5px; }
 @media (max-width: 720px) { .pw-choice { grid-template-columns: 1fr; } }
+.phone-check .pc-ok { color: var(--green); font-weight: 600; font-size: 13.5px; }
+.pc-taken { border: 1px solid #E8B4AC; background: #FBE9E6; color: #7E2016; border-radius: 12px; padding: 10px 14px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+.pc-taken.reuse { border-color: var(--gold); background: var(--warn-bg); color: var(--warn-ink); }
+.pc-taken .chk { margin-top: 4px; color: var(--ink); }
+:root[data-theme="dark"] .pc-taken { background: var(--danger-bg); color: var(--bad-ink); }

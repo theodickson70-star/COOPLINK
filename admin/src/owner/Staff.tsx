@@ -5,7 +5,7 @@
 // =====================================================================
 import { useMemo, useState } from 'react';
 import { api } from '../lib/api';
-import { useAction, useFetch } from '../lib/hooks';
+import { useAction, useDebounced, useFetch } from '../lib/hooks';
 import type { Permission, Role } from '../lib/auth';
 import { date, dateTime, phone, ROLE_LABEL, OWNER_ROLE_LABEL } from '../lib/format';
 import { Alert, Button, Empty, Loading, Modal, PageHead, SelectField, TextField } from '../components/ui';
@@ -153,14 +153,21 @@ function StaffWizard({ cat, onClose, onSaved }: { cat: Catalog; onClose: () => v
   const [custom, setCustom] = useState(false);
   const [perms, setPerms] = useState<Permission[] | null>(null);
   const [done, setDone] = useState<Sent | null>(null);
+  const [reactivate, setReactivate] = useState(false);
   const { busy, error, run } = useAction();
+  // Namba moja = akaunti moja: inakaguliwa mapema (kabla ya hatua ya mwisho)
+  const digits = ph.replace(/\D/g, '');
+  const dph = useDebounced(digits.length >= 9 ? ph : '', 400);
+  const check = useFetch<{ available: boolean; holder: { fullName: string; title: string; reusable: boolean; isMe: boolean; message: string } | null }>(dph ? '/owner/staff/phone-check' : null, { phone: dph });
+  const holder = dph && check.data && !check.loading ? check.data.holder : null;
+  const blocked = !!holder && !(holder.reusable && reactivate);
   const emailOk = !email || /^\S+@\S+\.\S+$/.test(email);
-  const step1Ok = fullName.trim().length >= 3 && ph.replace(/\D/g, '').length >= 9 && emailOk;
+  const step1Ok = fullName.trim().length >= 3 && digits.length >= 9 && emailOk && !blocked && !!dph && !check.loading;
   const effective = perms ?? cat.roleDefaults[role] ?? [];
   const first = fullName.split(' ')[0] || 'Jina';
   const submit = async () => {
     const r = await run(() => api<{ staff: Staff; delivery: Delivery; temporaryPassword: string | null }>('/owner/staff', {
-      method: 'POST', body: { fullName, phone: ph, email: email || null, jobTitle: jobTitle || null, role, permissions: custom ? perms : null },
+      method: 'POST', body: { fullName, phone: ph, email: email || null, jobTitle: jobTitle || null, role, permissions: custom ? perms : null, reactivate: holder?.reusable && reactivate ? true : undefined },
     }));
     if (r) { setDone({ name: r.staff.fullName, delivery: r.delivery, password: r.temporaryPassword }); onSaved(); }
   };
@@ -170,7 +177,7 @@ function StaffWizard({ cat, onClose, onSaved }: { cat: Catalog; onClose: () => v
       footer={done ? <Button onClick={onClose}>{done.delivery.status === 'SENT' ? 'Maliza' : 'Nimelinakili'}</Button> : <>
         {step > 0 ? <Button variant="secondary" onClick={() => setStep(step - 1)}>← Rudi</Button> : <Button variant="secondary" onClick={onClose}>Ghairi</Button>}
         {step < 2 ? <Button disabled={step === 0 && !step1Ok} onClick={() => setStep(step + 1)}>Endelea →</Button>
-          : <Button busy={busy} onClick={submit}>Sajili na tuma SMS</Button>}
+          : <Button busy={busy} onClick={submit}>{holder?.reusable && reactivate ? 'Rejesha na tuma SMS' : 'Sajili na tuma SMS'}</Button>}
       </>}>
       {done ? <SentBody sent={done} /> : (
         <>
@@ -180,6 +187,16 @@ function StaffWizard({ cat, onClose, onSaved }: { cat: Catalog; onClose: () => v
             <div className="form-grid">
               <PhoneNameFields phoneLabel="Simu ya mfanyakazi *" phone={ph} onPhone={setPh} name={fullName} onName={(v) => setFullName(v)} autoFocus
                 phoneHelp="Nenosiri la muda litatumwa kwa namba hii" />
+              <div className="phone-check" aria-live="polite" style={{ gridColumn: '1 / -1' }}>
+                {!dph ? null : check.loading ? <span className="muted st-small">Inakagua namba…</span>
+                  : check.error ? <Alert>{check.error}</Alert>
+                  : !holder ? <span className="pc-ok">✓ Namba hii iko wazi — inaweza kusajiliwa</span>
+                  : <div className={`pc-taken ${holder.reusable ? 'reuse' : ''}`}>
+                      <b>{holder.reusable ? 'Mfanyakazi wa zamani' : 'Namba hii haiwezi kutumika'}</b>
+                      <span>{holder.message}</span>
+                      {holder.reusable && <label className="chk"><input type="checkbox" checked={reactivate} onChange={(e) => setReactivate(e.target.checked)} /> Rejesha akaunti ya {holder.fullName} (historia yake inabaki) na umpe cheo kipya</label>}
+                    </div>}
+              </div>
               <TextField label="Email (hiari)" type="email" value={email} onChange={setEmail} help={emailOk ? undefined : 'Email si sahihi'} />
               <TextField label="Wadhifa (hiari)" placeholder="mf. Afisa Mauzo — Tabora" value={jobTitle} onChange={setJobTitle} />
             </div>

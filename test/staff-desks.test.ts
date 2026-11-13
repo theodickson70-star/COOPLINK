@@ -225,3 +225,25 @@ test('Watumishi wa chama: Meneja bila nenosiri la Owner anatumiwa nenosiri la mu
   assert.equal(rs.status, 200); assert.equal(rs.body.temporaryPassword, null);
   assert.notEqual(smsPassword(mPhone), pw);
 });
+
+test('Namba iliyo na akaunti: inaelezwa mapema; mfanyakazi aliyezimwa anarejeshwa kwa cheo kipya', async () => {
+  const pc = await call('GET', `/api/v1/owner/staff/phone-check?phone=${fin.phone}`, owner);
+  assert.equal(pc.status, 200); assert.equal(pc.body.available, false); assert.equal(pc.body.holder.reusable, false);
+  assert.match(pc.body.holder.message, /Tumia namba nyingine/);
+  const free = await call('GET', `/api/v1/owner/staff/phone-check?phone=${uniqPhone('25566')}`, owner);
+  assert.equal(free.body.available, true);
+  const dup = await call('POST', '/api/v1/owner/staff', owner, { fullName: 'Nakala', phone: fin.phone, role: 'FINANCE_MANAGER' });
+  assert.equal(dup.status, 409); assert.equal(dup.body.error.details.code, 'PHONE_TAKEN');
+  // Mfanyakazi aliyezimwa: anarejeshwa (akaunti ile ile), si nakala mpya
+  const phone = uniqPhone('25565');
+  const c = await call('POST', '/api/v1/owner/staff', owner, { fullName: `Juma Zamani ${RUN}`, phone, role: 'FINANCE_MANAGER' });
+  await call('POST', `/api/v1/owner/staff/${c.body.staff.id}/active`, owner, { isActive: false });
+  const h = (await call('GET', `/api/v1/owner/staff/phone-check?phone=${phone}`, owner)).body.holder;
+  assert.equal(h.reusable, true);
+  assert.equal((await call('POST', '/api/v1/owner/staff', owner, { fullName: `Juma Zamani ${RUN}`, phone, role: 'CUSTOMER_SUPPORT' })).status, 409, 'bila ruhusa ya kurejesha');
+  const r = await call('POST', '/api/v1/owner/staff', owner, { fullName: `Juma Zamani ${RUN}`, phone, role: 'CUSTOMER_SUPPORT', reactivate: true });
+  assert.equal(r.status, 201, JSON.stringify(r.body)); assert.equal(r.body.reactivated, true);
+  assert.equal(r.body.staff.id, c.body.staff.id, 'akaunti ile ile'); assert.equal(r.body.staff.role, 'CUSTOMER_SUPPORT'); assert.equal(r.body.staff.isActive, true);
+  const pw = smsPassword(phone)!;
+  assert.ok((await login(phone, pw)).token);
+});

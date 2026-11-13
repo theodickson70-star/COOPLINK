@@ -5,7 +5,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, schema } from '../../db';
 import { ah, phoneSchema, uuidParam } from '../../lib/http';
 import { badRequest, conflict, forbidden, notFound } from '../../lib/errors';
-import { sendTempCredentials, tempExpiry } from '../../lib/staff-credentials';
+import { ROLE_TITLE_SW, sendTempCredentials, tempExpiry } from '../../lib/staff-credentials';
 import { activeSessionsWhere, requirePermission } from '../../middleware/auth';
 import { audit } from '../../lib/audit';
 import { hashPassword, tempPassword } from '../../lib/security';
@@ -24,6 +24,24 @@ const cols = {
 const withPerms = <T extends { role: (typeof schema.roleEnum.enumValues)[number]; permissions: string[] | null }>(u: T) =>
   ({ ...u, customPermissions: u.permissions !== null, permissions: effectivePermissions(u.role, u.permissions) });
 
+/**
+ * Namba ya simu ina akaunti tayari? (namba moja = akaunti moja kwenye CoopLink)
+ * reusable = mfanyakazi wa CoopLink aliyezimwa — anaweza kurejeshwa na kupewa cheo kipya bila kuunda akaunti mpya.
+ */
+async function phoneHolder(phoneNo: string, me: string) {
+  const u = await db.query.users.findFirst({ where: eq(U.phone, phoneNo),
+    columns: { id: true, fullName: true, role: true, isActive: true, amcosId: true, unionId: true, lastLoginAt: true } });
+  if (!u) return null;
+  const amcos = u.amcosId ? await db.query.amcos.findFirst({ where: eq(schema.amcos.id, u.amcosId), columns: { name: true } }) : null;
+  const isStaff = (STAFF_ROLES as string[]).includes(u.role);
+  const title = u.role === 'SUPER_ADMIN' ? 'Owner Super Admin' : `${ROLE_TITLE_SW[u.role] ?? u.role}${amcos ? ` wa ${amcos.name}` : ''}`;
+  const reusable = isStaff && !u.isActive;
+  const message = u.id === me ? 'Hii ni namba ya akaunti yako ya Owner — mfanyakazi apewe namba yake mwenyewe'
+    : reusable ? `Namba hii ni ya ${u.fullName} (${title}, amezimwa). Unaweza kumrejesha kwa cheo kipya.`
+    : `Namba hii tayari inatumika na ${u.fullName} — ${title}${u.isActive ? '' : ' (amezimwa)'}. Tumia namba nyingine.`;
+  return { id: u.id, fullName: u.fullName, role: u.role, title, isActive: u.isActive, isStaff, reusable, isMe: u.id === me, message };
+}
+
 async function findStaff(id: string) {
   const [u] = await db.select(cols).from(U).where(and(eq(U.id, id), inArray(U.role, PLATFORM_ROLES)));
   if (!u) throw notFound('Mfanyakazi');
@@ -34,6 +52,15 @@ staffRouter.get(
   '/permissions',
   ah(async (_req, res) => {
     res.json({ permissions: PERMISSIONS, roleDefaults: ROLE_DEFAULTS, roles: HIRABLE_ROLES, legacyRoles: STAFF_ROLES.filter((r) => !HIRABLE_ROLES.includes(r)) });
+  }),
+);
+
+staffRouter.get(
+  '/phone-check',
+  ah(async (req, res) => {
+    const { phone } = z.object({ phone: phoneSchema }).parse(req.query);
+    const holder = await phoneHolder(phone, req.auth!.userId);
+    res.json({ phone, available: !holder, holder });
   }),
 );
 
@@ -56,11 +83,28 @@ staffRouter.post(
       fullName: z.string().trim().min(3), phone: phoneSchema, email: z.string().trim().email('Email si sahihi').nullable().optional(),
       role: staffRole, jobTitle: z.string().trim().max(80).nullable().optional(),
       permissions: z.array(z.string()).nullable().optional(),
+      reactivate: z.boolean().optional(),  // rejesha mfanyakazi wa CoopLink aliyezimwa (namba ile ile)
     }).parse(req.body);
-    const taken = await db.query.users.findFirst({ where: eq(U.phone, b.phone), columns: { id: true, role: true } });
-    if (taken) throw conflict('Namba hii ya simu tayari ina akaunti kwenye CoopLink');
+    const holder = await phoneHolder(b.phone, req.auth!.userId);
+    if (holder && !(holder.reusable && b.reactivate)) throw conflict(holder.message, { code: 'PHONE_TAKEN', holder });
     b.fullName = (await verifiedName(b.phone, b.fullName))!; // jina kutoka usajili wa mobile money
     const password = tempPassword();
+    if (holder) {
+      // Mfanyakazi wa zamani anarejeshwa: akaunti ile ile (historia yake inabaki), cheo/ruhusa mpya, nenosiri jipya kwa SMS
+      const before = await findStaff(holder.id);
+      const user = await db.transaction(async (tx) => {
+        const [u] = await tx.update(U).set({
+          fullName: b.fullName, email: b.email ?? null, role: b.role, jobTitle: b.jobTitle ?? null,
+          permissions: b.permissions ? sanitizePermissions(b.permissions) : null, isActive: true,
+          passwordHash: await hashPassword(password), mustChangePassword: true, tempPasswordExpiresAt: tempExpiry(), tokenVersion: sql`${U.tokenVersion} + 1`,
+        }).where(eq(U.id, holder.id)).returning(cols);
+        await audit(tx, req, { action: 'STAFF_REACTIVATE', entity: 'User', entityId: u.id, before, after: u });
+        return u;
+      });
+      const delivery = await sendTempCredentials(user, password, { kind: 'NEW' });
+      await audit(db, req, { action: 'STAFF_CREDENTIALS_SENT', entity: 'User', entityId: user.id, after: { channel: 'SMS', status: delivery.status, kind: 'NEW' } });
+      return res.status(201).json({ staff: withPerms(user), delivery, reactivated: true, temporaryPassword: delivery.status === 'SENT' ? null : password });
+    }
     const user = await db.transaction(async (tx) => {
       const [u] = await tx.insert(U).values({
         fullName: b.fullName, phone: b.phone, email: b.email ?? null, role: b.role, jobTitle: b.jobTitle ?? null,
