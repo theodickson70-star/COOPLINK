@@ -98,6 +98,11 @@ authRouter.post(
     if (!user) return fail('UNKNOWN_PHONE');
     if (!(await verifyPassword(body.password, user.passwordHash))) return fail('BAD_PASSWORD');
     if (!user.isActive) return fail('INACTIVE');
+    // Nenosiri la muda lililotumwa kwa SMS lina muda wake (mfanyakazi aombe jipya)
+    if (user.mustChangePassword && user.tempPasswordExpiresAt && user.tempPasswordExpiresAt.getTime() < Date.now()) {
+      await logLogin(req, { userId: user.id, phone: user.phone, success: false, reason: 'TEMP_PASSWORD_EXPIRED' });
+      throw new AppError(403, 'TEMP_PASSWORD_EXPIRED', 'Nenosiri la muda limeisha muda wake. Omba Owner akutumie jipya kwa SMS.');
+    }
 
     if (user.amcosId) {
       const a = await db.query.amcos.findFirst({ where: eq(schema.amcos.id, user.amcosId), columns: { isActive: true } });
@@ -245,7 +250,7 @@ authRouter.post(
     }
     if (await verifyPassword(body.newPassword, user.passwordHash)) throw badRequest('Nenosiri jipya lisifanane na la zamani');
     await db.transaction(async (tx) => {
-      await tx.update(schema.users).set({ passwordHash: await hashPassword(body.newPassword), mustChangePassword: false, tokenVersion: sql`${schema.users.tokenVersion} + 1` }).where(eq(schema.users.id, user.id));
+      await tx.update(schema.users).set({ passwordHash: await hashPassword(body.newPassword), mustChangePassword: false, tempPasswordExpiresAt: null, tokenVersion: sql`${schema.users.tokenVersion} + 1` }).where(eq(schema.users.id, user.id));
       await tx.update(schema.userSessions).set({ revokedAt: new Date(), revokedById: user.id }).where(activeSessionsWhere(user.id));
       await tx.delete(schema.trustedDevices).where(eq(schema.trustedDevices.userId, user.id));
       req.auth = { userId: user.id, role: user.role, amcosId: user.amcosId } as typeof req.auth; // mtumiaji mwenyewe (hakuna token katika hatua hii)
@@ -345,7 +350,7 @@ authRouter.post(
     const result = await db.transaction(async (tx) => {
       const [updated] = await tx
         .update(schema.users)
-        .set({ passwordHash: await hashPassword(body.newPassword), mustChangePassword: false, tokenVersion: sql`${schema.users.tokenVersion} + 1` })
+        .set({ passwordHash: await hashPassword(body.newPassword), mustChangePassword: false, tempPasswordExpiresAt: null, tokenVersion: sql`${schema.users.tokenVersion} + 1` })
         .where(eq(schema.users.id, user.id))
         .returning();
       // Vikao vyote vya zamani vinafutwa; kipya kinaanzishwa kwa kifaa hiki

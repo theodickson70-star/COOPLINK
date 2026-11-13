@@ -239,6 +239,13 @@
       "when": 1794590295712,
       "tag": "0033_staff_desks",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1794593650455,
+      "tag": "0034_staff_temp_password",
+      "breakpoints": true
     }
   ]
 }

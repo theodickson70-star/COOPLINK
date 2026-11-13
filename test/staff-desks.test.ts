@@ -10,6 +10,13 @@ import { db, pool } from '../src/db';
 import { hashPassword } from '../src/lib/security';
 import { clearFeeLock } from '../src/lib/fees';
 import { today, addDays } from '../src/lib/subscriptions';
+import { dryOutbox } from '../src/lib/sms';
+
+/** Nenosiri la muda kutoka SMS ya majaribio (DRY) — Owner haoni nenosiri SMS ikitumwa */
+const smsPassword = (phone: string) => {
+  const m = [...dryOutbox].reverse().find((x) => x.phone === phone && /Nenosiri la muda: /.test(x.text));
+  return m ? /Nenosiri la muda: (\S+)/.exec(m.text)![1] : null;
+};
 
 let base = '';
 let server: ReturnType<ReturnType<typeof createApp>['listen']>;
@@ -29,11 +36,13 @@ async function staff(role: string) {
   const phone = uniqPhone('25568');
   const c = await call('POST', '/api/v1/owner/staff', owner, { fullName: `${role} ${RUN}`, phone, role });
   assert.equal(c.status, 201, JSON.stringify(c.body));
-  const t = (await login(phone, c.body.temporaryPassword)).token;
-  return { id: c.body.staff.id as string, token: (await call('POST', '/api/v1/auth/change-password', t, { currentPassword: c.body.temporaryPassword, newPassword: 'Staff12345x' })).body.token as string };
+  assert.equal(c.body.delivery.status, 'SENT'); assert.equal(c.body.temporaryPassword, null, 'Owner haoni nenosiri');
+  const pw = smsPassword(phone)!;
+  const t = (await login(phone, pw)).token;
+  return { id: c.body.staff.id as string, phone, token: (await call('POST', '/api/v1/auth/change-password', t, { currentPassword: pw, newPassword: 'Staff12345x' })).body.token as string };
 }
 
-let owner: string, fin: { id: string; token: string }, cs: { id: string; token: string };
+let owner: string, fin: { id: string; phone: string; token: string }, cs: { id: string; phone: string; token: string };
 let amcosId: string, managerId: string, managerToken: string, feeId: string;
 
 before(async () => {
@@ -175,4 +184,30 @@ test('Wateja: maelezo ya timu, makundi ya kulenga na afya', async () => {
   const h = await call('GET', '/api/v1/owner/customers/health', cs.token);
   assert.equal(h.status, 200); assert.ok(Array.isArray(h.body.onboarding));
   await db.execute(sql`update platform_fees set status = 'WAIVED', waived_reason = 'Mtihani' where id = ${feeId}`); clearFeeLock();
+});
+
+test('Usajili wa wafanyakazi: nenosiri la muda kwa SMS, halihifadhiwi kwenye kumbukumbu, linaisha muda', async () => {
+  const phone = uniqPhone('25567');
+  assert.equal((await call('POST', '/api/v1/owner/staff', owner, { fullName: 'Nakala', phone: fin.phone, role: 'FINANCE_MANAGER' })).status, 409, 'namba moja, akaunti moja');
+  const c = await call('POST', '/api/v1/owner/staff', owner, { fullName: `Aisha Mussa ${RUN}`, phone, role: 'CUSTOMER_SUPPORT', jobTitle: 'Afisa Mauzo' });
+  assert.equal(c.status, 201); assert.equal(c.body.temporaryPassword, null); assert.match(c.body.delivery.phone, /•••/);
+  const pw = smsPassword(phone)!;
+  assert.ok(pw && pw.length >= 8);
+  const [log] = (await db.execute<{ message: string }>(sql`select message from sms_logs where phone = ${phone} and kind = 'STAFF_CREDENTIALS' order by created_at desc limit 1`)).rows;
+  assert.ok(log && !log.message.includes(pw) && log.message.includes('••••'), 'nenosiri halihifadhiwi kwenye kumbukumbu');
+  // Muda ukiisha, haingii; Owner anamtumia jipya
+  await db.execute(sql`update users set temp_password_expires_at = now() - interval '1 minute' where phone = ${phone}`);
+  const ex = await call('POST', '/api/v1/auth/login', undefined, { phone, password: pw });
+  assert.equal(ex.status, 403); assert.equal(ex.body.error.code, 'TEMP_PASSWORD_EXPIRED');
+  const r = await call('POST', `/api/v1/owner/staff/${c.body.staff.id}/reset-password`, owner, {});
+  assert.equal(r.status, 200); assert.equal(r.body.temporaryPassword, null);
+  const pw2 = smsPassword(phone)!;
+  assert.notEqual(pw2, pw);
+  const t = await login(phone, pw2);
+  assert.ok(t.token); assert.equal(t.user.mustChangePassword, true);
+  const ch = await call('POST', '/api/v1/auth/change-password', t.token, { currentPassword: pw2, newPassword: 'Aisha2026xy' });
+  assert.equal(ch.status, 200);
+  const [u] = (await db.execute<{ e: string | null }>(sql`select temp_password_expires_at as e from users where phone = ${phone}`)).rows;
+  assert.equal(u.e, null, 'muda unaondoka akibadilisha');
+  assert.equal((await call('POST', `/api/v1/owner/staff/${c.body.staff.id}/reset-password`, cs.token, {})).status, 403, 'Owner pekee');
 });

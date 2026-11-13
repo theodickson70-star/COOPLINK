@@ -1877,3 +1877,46 @@ a.user-chip:hover { background: var(--line-2); }
   .note-add { flex-direction: column; align-items: stretch; }
 }
 @media print { .fin-tabs, .desk-queue { display: none; } }
+
+/* v0.37 — Staff Management: usajili wa hatua 3, nenosiri kwa SMS */
+.staff-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.staff-card { display: grid; grid-template-columns: auto 1fr; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); position: relative; }
+.staff-card.owner { background: linear-gradient(135deg, var(--forest), #12442F); border-color: var(--forest); color: #fff; }
+.staff-card.owner .muted { color: #A9C2B5; }
+.staff-card.owner b { color: var(--gold); }
+.staff-card.st-off { opacity: .7; }
+.staff-card.st-expired { border-color: #E3A83A; }
+.sc-av { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: var(--forest); color: var(--gold); font-weight: 700; font-family: var(--font-head); }
+.staff-card.owner .sc-av { background: var(--gold); color: var(--forest); }
+.sc-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sc-body b { color: var(--head); font-size: 15.5px; }
+.sc-state { font-size: 12.5px; font-weight: 600; margin-top: 4px; }
+.sc-state.active { color: var(--green); }
+.sc-state.waiting { color: var(--warn-ink); }
+.sc-state.expired { color: #B33A36; }
+.sc-state.off { color: var(--muted); }
+.sc-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.sc-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--line-2); padding-top: 10px; }
+.wiz-steps { list-style: none; display: flex; gap: 8px; margin: 0 0 18px; padding: 0; }
+.wiz-steps li { flex: 1; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); padding-bottom: 10px; border-bottom: 3px solid var(--line); }
+.wiz-steps li span { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--line-2); font-size: 12px; font-weight: 700; flex: none; }
+.wiz-steps li.on { color: var(--head); font-weight: 700; border-color: var(--gold); }
+.wiz-steps li.on span { background: var(--forest); color: var(--gold); }
+.wiz-steps li.done { color: var(--green); border-color: var(--green); }
+.wiz-steps li.done span { background: var(--green); color: #fff; }
+.role-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.role-card { border: 1px solid var(--line); border-radius: 16px; padding: 16px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; background: var(--paper); transition: border-color .15s, box-shadow .15s; }
+.role-card input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.role-card:focus-within { outline: 2px solid var(--gold); outline-offset: 2px; }
+.role-card.on { border-color: var(--green); box-shadow: inset 0 0 0 1px var(--green); background: color-mix(in srgb, var(--green) 5%, var(--paper)); }
+.rc-ic { font-size: 26px; }
+.role-card b { color: var(--head); font-size: 16px; }
+.role-card ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: var(--ink); display: grid; gap: 3px; }
+.wiz-review { display: grid; gap: 14px; }
+.sms-preview { border-radius: 16px 16px 16px 4px; background: var(--line-2); padding: 12px 14px; max-width: 460px; }
+.sms-preview p { margin: 6px 0 0; font-size: 14px; line-height: 1.5; }
+.sent-ok { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.sent-ic { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-size: 30px; background: var(--ok-bg); color: var(--green); animation: authPop .4s ease; }
+.sent-ok p { margin: 0; }
+.sent-steps { text-align: left; margin: 4px 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; }
+@media (max-width: 720px) { .role-cards { grid-template-columns: 1fr; } .wiz-steps li { font-size: 0; gap: 0; justify-content: center; } .wiz-steps li span { font-size: 12px; } }

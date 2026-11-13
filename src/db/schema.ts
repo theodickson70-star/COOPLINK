@@ -155,6 +155,7 @@ export const users = pgTable('users', {
   isActive: boolean().notNull().default(true),
   tokenVersion: integer().notNull().default(0), // ikiongezwa, tokens zote za zamani zinakufa
   mustChangePassword: boolean().notNull().default(true),
+  tempPasswordExpiresAt: timestamp({ withTimezone: true }), // v0.37: nenosiri la muda lililotumwa kwa SMS linaisha (mf. saa 72)
   lastLoginAt: timestamp({ withTimezone: true }),
   /** Toleo la Masharti ya Huduma na Sera ya Faragha alilokubali mtumiaji, na lini */
   termsVersion: text(),

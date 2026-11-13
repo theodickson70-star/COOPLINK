@@ -5,6 +5,7 @@ export const SMS_KINDS = {
   PASSWORD_RESET_OTP: { group: 'OTP', label: 'Umesahau nenosiri', who: 'Watumishi wote', urgent: true, desc: 'Mtumishi anaweka nenosiri jipya kwa namba ya uthibitisho iliyotumwa kwa simu yake.' },
   MEMBER_PHONE_OTP: { group: 'OTP', label: 'Kubadilisha namba ya simu ya mkulima', who: 'Mkulima (namba mpya)', urgent: true, desc: 'Namba mpya inathibitishwa kwa OTP kabla ya kuhifadhiwa — Storekeeper hawezi kuweka namba yake.' },
   ISSUE_HANDOVER_OTP: { group: 'OTP', label: 'Kukabidhi pembejeo kwa OTP', who: 'Mkulima', urgent: true, desc: 'Mkulima anapokea orodha ya pembejeo na deni lake pamoja na namba ya uthibitisho; anaitaja kwa Storekeeper akipokea mzigo.' },
+  STAFF_CREDENTIALS: { group: 'OTP', label: 'Akaunti mpya ya mfanyakazi wa CoopLink', who: 'Wafanyakazi wa CoopLink', urgent: true, desc: 'Mfanyakazi mpya (au aliyeombewa nenosiri jipya) anatumiwa nenosiri la muda; analibadilisha akiingia. Nenosiri halihifadhiwi kwenye kumbukumbu za SMS.' },
   SECURITY_ALERT: { group: 'OTP', label: 'Tahadhari ya kuingia kutoka kifaa kipya', who: 'Wasimamizi wa CoopLink', urgent: true, desc: 'Akaunti ya CoopLink ikiingiwa kutoka mtandao mpya.' },
   // ---- Taarifa kwa mkulima ----
   MEMBER_REGISTERED: { group: 'FARMER', label: 'Mkulima amesajiliwa', who: 'Mkulima', urgent: false, desc: 'Karibu kwenye chama + namba ya uanachama, baada ya Meneja kuidhinisha usajili.' },
@@ -26,5 +27,5 @@ export const SMS_KINDS = {
 export type SmsKind = keyof typeof SMS_KINDS;
 export const SMS_GROUPS: Record<string, string> = { OTP: 'OTP na usalama', FARMER: 'Taarifa kwa mkulima', GROUP: 'Vikundi', BROADCAST: 'Matangazo na tahadhari' };
 /** Zilizokuwa zikitumika kabla ya swichi hizi zinaanza zikiwa wazi; mpya zote zimefungwa mpaka Owner aziwashe. */
-export const SMS_EVENT_DEFAULTS = Object.fromEntries((Object.keys(SMS_KINDS) as SmsKind[]).map((k) => [k, ['SECURITY_ALERT', 'OWNER_ANNOUNCEMENT', 'SYSTEM_ALERT'].includes(k)])) as Record<SmsKind, boolean>;
+export const SMS_EVENT_DEFAULTS = Object.fromEntries((Object.keys(SMS_KINDS) as SmsKind[]).map((k) => [k, ['SECURITY_ALERT', 'OWNER_ANNOUNCEMENT', 'SYSTEM_ALERT', 'STAFF_CREDENTIALS'].includes(k)])) as Record<SmsKind, boolean>;
 

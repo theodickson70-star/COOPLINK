@@ -4,7 +4,10 @@ import { z } from 'zod';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, schema } from '../../db';
 import { ah, phoneSchema, uuidParam } from '../../lib/http';
-import { badRequest, forbidden, notFound } from '../../lib/errors';
+import { badRequest, conflict, forbidden, notFound } from '../../lib/errors';
+import { sendNow } from '../../lib/sms';
+import { getSetting } from '../../lib/settings';
+import { ROLE_TITLE_SW, TEMP_PASSWORD_HOURS } from '../../lib/staff-credentials';
 import { activeSessionsWhere, requirePermission } from '../../middleware/auth';
 import { audit } from '../../lib/audit';
 import { hashPassword, tempPassword } from '../../lib/security';
@@ -18,10 +21,28 @@ const U = schema.users;
 const cols = {
   id: U.id, fullName: U.fullName, phone: U.phone, email: U.email, role: U.role, jobTitle: U.jobTitle,
   permissions: U.permissions, isActive: U.isActive, mustChangePassword: U.mustChangePassword, totpEnabled: U.totpEnabled,
-  lastLoginAt: U.lastLoginAt, createdAt: U.createdAt,
+  lastLoginAt: U.lastLoginAt, createdAt: U.createdAt, tempPasswordExpiresAt: U.tempPasswordExpiresAt,
 };
 const withPerms = <T extends { role: (typeof schema.roleEnum.enumValues)[number]; permissions: string[] | null }>(u: T) =>
   ({ ...u, customPermissions: u.permissions !== null, permissions: effectivePermissions(u.role, u.permissions) });
+
+/**
+ * Nenosiri la muda linatumwa kwa SMS kwa mfanyakazi mwenyewe (Owner haoni nenosiri).
+ * Kumbukumbu ya SMS inahifadhiwa BILA nenosiri. SMS ikishindwa, nenosiri linarudishwa kwa Owner mara moja tu ili ampe kwa mkono.
+ */
+async function sendCredentials(u: { id: string; fullName: string; phone: string; role: string }, password: string, kind: 'NEW' | 'RESET') {
+  const site = (await getSetting('business.profile')).website || 'cooplink';
+  const local = u.phone.replace(/^255/, '0');
+  const head = kind === 'NEW'
+    ? `CoopLink: Karibu ${u.fullName.split(' ')[0]}! Umesajiliwa kama ${ROLE_TITLE_SW[u.role] ?? 'mfanyakazi'}.`
+    : `CoopLink: ${u.fullName.split(' ')[0]}, nenosiri jipya la muda limetolewa kwa akaunti yako.`;
+  const tail = `Ingia: ${site}/login Simu: ${local} Nenosiri la muda: ${password} (linaisha baada ya saa ${TEMP_PASSWORD_HOURS}). Utaweka nenosiri lako. Usimpe mtu yeyote.`;
+  const r = await sendNow({ kind: 'STAFF_CREDENTIALS', phone: u.phone, userId: u.id, text: `${head} ${tail}`,
+    logText: `${head} ${tail.replace(password, '••••••••')}` });
+  const masked = local.replace(/^(\d{4})\d{3}(\d{3})$/, '$1•••$2');
+  return { status: r.status, phone: masked, error: r.status === 'SENT' ? null : r.error ?? null };
+}
+const tempExpiry = () => new Date(Date.now() + TEMP_PASSWORD_HOURS * 3600_000);
 
 async function findStaff(id: string) {
   const [u] = await db.select(cols).from(U).where(and(eq(U.id, id), inArray(U.role, PLATFORM_ROLES)));
@@ -52,22 +73,27 @@ staffRouter.post(
   '/',
   ah(async (req, res) => {
     const b = z.object({
-      fullName: z.string().trim().min(3), phone: phoneSchema, email: z.string().email().nullable().optional(),
-      role: staffRole, jobTitle: z.string().trim().nullable().optional(),
+      fullName: z.string().trim().min(3), phone: phoneSchema, email: z.string().trim().email('Email si sahihi').nullable().optional(),
+      role: staffRole, jobTitle: z.string().trim().max(80).nullable().optional(),
       permissions: z.array(z.string()).nullable().optional(),
     }).parse(req.body);
+    const taken = await db.query.users.findFirst({ where: eq(U.phone, b.phone), columns: { id: true, role: true } });
+    if (taken) throw conflict('Namba hii ya simu tayari ina akaunti kwenye CoopLink');
     b.fullName = (await verifiedName(b.phone, b.fullName))!; // jina kutoka usajili wa mobile money
     const password = tempPassword();
     const user = await db.transaction(async (tx) => {
       const [u] = await tx.insert(U).values({
         fullName: b.fullName, phone: b.phone, email: b.email ?? null, role: b.role, jobTitle: b.jobTitle ?? null,
         permissions: b.permissions ? sanitizePermissions(b.permissions) : null,
-        passwordHash: await hashPassword(password), mustChangePassword: true,
+        passwordHash: await hashPassword(password), mustChangePassword: true, tempPasswordExpiresAt: tempExpiry(),
       }).returning(cols);
       await audit(tx, req, { action: 'STAFF_CREATE', entity: 'User', entityId: u.id, after: u });
       return u;
     });
-    res.status(201).json({ staff: withPerms(user), temporaryPassword: password });
+    const delivery = await sendCredentials(user, password, 'NEW');
+    await audit(db, req, { action: 'STAFF_CREDENTIALS_SENT', entity: 'User', entityId: user.id, after: { channel: 'SMS', status: delivery.status, kind: 'NEW' } });
+    // Nenosiri linarudishwa kwa Owner TU kama SMS haikutumwa (ili ampe kwa mkono)
+    res.status(201).json({ staff: withPerms(user), delivery, temporaryPassword: delivery.status === 'SENT' ? null : password });
   }),
 );
 
@@ -113,19 +139,23 @@ staffRouter.post(
   }),
 );
 
+/** Nenosiri jipya la muda (mfanyakazi amesahau, au la mwanzo limeisha) — linatumwa kwa SMS. */
 staffRouter.post(
   '/:id/reset-password',
   ah(async (req, res) => {
     const { id } = uuidParam.parse(req.params);
     const before = await findStaff(id);
-    if (before.role === 'SUPER_ADMIN') throw badRequest('Owner anabadilisha nenosiri lake kwenye Owner Settings');
+    if (before.role === 'SUPER_ADMIN') throw badRequest('Owner anabadilisha nenosiri lake kwenye Akaunti yangu');
+    if (!before.isActive) throw badRequest('Akaunti hii imezimwa — iwashe kwanza');
     const password = tempPassword();
     await db.transaction(async (tx) => {
-      await tx.update(U).set({ passwordHash: await hashPassword(password), mustChangePassword: true, tokenVersion: sql`${U.tokenVersion} + 1` }).where(eq(U.id, id));
+      await tx.update(U).set({ passwordHash: await hashPassword(password), mustChangePassword: true, tempPasswordExpiresAt: tempExpiry(), tokenVersion: sql`${U.tokenVersion} + 1` }).where(eq(U.id, id));
       await tx.update(schema.userSessions).set({ revokedAt: new Date(), revokedById: req.auth!.userId }).where(activeSessionsWhere(id));
       await audit(tx, req, { action: 'STAFF_PASSWORD_RESET', entity: 'User', entityId: id });
     });
-    res.json({ temporaryPassword: password });
+    const delivery = await sendCredentials(before, password, before.lastLoginAt ? 'RESET' : 'NEW');
+    await audit(db, req, { action: 'STAFF_CREDENTIALS_SENT', entity: 'User', entityId: id, after: { channel: 'SMS', status: delivery.status, kind: 'RESET' } });
+    res.json({ delivery, temporaryPassword: delivery.status === 'SENT' ? null : password });
   }),
 );
 
