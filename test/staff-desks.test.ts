@@ -160,8 +160,11 @@ test('Msaada wa akaunti: bila kuona nenosiri; kutoka vifaa vyote; sababu lazima'
   assert.ok(!('passwordHash' in dg.body.user) && !JSON.stringify(dg.body).includes('password_hash'));
   assert.ok(dg.body.sessions >= 1);
   assert.equal((await call('GET', `/api/v1/owner/customers/${amcosId}/staff/${managerId}/diagnostics`, fin.token)).status, 403, 'Fedha hana msaada wa akaunti');
-  assert.equal((await call('POST', `/api/v1/owner/customers/${amcosId}/staff/${managerId}/signout`, cs.token, { reason: 'x' })).status, 400);
-  const so = await call('POST', `/api/v1/owner/customers/${amcosId}/staff/${managerId}/signout`, cs.token, { reason: 'Simu ya Meneja imepotea', ticketNo: 1001 });
+  // v0.38: Huduma kwa Wateja hawezi kumtoa mtumishi kwenye vifaa — ni Owner pekee (anatuma ombi kwa Owner)
+  assert.equal((await call('POST', `/api/v1/owner/customers/${amcosId}/staff/${managerId}/signout`, cs.token, { reason: 'Simu ya Meneja imepotea' })).status, 403);
+  assert.equal(dg.body.canSignout, false);
+  assert.equal((await call('POST', `/api/v1/owner/customers/${amcosId}/staff/${managerId}/signout`, owner, { reason: 'x' })).status, 400);
+  const so = await call('POST', `/api/v1/owner/customers/${amcosId}/staff/${managerId}/signout`, owner, { reason: 'Simu ya Meneja imepotea', ticketNo: 1001 });
   assert.equal(so.status, 200); assert.ok(so.body.sessions >= 1);
   assert.equal((await call('GET', '/api/v1/auth/me', managerToken)).status, 401, 'ametoka kwenye vifaa vyote');
   const rg = await call('POST', `/api/v1/owner/customers/${amcosId}/staff/${managerId}/reset-guide`, cs.token, { reason: 'Amesahau nenosiri' });

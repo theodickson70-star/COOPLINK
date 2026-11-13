@@ -10,6 +10,8 @@ import { LogoMark, Wordmark } from '../components/Logo';
 import { Button, Loading } from '../components/ui';
 import { SystemBanner } from '../components/Notices';
 import { NavIndicator, useNavIndicator } from '../components/NavIndicator';
+import { useTableCards } from '../components/MobileUi';
+import { NotificationBell, TwoFactorBanner, TwoFactorGate } from './TeamUi';
 
 const ic = (d: ReactNode) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>;
 const I = {
@@ -27,6 +29,7 @@ const I = {
   business: ic(<><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18" /></>),
   settings: ic(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></>),
   menu: ic(<path d="M3 6h18M3 12h18M3 18h18" />),
+  requests: ic(<><path d="M4 4h16v12H8l-4 4z" /><path d="M9 9h6M9 12h4" /></>),
   success: ic(<><path d="M12 21s-7-4.4-9.3-9A5.2 5.2 0 0 1 12 6.5 5.2 5.2 0 0 1 21.3 12C19 16.6 12 21 12 21z" /></>),
   leads: ic(<><path d="M3 4h18l-7 8.5V19l-4 2v-8.5z" /></>),
 };
@@ -41,6 +44,7 @@ export const OWNER_NAV: { to: string; label: string; sub: string; icon: ReactNod
   { to: '/owner/subscriptions', label: 'Subscriptions & Pricing', sub: 'Mipango na bei', icon: I.subs, perm: 'subscriptions.read', group: 'Wateja' },
   { to: '/owner/finance', label: 'Finance & Revenue', sub: 'Fedha za kampuni', icon: I.finance, perm: 'finance.read', group: 'Fedha na Biashara' },
   { to: '/owner/business', label: 'Business Center', sub: 'Malengo na ukuaji', icon: I.business, perm: 'business.read', group: 'Fedha na Biashara' },
+  { to: '/owner/requests', label: 'Maombi ya timu', sub: 'Huduma zinazohitaji Owner', icon: I.requests, group: 'Timu na Mawasiliano' },
   { to: '/owner/staff', label: 'Staff Management', sub: 'Wafanyakazi wa DUKALANGU', icon: I.staff, perm: 'staff.manage', group: 'Timu na Mawasiliano' },
   { to: '/owner/comms', label: 'Marketing & Communication', sub: 'Matangazo na SMS', icon: I.comms, perm: 'comms.read', group: 'Timu na Mawasiliano' },
   { to: '/owner/sms', label: 'SMS Center', sub: 'OTP, taarifa na gharama', icon: I.sms, perm: 'system.read', group: 'Timu na Mawasiliano' },
@@ -65,6 +69,8 @@ export function OwnerLayout() {
     else if (a.offsetTop + a.offsetHeight > nav.scrollTop + nav.clientHeight - 8) nav.scrollTop = a.offsetTop + a.offsetHeight - nav.clientHeight + 8;
   }, [navPath]);
   const indicator = useNavIndicator(navRef);
+  const contentRef = useRef<HTMLElement>(null);
+  useTableCards(contentRef); // majedwali yanakuwa kadi kwenye simu
   const loc = useLocation();
   useEffect(() => setOpen(false), [loc.pathname]);
   // Tiketi zinazosubiri jibu la timu (alama kwenye menyu)
@@ -108,7 +114,7 @@ export function OwnerLayout() {
                 {g.items.map((it) => (
                   <NavLink key={it.to} to={it.to} end={it.to === '/owner'} style={{ animationDelay: `${60 + n++ * 35}ms` }}>
                     <span className="nav-icon">{it.icon}</span>
-                    <span className="nav-text"><span>{t(it.label)}</span><small>{t(it.sub)}</small></span>
+                    <span className="nav-text"><span>{t(it.to === '/owner/requests' && !isOwner ? 'Maombi kwa Owner' : it.label)}</span><small>{t(it.sub)}</small></span>
                     {it.to === '/owner/system' && !!alerts.data?.open && <span className={`nav-count${alerts.data.critical ? ' bad' : ''}`} title={t('Tahadhari za mfumo')}>{alerts.data.open}</span>}
                     {it.to === '/owner/support' && !!support.data?.waiting && <span className={`nav-count${support.data.overdue ? ' bad' : ''}`} title={support.data.overdue ? t('{n} zimechelewa', { n: support.data.overdue }) : t('Zinasubiri jibu')}>{support.data.waiting}</span>}
                   </NavLink>
@@ -126,6 +132,7 @@ export function OwnerLayout() {
           <strong className="owner-title">Owner Control Panel</strong>
           <div className="grow" />
           {isOwner && <Link className="btn btn-secondary btn-sm hide-sm" to="/">{t('Mwonekano wa Vyama')}</Link>}
+          <NotificationBell />
           <PrefSwitches compact />
           <div className="user-chip">
             <span className="avatar owner-avatar" aria-hidden="true">{user.fullName.charAt(0)}</span>
@@ -134,8 +141,11 @@ export function OwnerLayout() {
           <Button variant="ghost" size="sm" onClick={logout}>{t('Toka')}</Button>
         </header>
         <SystemBanner />
-        <main className="content owner-content">
-          <Suspense fallback={<Loading />}><Outlet /></Suspense>
+        <main className="content owner-content" ref={contentRef}>
+          {user.twoFactor?.overdue ? <TwoFactorGate /> : <>
+            <TwoFactorBanner />
+            <Suspense fallback={<Loading />}><Outlet /></Suspense>
+          </>}
         </main>
       </div>
     </div>

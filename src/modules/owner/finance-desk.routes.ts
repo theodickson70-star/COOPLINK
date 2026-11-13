@@ -17,6 +17,7 @@ import { badRequest, notFound } from '../../lib/errors';
 import { requirePermission } from '../../middleware/auth';
 import { audit } from '../../lib/audit';
 import { today } from '../../lib/subscriptions';
+import { clearSettingsCache, getSetting, setSetting } from '../../lib/settings';
 import { deliver, resolveTargets } from './comms.routes';
 import { toCsv } from './common';
 
@@ -131,23 +132,22 @@ financeDeskRouter.get('/receivables', requirePermission('finance.read'), ah(asyn
   res.json({ data: list, buckets, collection, overdueSubscriptions: subs });
 }));
 
-financeDeskRouter.post('/receivables/remind', requirePermission('finance.manage'), ah(async (req, res) => {
-  const b = z.object({
-    feeIds: z.array(z.string().uuid()).min(1, 'Chagua angalau deni moja').max(300),
-    channels: z.array(z.enum(['IN_APP', 'SMS'])).min(1).default(['IN_APP', 'SMS']),
-  }).parse(req.body);
+/**
+ * Vikumbusho vya ada (vinatumika na Finance Manager kwa mkono, na kazi ya nyuma kiotomatiki).
+ * Chama kimoja hakikumbushwi zaidi ya mara moja ndani ya saa 24. userId = null -> mfumo (kazi ya nyuma).
+ */
+export async function sendFeeReminders(feeIds: string[], userId: string | null, channels: ('IN_APP' | 'SMS')[] = ['IN_APP', 'SMS']) {
   const fees = await db.select({ f: schema.platformFees, name: schema.amcos.name }).from(schema.platformFees)
     .innerJoin(schema.amcos, eq(schema.amcos.id, schema.platformFees.amcosId))
-    .where(and(inArray(schema.platformFees.id, b.feeIds), inArray(schema.platformFees.status, ['UNPAID', 'PARTIAL'])));
-  if (!fees.length) throw badRequest('Madeni uliyochagua yameshalipwa au hayapo');
-  // Chama kimoja hakikumbushwi zaidi ya mara moja ndani ya saa 24 (kuepuka usumbufu na gharama za SMS)
+    .where(and(inArray(schema.platformFees.id, feeIds), inArray(schema.platformFees.status, ['UNPAID', 'PARTIAL'])));
+  if (!fees.length) return null;
   const recent = new Set((await rows<{ amcos_id: string }>(sql`select distinct d.amcos_id from announcement_deliveries d
     join announcements an on an.id = d.announcement_id where an.title = ${REMINDER_TITLE} and d.created_at > now() - interval '24 hours'
     and d.amcos_id in (${sql.join(fees.map((x) => sql`${x.f.amcosId}`), sql`, `)})`)).map((r) => r.amcos_id));
   const byAmcos = new Map<string, typeof fees>();
   for (const x of fees) if (!recent.has(x.f.amcosId)) byAmcos.set(x.f.amcosId, [...(byAmcos.get(x.f.amcosId) ?? []), x]);
   const skipped = [...new Set(fees.filter((x) => recent.has(x.f.amcosId)).map((x) => x.name))];
-  if (!byAmcos.size) return res.json({ targets: 0, skipped, deliveries: {} });
+  if (!byAmcos.size) return { targets: 0, skipped, deliveries: {} as Record<string, number>, announcementId: null as string | null, fees: fees.length };
   const targets = await resolveTargets('SELECTED', [...byAmcos.keys()]);
   const t = today();
   const msg = (id: string, name: string) => {
@@ -161,11 +161,39 @@ financeDeskRouter.post('/receivables/remind', requirePermission('finance.manage'
   };
   const [a] = await db.insert(schema.announcements).values({
     kind: 'EXPIRY_REMINDER', title: REMINDER_TITLE, body: 'Ukumbusho wa ada ya CoopLink inayodaiwa.', audience: 'SELECTED',
-    amcosIds: targets.map((x) => x.id), channels: b.channels, createdById: req.auth!.userId,
+    amcosIds: targets.map((x) => x.id), channels, createdById: userId,
   }).returning();
-  await audit(db, req, { action: 'FEE_REMINDERS_SEND', entity: 'Announcement', entityId: a.id, after: { targets: targets.length, fees: fees.length, skipped } });
-  const deliveries = await deliver(a.id, targets, b.channels, (x) => msg(x.id, x.name), REMINDER_TITLE);
-  res.status(201).json({ targets: targets.length, skipped, deliveries });
+  const deliveries = await deliver(a.id, targets, channels, (x) => msg(x.id, x.name), REMINDER_TITLE);
+  return { targets: targets.length, skipped, deliveries, announcementId: a.id, fees: fees.length };
+}
+
+financeDeskRouter.post('/receivables/remind', requirePermission('finance.manage'), ah(async (req, res) => {
+  const b = z.object({
+    feeIds: z.array(z.string().uuid()).min(1, 'Chagua angalau deni moja').max(300),
+    channels: z.array(z.enum(['IN_APP', 'SMS'])).min(1).default(['IN_APP', 'SMS']),
+  }).parse(req.body);
+  const r = await sendFeeReminders(b.feeIds, req.auth!.userId, b.channels);
+  if (!r) throw badRequest('Madeni uliyochagua yameshalipwa au hayapo');
+  if (r.announcementId) await audit(db, req, { action: 'FEE_REMINDERS_SEND', entity: 'Announcement', entityId: r.announcementId, after: { targets: r.targets, fees: r.fees, skipped: r.skipped } });
+  res.status(r.targets ? 201 : 200).json({ targets: r.targets, skipped: r.skipped, deliveries: r.deliveries });
+}));
+
+/** Mipangilio ya vikumbusho vya kiotomatiki (siku 14 na 3 kabla, na siku 1 baada ya tarehe ya mwisho) */
+financeDeskRouter.get('/reminders', requirePermission('finance.read'), ah(async (_req, res) => {
+  const cfg = await getSetting('reminders');
+  const [last] = (await db.execute<{ at: string | null; n: number }>(sql`select max(created_at) as at, count(*)::int as n from announcements
+    where title = ${REMINDER_TITLE} and created_by_id is null and created_at > now() - interval '30 days'`)).rows;
+  res.json({ feesAuto: cfg.feesAuto, schedule: ['Siku 14 kabla ya tarehe ya mwisho', 'Siku 3 kabla', 'Siku 1 baada ya kupita'], lastAuto: last?.at ?? null, auto30d: last?.n ?? 0 });
+}));
+financeDeskRouter.put('/reminders', requirePermission('finance.manage'), ah(async (req, res) => {
+  const { feesAuto } = z.object({ feesAuto: z.boolean() }).parse(req.body);
+  const cur = await getSetting('reminders', { fresh: true });
+  await db.transaction(async (tx) => {
+    await setSetting(tx, 'reminders', { ...cur, feesAuto }, req.auth!.userId);
+    await audit(tx, req, { action: 'FEE_AUTO_REMINDERS_SET', entity: 'PlatformSetting', before: { feesAuto: cur.feesAuto }, after: { feesAuto } });
+  });
+  clearSettingsCache();
+  res.json({ feesAuto });
 }));
 
 // ------------------------------ BAJETI ------------------------------

@@ -13,6 +13,7 @@ import { useAuth } from '../lib/auth';
 import { date, dateTime } from '../lib/format';
 import { Alert, Button, Empty, Loading, Modal, PageHead, TextField } from '../components/ui';
 import { Kpi, Pill, Section } from '../components/owner-ui';
+import { NewRequest } from './Requests';
 
 interface Health {
   atRisk: { id: string; name: string; code: string; region: string | null; idle_days: number; risk: number; fee_overdue: boolean; open_tickets: number; failed_logins: number; members: number }[];
@@ -165,18 +166,19 @@ export function CustomerPanel({ amcosId }: { amcosId: string }) {
 // ------------------------------ MSAADA WA AKAUNTI ------------------------------
 interface Diag {
   user: { fullName: string; roleLabel: string; phone: string; isActive: boolean; mustChangePassword: boolean; totpEnabled: boolean; lastLoginAt: string | null };
-  sessions: number; devices: number; failed24h: number;
+  sessions: number; devices: number; failed24h: number; canSignout?: boolean;
   logins: { success: boolean; reason: string | null; ip: string | null; userAgent: string | null; suspicious: boolean; createdAt: string }[];
   history: { action: string; created_at: string; by: string | null; after: { reason?: string } | null }[];
 }
 const LOGIN_REASON: Record<string, string> = { OK: 'Ameingia', BAD_PASSWORD: 'Nenosiri si sahihi', INACTIVE: 'Akaunti imezimwa', AMCOS_SUSPENDED: 'Chama kimesitishwa', BAD_2FA: '2FA si sahihi', '2FA_REQUIRED': 'Anahitaji 2FA', FEES_LOCKED: 'Ada haijalipwa', OTP_SENT: 'OTP imetumwa', BAD_OTP: 'OTP si sahihi', UNKNOWN_PHONE: 'Namba haijulikani' };
 
-export function AccountHelp({ amcosId, userId, onClose }: { amcosId: string; userId: string; onClose: () => void }) {
+export function AccountHelp({ amcosId, amcosName, userId, onClose }: { amcosId: string; amcosName?: string; userId: string; onClose: () => void }) {
   const { data, error, reload } = useFetch<Diag>(`/owner/customers/${amcosId}/staff/${userId}/diagnostics`);
   const [mode, setMode] = useState<null | 'signout' | 'guide'>(null);
   const [reason, setReason] = useState('');
   const [ticket, setTicket] = useState('');
   const [ok, setOk] = useState<string | null>(null);
+  const [ask, setAsk] = useState(false);
   const act = useAction();
   const d = data;
   const run = async () => {
@@ -185,7 +187,7 @@ export function AccountHelp({ amcosId, userId, onClose }: { amcosId: string; use
     if (r) { setOk(mode === 'signout' ? `Ametolewa kwenye vifaa vyote (sessions ${r.sessions}, vifaa ${r.devices}) na amejulishwa kwa SMS.` : 'Maelekezo ya kubadilisha nenosiri yametumwa kwa SMS.'); setMode(null); setReason(''); setTicket(''); reload(); }
   };
   // Portal: modal inafunguliwa juu ya ukurasa mzima (si ndani ya kadi ya watumishi)
-  return createPortal(
+  return createPortal(<>
     <Modal open size="lg" title="Msaada wa akaunti" onClose={onClose}>
       <Alert>{error ?? act.error}</Alert>
       <Alert kind="ok">{ok}</Alert>
@@ -204,7 +206,9 @@ export function AccountHelp({ amcosId, userId, onClose }: { amcosId: string; use
           </div>
           <div className="help-actions">
             <button type="button" className="dq" onClick={() => setMode('guide')} disabled={!d.user.isActive}><span className="dq-n">🔑</span><span className="dq-t"><b>Amesahau nenosiri</b><span>Mtumie SMS ya hatua za "Umesahau nenosiri?" — atabadilisha mwenyewe kwa OTP</span></span></button>
-            <button type="button" className="dq" onClick={() => setMode('signout')}><span className="dq-n">📵</span><span className="dq-t"><b>Simu imepotea / mtu mwingine ameingia</b><span>Mtoe kwenye vifaa vyote — ataingia tena kwa nenosiri na OTP</span></span></button>
+            {d.canSignout
+              ? <button type="button" className="dq" onClick={() => setMode('signout')}><span className="dq-n">📵</span><span className="dq-t"><b>Simu imepotea / mtu mwingine ameingia</b><span>Mtoe kwenye vifaa vyote — ataingia tena kwa nenosiri na OTP</span></span></button>
+              : <button type="button" className="dq" onClick={() => setAsk(true)}><span className="dq-n">📵</span><span className="dq-t"><b>Simu imepotea / mtu mwingine ameingia</b><span>Omba Owner amtoe kwenye vifaa vyote — Owner pekee ndiye anayeweza kufanya hivi</span></span></button>}
           </div>
           <p className="muted st-small">🔐 Huduma kwa wateja haioni wala haiweki nenosiri. Kubadilisha namba ya simu au kuzima akaunti ni kazi ya Owner.</p>
           {mode && (
@@ -230,7 +234,12 @@ export function AccountHelp({ amcosId, userId, onClose }: { amcosId: string; use
           </>}
         </div>
       )}
-    </Modal>,
+    </Modal>
+    {ask && d && <NewRequest
+      preset={{ category: 'ACCOUNT_SIGNOUT', subject: `Mtoe ${d.user.fullName} kwenye vifaa vyote`, amcosId, amcosName, targetUserId: userId, targetName: `${d.user.fullName} · ${d.user.roleLabel}` }}
+      onClose={() => setAsk(false)}
+      onSaved={() => { setAsk(false); setOk('Ombi limetumwa kwa Owner. Utaona jibu kwenye "Maombi kwa Owner" na kengele ya kazi.'); }} />}
+  </>,
     document.body,
   );
 }

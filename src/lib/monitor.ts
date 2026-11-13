@@ -17,7 +17,7 @@ export const ERROR_SPIKE = 10;          // makosa ndani ya dakika 15
 export const DB_SLOW_MS = 1000;
 export const PAYMENT_STUCK_MIN = 30;
 export const DOWNTIME_MIN = 15;         // pengo la zaidi ya dakika 15 bila ukaguzi = mfumo haukuwa hewani
-export const HOURLY_JOBS = ['subscriptions.sweep', 'fees.sweep'] as const;
+export const HOURLY_JOBS = ['subscriptions.sweep', 'fees.sweep', 'reminders.sweep'] as const;
 const MONITOR_LOCK = 815_000;
 
 const VERSION = (() => {

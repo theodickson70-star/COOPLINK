@@ -105,7 +105,7 @@ supportRouter.post('/tickets/:id/messages', ah(async (req, res) => {
     await tx.update(T).set({
       lastAmcosAt: now, amcosSeenAt: now,
       status: t.status === 'IN_PROGRESS' ? 'IN_PROGRESS' : 'OPEN',
-      ...(t.status === 'CLOSED' ? { closedAt: null, closedById: null } : {}),
+      ...(t.status === 'CLOSED' ? { closedAt: null, closedById: null, rating: null, ratingComment: null, ratedAt: null } : {}),
     }).where(eq(T.id, id));
     if (t.status === 'CLOSED') await audit(tx, req, { action: 'SUPPORT_TICKET_REOPEN', entity: 'support_ticket', entityId: id, amcosId: t.amcosId });
   });
@@ -118,6 +118,18 @@ supportRouter.post('/tickets/:id/close', ah(async (req, res) => {
   if (t.status === 'CLOSED') return res.json({ ok: true });
   await db.update(T).set({ status: 'CLOSED', closedAt: new Date(), closedById: req.auth!.userId }).where(eq(T.id, id));
   await audit(db, req, { action: 'SUPPORT_TICKET_CLOSE', entity: 'support_ticket', entityId: id, amcosId: t.amcosId });
+  res.json({ ok: true });
+}));
+
+/** v0.38: maoni ya mteja baada ya tiketi kufungwa (mara moja kwa kila kufungwa) */
+supportRouter.post('/tickets/:id/rating', ah(async (req, res) => {
+  const { id } = uuidParam.parse(req.params);
+  const b = z.object({ rating: z.union([z.literal(1), z.literal(-1)]), comment: z.string().trim().max(500).optional() }).parse(req.body);
+  const t = await findTicket(req, id);
+  if (t.status !== 'CLOSED') throw badRequest('Toa maoni baada ya tiketi kufungwa');
+  if (t.ratedAt) throw badRequest('Umeshatoa maoni kwa tiketi hii');
+  await db.update(T).set({ rating: b.rating, ratingComment: b.comment || null, ratedAt: new Date() }).where(eq(T.id, id));
+  await audit(db, req, { action: 'SUPPORT_TICKET_RATED', entity: 'support_ticket', entityId: id, amcosId: t.amcosId, after: { rating: b.rating } });
   res.json({ ok: true });
 }));
 

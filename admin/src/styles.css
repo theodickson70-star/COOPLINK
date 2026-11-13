@@ -1844,10 +1844,10 @@ a.user-chip:hover { background: var(--line-2); }
 .onb-steps i.ok { background: color-mix(in srgb, var(--green) 16%, transparent); color: var(--green); }
 .onb-pct { font-weight: 700; color: var(--head); min-width: 44px; text-align: right; }
 .seg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
-.seg { border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 4px; background: var(--bg); }
-.seg strong { font-size: 26px; font-family: var(--font-head); color: var(--head); }
-.seg b { color: var(--head); }
-.seg .btn { align-self: flex-start; margin-top: 6px; }
+.seg-grid .seg { border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 4px; background: var(--bg); }
+.seg-grid .seg strong { font-size: 26px; font-family: var(--font-head); color: var(--head); }
+.seg-grid .seg b { color: var(--head); }
+.seg-grid .seg .btn { align-self: flex-start; margin-top: 6px; }
 .cust-health { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
 .cust-health > div { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--bg); display: flex; flex-direction: column; gap: 3px; }
 .cust-health strong { color: var(--head); }
@@ -1932,3 +1932,87 @@ a.user-chip:hover { background: var(--line-2); }
 .pc-taken.reuse { border-color: var(--gold); background: var(--warn-bg); color: var(--warn-ink); }
 .pc-taken .chk { margin-top: 4px; color: var(--ink); }
 :root[data-theme="dark"] .pc-taken { background: var(--danger-bg); color: var(--bad-ink); }
+
+/* ===================== v0.38 — timu ya CoopLink ===================== */
+/* Kengele ya kazi */
+.bell { position: relative; }
+.bell-btn { position: relative; width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--line); background: var(--paper); color: var(--head); display: grid; place-items: center; cursor: pointer; }
+.bell-btn svg { width: 20px; height: 20px; }
+.bell-btn:hover { background: var(--tint); }
+.bell-n { position: absolute; top: -6px; right: -6px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 99px; background: var(--gold); color: #1d1606; font-size: 11px; font-weight: 700; display: grid; place-items: center; border: 2px solid var(--paper); }
+.bell-n.bad { background: var(--danger); color: #fff; }
+.bell-pop { position: absolute; right: 0; top: calc(100% + 8px); width: min(360px, calc(100vw - 32px)); background: var(--paper); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); z-index: 60; overflow: hidden; }
+.bell-h { display: flex; justify-content: space-between; align-items: baseline; padding: 12px 16px; border-bottom: 1px solid var(--line-2); }
+.bell-pop ul { list-style: none; margin: 0; padding: 6px; max-height: 60vh; overflow: auto; }
+.bell-pop li a { display: flex; gap: 12px; align-items: center; padding: 10px; border-radius: 12px; text-decoration: none; color: var(--ink); }
+.bell-pop li a:hover { background: var(--tint); }
+.bell-pop li a .grow { display: flex; flex-direction: column; min-width: 0; }
+.bell-pop li a .grow span { font-size: 12.5px; color: var(--muted); }
+.bell-c { min-width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; font-weight: 700; background: var(--info-bg); color: var(--info-ink); }
+.tone-bad .bell-c { background: var(--danger-bg); color: var(--bad-ink); }
+.tone-warn .bell-c { background: var(--warn-bg); color: var(--warn-ink); }
+.bell-empty { padding: 22px 16px; margin: 0; text-align: center; color: var(--muted); }
+
+/* 2FA ya lazima */
+.tfa-banner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px; margin-bottom: 16px; border-radius: 14px; background: var(--warn-bg); color: var(--warn-ink); border: 1px solid var(--gold); }
+.tfa-banner span { flex: 1; min-width: 200px; }
+.tfa-gate { max-width: 640px; margin: 24px auto; background: var(--paper); border: 1px solid var(--line); border-radius: 20px; padding: 24px; box-shadow: var(--shadow); }
+.tfa-gate-head { display: flex; gap: 16px; align-items: flex-start; }
+.tfa-gate-head h2 { margin: 0 0 6px; }
+.tfa-ic { font-size: 30px; width: 54px; height: 54px; border-radius: 16px; background: var(--tint-gold); display: grid; place-items: center; flex: none; }
+.tfa-steps { margin: 18px 0; padding-left: 20px; line-height: 1.65; }
+
+/* Maombi kwa Owner */
+.req-list { list-style: none; margin: 0; padding: 0; }
+.req-list li + li { border-top: 1px solid var(--line-2); }
+.req-list button { width: 100%; display: flex; gap: 12px; align-items: center; text-align: left; background: none; border: 0; padding: 14px 16px; cursor: pointer; color: var(--ink); font: inherit; }
+.req-list button:hover { background: var(--tint); }
+.req-list button.unseen b { color: var(--forest); }
+.req-list .grow { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.req-pri { width: 4px; align-self: stretch; border-radius: 4px; background: var(--line); flex: none; }
+.req-pri.high { background: var(--gold); }
+.req-pri.urgent { background: var(--danger); }
+.req-pri.low { background: var(--line-2); }
+.req-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
+.req-new { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: var(--forest); color: #fff; }
+.req-target { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border-radius: 12px; background: var(--tint); }
+.req-head { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.req-ctx { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 12px; background: var(--tint); font-size: 14px; }
+.req-exec { display: flex; gap: 14px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 12px 14px; border-radius: 14px; border: 1px solid #E8B4AC; background: var(--danger-bg); }
+.req-exec > div { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 200px; }
+.req-thread { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.req-thread li { display: flex; gap: 10px; }
+.req-thread li > div { flex: 1; min-width: 0; background: var(--field); border-radius: 14px; padding: 10px 12px; }
+.req-thread li.owner > div { background: var(--tint-gold); }
+.req-thread p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.req-av { width: 32px; height: 32px; border-radius: 50%; flex: none; display: grid; place-items: center; font-weight: 700; background: var(--forest); color: #fff; font-size: 13px; }
+.req-thread li.owner .req-av { background: var(--gold); color: #1d1606; }
+.req-reply { display: flex; gap: 8px; align-items: flex-end; }
+.req-reply textarea { flex: 1; }
+
+/* Utendaji wa timu */
+.perf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.perf-meta { margin: -4px 0 10px; }
+dl.perf { display: grid; grid-template-columns: 1fr auto; gap: 6px 14px; margin: 0; font-size: 14px; }
+dl.perf dt { color: var(--muted); }
+dl.perf dd { margin: 0; text-align: right; font-weight: 600; }
+
+/* CSAT na vikumbusho */
+.tk-rate { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; padding: 12px 14px; border-radius: 14px; background: var(--tint); }
+.tk-rate > span { font-weight: 600; }
+.tk-rate .input { flex: 1; min-width: 200px; }
+.tk-rate.done { background: var(--ok-bg); color: var(--ok-ink); font-weight: 600; }
+.auto-rem { display: flex; gap: 14px; align-items: center; padding: 12px 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--paper); }
+.auto-rem.on { border-color: var(--green); background: var(--tint-green); }
+.auto-rem .grow { display: flex; flex-direction: column; gap: 2px; }
+.auto-rem-ic { font-size: 22px; }
+
+@media (max-width: 760px) {
+  .req-list button { flex-wrap: wrap; }
+  .req-meta { width: 100%; justify-content: flex-start; padding-left: 16px; }
+  .req-reply { flex-direction: column; align-items: stretch; }
+  .perf-grid { grid-template-columns: 1fr; }
+  .tfa-gate { margin: 8px 0; padding: 18px; }
+  .auto-rem { flex-wrap: wrap; }
+  .bell-pop { position: fixed; right: 16px; left: 16px; top: 64px; width: auto; }
+}

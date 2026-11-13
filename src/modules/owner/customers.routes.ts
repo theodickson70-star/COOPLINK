@@ -133,7 +133,7 @@ customersRouter.get('/:id/profile', requirePermission('amcos.read'), ah(async (r
   const lead = perms.includes('leads.read')
     ? await db.query.demoRequests.findFirst({ where: eq(schema.demoRequests.amcosId, id), columns: { id: true, name: true, source: true, createdAt: true, wonAt: true } })
     : null;
-  res.json({ amcos: a, health, tickets, comms, lead: lead ?? null, can: { help: perms.includes('amcos.help') } });
+  res.json({ amcos: a, health, tickets, comms, lead: lead ?? null, can: { help: perms.includes('amcos.help'), signout: req.auth!.role === 'SUPER_ADMIN' } });
 }));
 
 customersRouter.get('/:id/notes', requirePermission('amcos.read'), ah(async (req, res) => {
@@ -197,11 +197,13 @@ customersRouter.get('/:id/staff/:userId/diagnostics', requirePermission('amcos.h
   res.json({
     user: { id: u.id, fullName: u.fullName, role: u.role, roleLabel: ROLE_SW[u.role], phone: masked, isActive: u.isActive,
       mustChangePassword: u.mustChangePassword, totpEnabled: u.totpEnabled, lastLoginAt: u.lastLoginAt },
-    ...counts, logins, history: helps,
+    ...counts, logins, history: helps, canSignout: req.auth!.role === 'SUPER_ADMIN',
   });
 }));
 
 customersRouter.post('/:id/staff/:userId/signout', requirePermission('amcos.help'), ah(async (req, res) => {
+  // v0.38: kumtoa mtumishi kwenye vifaa vyote ni kazi ya Owner pekee; Huduma kwa Wateja anatuma ombi (Maombi kwa Owner)
+  if (req.auth!.role !== 'SUPER_ADMIN') throw forbidden('Ni Owner pekee anayeweza kumtoa mtumishi kwenye vifaa vyote — tuma ombi kwa Owner');
   const { id, userId } = z.object({ id: z.string().uuid(), userId: z.string().uuid() }).parse(req.params);
   const b = helpBody.parse(req.body);
   const u = await scopedStaff(id, userId);

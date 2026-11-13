@@ -379,7 +379,7 @@ test('System Control Center: ufuatiliaji, tahadhari, makosa yaliyounganishwa, in
   assert.deepEqual(integ.map((x: any) => x.key), ['teepay', 'abliner', 'lookup', 'sms', 'email']);
   assert.equal(JSON.stringify(integ).includes(process.env.TEEPAY_API_KEY || '__none__'), false);
   const jobs = (await call('GET', `${S}/jobs`, owner)).body;
-  assert.deepEqual(jobs.data.map((x: any) => x.name), ['subscriptions.sweep', 'fees.sweep', 'system.monitor']);
+  assert.deepEqual(jobs.data.map((x: any) => x.name), ['subscriptions.sweep', 'fees.sweep', 'reminders.sweep', 'system.monitor']);
   assert.equal((await call('POST', `${S}/jobs/haipo/run`, owner)).status, 404);
 
   // Swichi: kuzima kunahitaji sababu na nenosiri; badiliko linaonekana

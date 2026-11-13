@@ -11,6 +11,7 @@ import { date, dateTime, phone, ROLE_LABEL, OWNER_ROLE_LABEL } from '../lib/form
 import { Alert, Button, Empty, Loading, Modal, PageHead, SelectField, TextField } from '../components/ui';
 import { LockedNameField, PhoneNameFields } from '../components/PhoneName';
 import { Kpi, Pill, Tabs } from '../components/owner-ui';
+import { PerformanceView } from './TeamUi';
 
 interface Staff {
   id: string; fullName: string; phone: string; email: string | null; role: Role; jobTitle: string | null; isActive: boolean;
@@ -45,6 +46,7 @@ export function OwnerStaff() {
   const [sel, setSel] = useState<Staff | null>(null);
   const [sent, setSent] = useState<Sent | null>(null);
   const [filter, setFilter] = useState<'all' | 'waiting' | 'active' | 'off'>('all');
+  const [view, setView] = useState<'team' | 'perf'>('team');
   const act = useAction();
   const team = (data?.data ?? []).filter((s) => s.role !== 'SUPER_ADMIN');
   const owners = (data?.data ?? []).filter((s) => s.role === 'SUPER_ADMIN');
@@ -66,6 +68,10 @@ export function OwnerStaff() {
         <Button onClick={() => setCreating(true)} disabled={!cat.data}>+ Sajili mfanyakazi</Button>
       </PageHead>
       <Alert>{error ?? act.error}</Alert>
+      <div className="no-print" style={{ marginBottom: 14 }}>
+        <Tabs value={view} onChange={setView} items={[['team', 'Wafanyakazi'], ['perf', 'Utendaji wa timu']]} />
+      </div>
+      {view === 'perf' ? <PerformanceView /> : <>
       <div className="grid grid-kpi">
         <Kpi tone="dark" label="Wafanyakazi hai" value={counts.active} hint={`${team.length} kwa jumla`} />
         <Kpi tone={counts.waiting ? 'warn' : undefined} label="Wanasubiri kuingia" value={counts.waiting} hint="Wametumiwa nenosiri la muda kwa SMS" />
@@ -109,6 +115,7 @@ export function OwnerStaff() {
           {filter === 'all' && team.length === 0 && <Empty>Bado hakuna mfanyakazi. Bonyeza "Sajili mfanyakazi".</Empty>}
         </div>
       )}
+      </>}
       {creating && cat.data && <StaffWizard cat={cat.data} onClose={() => setCreating(false)} onSaved={() => reload()} />}
       {sel && cat.data && <StaffDetail staff={sel} cat={cat.data} onClose={() => setSel(null)} onChanged={(r) => { reload(); if (r) setSent({ name: sel.fullName, ...r }); }} />}
       {sent && <SentModal sent={sent} onClose={() => setSent(null)} />}

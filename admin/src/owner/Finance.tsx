@@ -286,6 +286,7 @@ function Receivables({ canManage, go }: { canManage: boolean; go: (k: FinTab, ex
   };
   return (
     <div className="stack">
+      <AutoReminders canManage={canManage} />
       <div className="aging">
         <button type="button" className={!bucket ? 'on' : ''} onClick={() => setBucket('')}><span>Madeni yote</span><strong>{money(total)}</strong></button>
         {BUCKETS.map(([k, label]) => {
@@ -604,6 +605,26 @@ function ReportTab({ r, range }: { r: Report; range: Range }) {
           <tr><td><strong>Faida / Hasara</strong></td><td className={`num ${Number(r.profit) < 0 ? 'money-neg' : 'money-pos'}`}><strong>{money(r.profit)}</strong></td></tr>
         </tbody></table>
       </Section>
+    </div>
+  );
+}
+
+/** v0.38: vikumbusho vya ada kiotomatiki (siku 14 na 3 kabla, siku 1 baada) */
+function AutoReminders({ canManage }: { canManage: boolean }) {
+  const { data, reload } = useFetch<{ feesAuto: boolean; schedule: string[]; lastAuto: string | null; auto30d: number }>('/owner/finance/reminders');
+  const act = useAction();
+  if (!data) return null;
+  const toggle = async () => { if (await act.run(() => api('/owner/finance/reminders', { method: 'PUT', body: { feesAuto: !data.feesAuto } }))) reload(); };
+  return (
+    <div className={`auto-rem ${data.feesAuto ? 'on' : ''}`}>
+      <span className="auto-rem-ic" aria-hidden="true">⏰</span>
+      <div className="grow">
+        <b>Vikumbusho vya ada kiotomatiki: {data.feesAuto ? 'VIMEWASHWA' : 'VIMEZIMWA'}</b>
+        <span className="muted st-small">{data.schedule.join(' · ')} — saa za kazi, kwa SMS na arifa ya mfumo.{' '}
+          {data.lastAuto ? `Mara ya mwisho: ${dateTime(data.lastAuto)} · siku 30: ${data.auto30d}` : 'Bado havijatumwa.'}</span>
+        <Alert>{act.error}</Alert>
+      </div>
+      {canManage && <Button size="sm" variant={data.feesAuto ? 'secondary' : 'primary'} busy={act.busy} onClick={toggle}>{data.feesAuto ? 'Zima' : 'Washa'}</Button>}
     </div>
   );
 }

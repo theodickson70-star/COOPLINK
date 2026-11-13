@@ -28,6 +28,8 @@ ownerSupportRouter.get('/summary', requirePermission('support.read'), ah(async (
     unassigned: sql<number>`count(*) filter (where ${T.status} <> 'CLOSED' and ${T.assignedToId} is null)::int`,
     mine: sql<number>`count(*) filter (where ${T.status} <> 'CLOSED' and ${T.assignedToId} = ${req.auth!.userId})::int`,
     closed30: sql<number>`count(*) filter (where ${T.closedAt} > now() - interval '30 days')::int`,
+    csatUp: sql<number>`count(*) filter (where ${T.rating} = 1 and ${T.ratedAt} > now() - interval '30 days')::int`,
+    csatDown: sql<number>`count(*) filter (where ${T.rating} = -1 and ${T.ratedAt} > now() - interval '30 days')::int`,
     avgFirstHours: sql<string | null>`round((avg(extract(epoch from (${T.firstResponseAt} - ${T.createdAt}))) filter (where ${T.createdAt} > now() - interval '30 days')) / 3600, 1)::text`,
   }).from(T);
   res.json(r);

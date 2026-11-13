@@ -22,10 +22,11 @@ export const SMS_KINDS = {
   // ---- Matangazo ----
   CHAMA_BROADCAST: { group: 'BROADCAST', label: 'Matangazo na taarifa za vikao (chama)', who: 'Wakulima (wote / kijiji / kikundi)', urgent: false, desc: 'Meneja anatuma tangazo au taarifa ya kikao kwa wakulima — kikomo cha SMS kwa mwezi kinawekwa na Owner.' },
   OWNER_ANNOUNCEMENT: { group: 'BROADCAST', label: 'Matangazo ya CoopLink kwa vyama', who: 'Watumishi wa vyama', urgent: false, desc: 'Matangazo unayotuma kutoka Marketing & Communication.' },
+  STAFF_ALERT: { group: 'BROADCAST', label: 'Arifa za kazi kwa wafanyakazi wa CoopLink', who: 'Wafanyakazi wa CoopLink na Owner', urgent: false, desc: 'Ombi jipya kwa Owner, malipo yaliyosubiri uthibitisho zaidi ya saa 24, tiketi zilizochelewa, leads mpya bila mhusika. Moja kwa kila jambo.' },
   SYSTEM_ALERT: { group: 'BROADCAST', label: 'Tahadhari za mfumo kwa Owner', who: 'Owner / Tech Support', urgent: true, desc: 'System Control Center: tahadhari kubwa (CRITICAL).' },
 } as const;
 export type SmsKind = keyof typeof SMS_KINDS;
 export const SMS_GROUPS: Record<string, string> = { OTP: 'OTP na usalama', FARMER: 'Taarifa kwa mkulima', GROUP: 'Vikundi', BROADCAST: 'Matangazo na tahadhari' };
 /** Zilizokuwa zikitumika kabla ya swichi hizi zinaanza zikiwa wazi; mpya zote zimefungwa mpaka Owner aziwashe. */
-export const SMS_EVENT_DEFAULTS = Object.fromEntries((Object.keys(SMS_KINDS) as SmsKind[]).map((k) => [k, ['SECURITY_ALERT', 'OWNER_ANNOUNCEMENT', 'SYSTEM_ALERT', 'STAFF_CREDENTIALS'].includes(k)])) as Record<SmsKind, boolean>;
+export const SMS_EVENT_DEFAULTS = Object.fromEntries((Object.keys(SMS_KINDS) as SmsKind[]).map((k) => [k, ['SECURITY_ALERT', 'OWNER_ANNOUNCEMENT', 'SYSTEM_ALERT', 'STAFF_CREDENTIALS', 'STAFF_ALERT'].includes(k)])) as Record<SmsKind, boolean>;
 

@@ -20,7 +20,7 @@ interface Row {
   createdAt: string; dueAt: string; firstResponseAt: string | null; lastAmcosAt: string; lastPlatformAt: string | null;
   amcosId: string; amcosName: string; createdBy: string; createdByRole: string; assignee: string | null; overdue: boolean; waiting: boolean;
 }
-interface Summary { open: number; waiting: number; overdue: number; unassigned: number; mine: number; closed30: number; avgFirstHours: string | null }
+interface Summary { open: number; waiting: number; overdue: number; unassigned: number; mine: number; closed30: number; avgFirstHours: string | null; csatUp?: number; csatDown?: number }
 
 export function OwnerSupport() {
   const [sp, setSp] = useSearchParams();
@@ -40,6 +40,7 @@ export function OwnerSupport() {
           <Kpi tone={s.overdue ? 'bad' : undefined} label="Zimechelewa (SLA)" value={s.overdue} hint="Hazijajibiwa ndani ya muda" />
           <Kpi tone={s.unassigned ? 'warn' : undefined} label="Hazijagawiwa" value={s.unassigned} hint={`Zangu ${s.mine}`} />
           <Kpi label="Muda wa wastani wa jibu la kwanza" value={s.avgFirstHours ? `saa ${s.avgFirstHours}` : '—'} hint={`Zilizofungwa siku 30: ${s.closed30}`} />
+          <Kpi tone="gold" label="Kuridhika kwa wateja (siku 30)" value={(s.csatUp ?? 0) + (s.csatDown ?? 0) ? `${Math.round(((s.csatUp ?? 0) / ((s.csatUp ?? 0) + (s.csatDown ?? 0))) * 100)}%` : '—'} hint={`👍 ${s.csatUp ?? 0} · 👎 ${s.csatDown ?? 0}`} />
         </div>
       )}
       {amcosId && <Alert kind="warn">Unaona tiketi za chama kimoja tu. <button className="link-btn" onClick={() => { sp.delete('amcosId'); setSp(sp); setView('active'); }}>Onyesha vyama vyote</button></Alert>}

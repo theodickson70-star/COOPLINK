@@ -146,6 +146,9 @@ PAGE_LOADERS.push(load_Leads_owner);
 const load_Customer_owner = () => import('./owner/Customer');
 const OwnerSuccess = lazyPage(load_Customer_owner, 'OwnerSuccess');
 PAGE_LOADERS.push(load_Customer_owner);
+const load_Requests_owner = () => import('./owner/Requests');
+const OwnerRequests = lazyPage(load_Requests_owner, 'OwnerRequests');
+PAGE_LOADERS.push(load_Requests_owner);
 const load_Settings_owner = () => import('./owner/Settings');
 const OwnerSettings = lazyPage(load_Settings_owner, 'OwnerSettings');
 PAGE_LOADERS.push(load_Settings_owner);
@@ -273,6 +276,7 @@ export default function App() {
             <Route path="support" element={<Perm p="support.read"><OwnerSupport /></Perm>} />
             <Route path="leads" element={<Perm p="leads.read"><OwnerLeads /></Perm>} />
             <Route path="success" element={<Perm p="leads.read"><OwnerSuccess /></Perm>} />
+            <Route path="requests" element={<OwnerRequests />} />
             <Route path="support/:id" element={<Perm p="support.read"><OwnerSupportDetail /></Perm>} />
             <Route path="settings" element={<OwnerSettings />} />
             <Route path="*" element={<Empty>Ukurasa haupo.</Empty>} />

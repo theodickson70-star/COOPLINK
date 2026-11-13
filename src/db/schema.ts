@@ -1611,6 +1611,10 @@ export const supportTickets = pgTable('support_tickets', {
   amcosSeenAt: timestamp({ withTimezone: true }),
   closedAt: timestamp({ withTimezone: true }),
   closedById: uuid(),
+  // v0.38: maoni ya mteja baada ya tiketi kufungwa (1 = ameridhika, -1 = hajaridhika)
+  rating: integer(),
+  ratingComment: text(),
+  ratedAt: timestamp({ withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (t) => [uniqueIndex().on(t.ticketNo), index().on(t.amcosId, t.status), index().on(t.status, t.dueAt), index().on(t.assignedToId)]);
@@ -1688,3 +1692,41 @@ export const amcosNotes = pgTable('amcos_notes', {
   createdById: uuid().notNull(),
   createdAt: createdAt(),
 }, (t) => [index().on(t.amcosId, t.createdAt)]);
+
+// ---------------------------------------------------------------------
+//  v0.38 — MAOMBI YA NDANI: wafanyakazi wa CoopLink -> Owner (kazi zinazohitaji Owner)
+// ---------------------------------------------------------------------
+export const internalRequestCategoryEnum = pgEnum('internal_request_category', ['ACCOUNT_SIGNOUT', 'FEE_WAIVER', 'REFUND', 'AMCOS_APPROVAL', 'TECHNICAL', 'ACCESS', 'OTHER']);
+export const internalRequestStatusEnum = pgEnum('internal_request_status', ['OPEN', 'IN_PROGRESS', 'DONE', 'DECLINED']);
+export const internalRequests = pgTable('internal_requests', {
+  id: id(),
+  requestNo: integer().generatedAlwaysAsIdentity({ startWith: 101 }),
+  createdById: uuid().notNull().references(() => users.id),
+  category: internalRequestCategoryEnum().notNull(),
+  priority: ticketPriorityEnum().notNull().default('NORMAL'),
+  status: internalRequestStatusEnum().notNull().default('OPEN'),
+  subject: text().notNull(),
+  amcosId: uuid().references(() => amcos.id),        // chama kinachohusika (hiari)
+  targetUserId: uuid().references(() => users.id),   // mtumishi wa chama anayehusika (mf. kumtoa kwenye vifaa)
+  resolution: text(),
+  resolvedById: uuid(),
+  resolvedAt: timestamp({ withTimezone: true }),
+  creatorSeenAt: timestamp({ withTimezone: true }),  // mara ya mwisho mwombaji aliangalia (arifa za majibu)
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [index().on(t.status, t.createdAt), index().on(t.createdById)]);
+
+export const internalRequestMessages = pgTable('internal_request_messages', {
+  id: id(),
+  requestId: uuid().notNull().references(() => internalRequests.id),
+  authorId: uuid().notNull().references(() => users.id),
+  body: text().notNull(),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.requestId, t.createdAt)]);
+
+/** Arifa za SMS kwa wafanyakazi zilizokwisha tumwa (zisitumwe mara mbili). */
+export const staffAlerts = pgTable('staff_alerts', {
+  key: text().primaryKey(),           // mf. "pay-pending:<paymentId>:<userId>"
+  userId: uuid(),
+  sentAt: createdAt(),
+});

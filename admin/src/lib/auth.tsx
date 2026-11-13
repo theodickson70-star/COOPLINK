@@ -35,6 +35,8 @@ export interface User {
   /** Masharti/Faragha: toleo alilokubali, na kama anatakiwa kukubali toleo la sasa */
   termsVersion?: string | null;
   termsRequired?: boolean;
+  /** v0.38: 2FA ni lazima kwa wafanyakazi wa CoopLink (siku 3 za kuiwasha) */
+  twoFactor?: { required: boolean; deadline: string | null; overdue: boolean };
   legalVersion?: string;
   totpEnabled: boolean;
   permissions: Permission[];

@@ -28,6 +28,10 @@ export interface SmsLimits { broadcastPerMonth: number; pricePerSms: number; qui
 export interface Switches { mobilePayments: boolean; sms: boolean; farmerPortal: boolean; nameLookup: boolean }
 /** Matokeo ya mwisho ya "Jaribu muunganiko" kwa kila integration */
 export type IntegrationTests = Record<string, { ok: boolean; message: string; at: string; ms: number }>;
+/** v0.38: 2FA ni lazima kwa wafanyakazi wa CoopLink (siku graceDays tangu staff2faSince au akaunti kuundwa) */
+export interface SecurityConfig { staff2fa: boolean; staff2faSince: string; graceDays: number }
+/** v0.38: vikumbusho vya ada vya kiotomatiki na SMS za kazi kwa wafanyakazi */
+export interface RemindersConfig { feesAuto: boolean; staffSms: boolean }
 export interface Banner { enabled: boolean; message: string; tone: 'info' | 'warn' }
 export interface BusinessProfile {
   companyName: string; productName: string; slogan: string; ownerName: string; poweredBy: string;
@@ -39,6 +43,8 @@ export interface BusinessProfile {
 export const DEFAULTS = {
   config: { defaultTrialDays: 14, defaultGraceDays: 7, expiringWindowDays: 14, enforceSubscriptions: true, currency: 'TZS' } as PlatformConfig,
   fees: { enabled: true, entranceFee: 45000, entranceDays: 3, seasonFee: 700000, seasonInstallments: 2, deadlineMonth: 10, deadlineDay: 15, primaryProvider: 'TEEPAY' } as FeeConfig,
+  security: { staff2fa: true, staff2faSince: '2026-11-13T00:00:00.000Z', graceDays: 3 } as SecurityConfig,
+  reminders: { feesAuto: true, staffSms: true } as RemindersConfig,
   maintenance: { enabled: false, message: 'Mfumo uko kwenye matengenezo. Tafadhali jaribu tena baadaye.' } as Maintenance,
   banner: { enabled: false, message: '', tone: 'info' } as Banner,
   switches: { mobilePayments: true, sms: true, farmerPortal: true, nameLookup: true } as Switches,

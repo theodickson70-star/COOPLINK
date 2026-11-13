@@ -13,6 +13,7 @@ import { AppError, badRequest, notFound } from '../lib/errors';
 import { activeSessionsWhere, authenticateAllowPending as authenticate, requireReauth } from '../middleware/auth';
 import { audit } from '../lib/audit';
 import { userByPhone } from '../lib/user-phone';
+import { staff2fa } from '../lib/staff-2fa';
 import { effectivePermissions, isPlatformRole } from '../lib/permissions';
 import { getSetting } from '../lib/settings';
 import { decryptSecret, encryptSecret, newTotpSecret, otpauthUri, verifyTotp } from '../lib/totp';
@@ -39,7 +40,7 @@ type User = typeof schema.users.$inferSelect;
 async function publicUser(u: User) {
   const { passwordHash, tokenVersion, totpSecret, permissions, ...rest } = u;
   const cover = await coverPermissions(u.role, u.amcosId);
-  return { ...rest, permissions: effectivePermissions(u.role, permissions), amcosPermissions: [...amcosPermissions(u.role), ...cover.extra], covering: cover.covering, termsRequired: u.termsVersion !== LEGAL_VERSION, legalVersion: LEGAL_VERSION };
+  return { ...rest, permissions: effectivePermissions(u.role, permissions), amcosPermissions: [...amcosPermissions(u.role), ...cover.extra], covering: cover.covering, termsRequired: u.termsVersion !== LEGAL_VERSION, legalVersion: LEGAL_VERSION, twoFactor: await staff2fa(u) };
 }
 
 const ua = (req: Request) => req.headers['user-agent']?.slice(0, 300) ?? null;

@@ -277,7 +277,7 @@ export function OwnerAmcosDetail() {
             <dt>Iliidhinishwa</dt><dd>{a.approvedAt ? dateTime(a.approvedAt) : '—'}</dd>
           </dl>
         </Section>
-        <StaffSlots amcosId={a.id} disabled={a.status === 'REJECTED'} />
+        <StaffSlots amcosId={a.id} amcosName={a.name} disabled={a.status === 'REJECTED'} />
       </div>
 
       <TrainingSection a={a} onChanged={reload} />
@@ -420,7 +420,7 @@ function TrainingSection({ a, onChanged }: { a: AmcosFull; onChanged: () => void
 interface StaffUser { id: string; fullName: string; phone: string; email: string | null; role: string; isActive: boolean; mustChangePassword: boolean; lastLoginAt: string | null; updatedAt: string }
 interface Slot { role: 'AMCOS_ADMIN' | 'ACCOUNTANT' | 'CLERK'; title: string; holder: StaffUser | null }
 
-function StaffSlots({ amcosId, disabled }: { amcosId: string; disabled: boolean }) {
+function StaffSlots({ amcosId, amcosName, disabled }: { amcosId: string; amcosName?: string; disabled: boolean }) {
   const { has } = useAuth();
   const { data, loading, reload } = useFetch<{ slots: Slot[]; history: StaffUser[] }>(`/owner/amcos/${amcosId}/staff`);
   const [assign, setAssign] = useState<Slot | null>(null);
@@ -466,7 +466,7 @@ function StaffSlots({ amcosId, disabled }: { amcosId: string; disabled: boolean 
         </tbody></table>
       )}
       <p className="muted" style={{ fontSize: 13, marginBottom: 0 }}>Kila AMCOS ina mtumishi mmoja kwa kila cheo. Mtumishi akibadilishwa, akaunti ya zamani inazimwa (haifutwi) na historia yake yote inabaki.</p>
-      {help && <AccountHelp amcosId={amcosId} userId={help} onClose={() => setHelp(null)} />}
+      {help && <AccountHelp amcosId={amcosId} amcosName={amcosName} userId={help} onClose={() => setHelp(null)} />}
       {assign && <AssignStaff amcosId={amcosId} slot={assign} onClose={() => setAssign(null)} onDone={(sec) => { setAssign(null); setSecret(sec); reload(); }} />}
       <ConfirmDialog open={!!off} danger title={`Zima ${off?.fullName ?? ''}`} confirmLabel="Zima akaunti" onClose={() => setOff(null)}
         message="Mtumishi atatolewa kwenye mfumo mara moja. Rekodi zake zote zinabaki. Nafasi itakuwa wazi hadi uweke mtu mwingine."

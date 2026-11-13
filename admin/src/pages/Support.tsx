@@ -143,7 +143,7 @@ export function SupportNew() {
 
 export function SupportDetail() {
   const { id } = useParams();
-  const { data, error, reload } = useFetch<{ ticket: { id: string; number: string; subject: string; category: TicketCategory; priority: TicketPriority; status: TicketStatus; createdAt: string; createdBy: string; firstResponseAt: string | null; dueAt?: string }; messages: Message[] }>(`/support/tickets/${id}`);
+  const { data, error, reload } = useFetch<{ ticket: { id: string; number: string; subject: string; category: TicketCategory; priority: TicketPriority; status: TicketStatus; createdAt: string; createdBy: string; firstResponseAt: string | null; dueAt?: string; rating?: number | null; ratedAt?: string | null }; messages: Message[] }>(`/support/tickets/${id}`);
   const send = useAction();
   const close = useAction();
   const tt = useT();
@@ -169,6 +169,7 @@ export function SupportDetail() {
             <Button variant={t.status === 'ANSWERED' ? 'primary' : 'ghost'} size="sm" busy={close.busy} onClick={async () => { if (await close.run(() => api(`/support/tickets/${t.id}/close`, { method: 'POST' }))) reload(); }}>{tt('✓ Tatizo limetatuliwa — funga')}</Button>
           )}
         </div>
+        {t.status === 'CLOSED' && <RateTicket id={t.id} rated={t.ratedAt ? t.rating ?? 0 : null} onDone={reload} />}
       </section>
       <div className="tk-layout">
         <section className="card tk-card">
@@ -206,5 +207,29 @@ export function SupportDetail() {
         </aside>
       </div>
     </>
+  );
+}
+
+/** v0.38: maoni ya mteja baada ya tiketi kufungwa — swali moja tu */
+function RateTicket({ id, rated, onDone }: { id: string; rated: number | null; onDone: () => void }) {
+  const tt = useT();
+  const act = useAction();
+  const [pick, setPick] = useState<1 | -1 | null>(null);
+  const [comment, setComment] = useState('');
+  if (rated !== null) return <div className="tk-rate done">{rated === 1 ? '👍' : '👎'} {tt('Asante kwa maoni yako!')}</div>;
+  const send = async (r: 1 | -1) => { if (await act.run(() => api(`/support/tickets/${id}/rating`, { method: 'POST', body: { rating: r, comment: comment.trim() || undefined } }))) onDone(); };
+  return (
+    <div className="tk-rate">
+      <span>{tt('Umeridhika na msaada uliopata?')}</span>
+      <div className="actions">
+        <Button size="sm" variant={pick === 1 ? 'primary' : 'secondary'} onClick={() => setPick(1)}>👍 {tt('Ndiyo')}</Button>
+        <Button size="sm" variant={pick === -1 ? 'danger' : 'secondary'} onClick={() => setPick(-1)}>👎 {tt('Hapana')}</Button>
+      </div>
+      {pick !== null && <>
+        <input className="input" maxLength={500} placeholder={pick === 1 ? tt('Maoni (hiari)') : tt('Tuambie tuboreshe nini (hiari)')} value={comment} onChange={(e) => setComment(e.target.value)} aria-label={tt('Maoni')} />
+        <Button size="sm" busy={act.busy} onClick={() => send(pick)}>{tt('Tuma')}</Button>
+      </>}
+      <Alert>{act.error}</Alert>
+    </div>
   );
 }

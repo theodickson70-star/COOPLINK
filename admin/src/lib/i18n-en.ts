@@ -1083,6 +1083,14 @@ export const EN: Record<string, string> = {
   'Tiketi bila mhusika': 'Unassigned tickets',
   'Leads za leo': 'Today\'s leads',
   'Huduma kwa Wateja na Masoko': 'Customer Success & Marketing',
+  // v0.38 — CSAT
+  'Asante kwa maoni yako!': 'Thank you for your feedback!',
+  'Umeridhika na msaada uliopata?': 'Were you satisfied with the help you received?',
+  'Ndiyo': 'Yes',
+  'Hapana': 'No',
+  'Maoni (hiari)': 'Comment (optional)',
+  'Tuambie tuboreshe nini (hiari)': 'Tell us what to improve (optional)',
+  'Maoni': 'Feedback',
   // v0.28 — chapa
   'Kwa usalama, mfumo umefungwa baada ya dakika {n} bila kutumika. Weka nenosiri lako kuendelea.': 'For security, the system locked after {n} minutes of inactivity. Enter your password to continue.',
   'Fungua mfumo': 'Unlock',
