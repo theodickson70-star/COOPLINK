@@ -12,6 +12,7 @@ import { smsConfigured, smsEnabled } from '../lib/sms';
 import { AppError, badRequest, notFound } from '../lib/errors';
 import { activeSessionsWhere, authenticateAllowPending as authenticate, requireReauth } from '../middleware/auth';
 import { audit } from '../lib/audit';
+import { userByPhone } from '../lib/user-phone';
 import { effectivePermissions, isPlatformRole } from '../lib/permissions';
 import { getSetting } from '../lib/settings';
 import { decryptSecret, encryptSecret, newTotpSecret, otpauthUri, verifyTotp } from '../lib/totp';
@@ -89,7 +90,7 @@ authRouter.post(
   loginLimiter,
   ah(async (req, res) => {
     const body = z.object({ phone: phoneSchema, password: z.string().min(1), deviceToken: z.string().max(200).optional() }).parse(req.body);
-    const user = await db.query.users.findFirst({ where: eq(schema.users.phone, body.phone) });
+    const user = await userByPhone(body.phone);
     // Ujumbe mmoja kwa makosa yote — usimwambie mshambuliaji kama namba ipo
     const fail = async (reason: string) => {
       await logLogin(req, { userId: user?.id, phone: body.phone, success: false, reason });
@@ -215,7 +216,7 @@ authRouter.post(
   ah(async (req, res) => {
     const { phone } = z.object({ phone: phoneSchema }).parse(req.body);
     if (!smsConfigured() || !(await smsEnabled('PASSWORD_RESET_OTP'))) throw new AppError(400, 'RESET_UNAVAILABLE', 'Huduma ya kurejesha nenosiri kwa SMS haipo kwa sasa. Wasiliana na Meneja wako au CoopLink.');
-    const user = await db.query.users.findFirst({ where: eq(schema.users.phone, phone) });
+    const user = await userByPhone(phone);
     let resendIn = 60;
     if (user && user.isActive) {
       try {
@@ -241,7 +242,7 @@ authRouter.post(
       phone: phoneSchema, code: z.string().trim().min(4).max(10), totpCode: z.string().trim().optional(),
       newPassword: z.string().refine(passwordSchemaRule.test, passwordSchemaRule.message),
     }).parse(req.body);
-    const user = await db.query.users.findFirst({ where: eq(schema.users.phone, body.phone) });
+    const user = await userByPhone(body.phone);
     if (!user || !user.isActive) throw new AppError(400, 'OTP_INVALID', 'Namba ya uthibitisho si sahihi');
     if (user.totpEnabled && !body.totpCode) throw new AppError(401, 'INVALID_2FA', 'Weka msimbo sahihi wa 2FA (programu ya uthibitisho)');
     await verifyOtp('PASSWORD_RESET', user.id, body.code);

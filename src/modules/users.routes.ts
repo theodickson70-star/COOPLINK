@@ -9,6 +9,7 @@ import { requireRole, ROLES, type Role } from '../middleware/auth';
 import { canAccessAmcos } from '../middleware/tenant';
 import { audit } from '../lib/audit';
 import { sendTempCredentials, tempExpiry } from '../lib/staff-credentials';
+import { assertPhoneFree } from '../lib/user-phone';
 import { isPlatformRole, isStaffRole } from '../lib/permissions';
 import { verifiedName } from '../lib/name-lookup';
 import { assertSlotFree } from '../lib/amcos-staff';
@@ -114,6 +115,7 @@ usersRouter.post(
     await assertCanManage(req, body);
     if (body.role === 'AMCOS_VIEWER') throw badRequest('AMCOS ina watumishi watatu tu: Meneja, Mhasibu na Storekeeper');
     if (body.amcosId) await assertSlotFree(db, body.amcosId, body.role);
+    await assertPhoneFree(body.phone);
 
     const password = tempPassword();
     const user = await db.transaction(async (tx) => {
@@ -166,6 +168,7 @@ usersRouter.patch(
       if (body.role === 'AMCOS_VIEWER') throw badRequest('AMCOS ina watumishi watatu tu: Meneja, Mhasibu na Storekeeper');
     }
     const willBeActive = body.isActive ?? existing.isActive;
+    if (willBeActive && !existing.isActive) await assertPhoneFree(existing.phone, existing.id);
     if (existing.amcosId && willBeActive) await assertSlotFree(db, existing.amcosId, body.role ?? existing.role, existing.id);
 
     const updated = await db.transaction(async (tx) => {

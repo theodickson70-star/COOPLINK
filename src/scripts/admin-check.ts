@@ -42,7 +42,7 @@ async function main() {
   if (supers.length > 1) info('Kuna zaidi ya mmoja. Wa ziada anaweza kuzimwa kwenye ukurasa wa Watumiaji.');
 
   // 3. Akaunti ya namba hii
-  const user = await db.query.users.findFirst({ where: eq(schema.users.phone, phone) });
+  const user = await db.query.users.findFirst({ where: eq(schema.users.phone, phone), orderBy: (u, { desc }) => [desc(u.isActive), desc(u.updatedAt)] });
   if (!user) {
     bad(`Hakuna akaunti yenye namba ${mask(phone)}. Endesha: npm run db:seed:prod`);
     return;

@@ -146,8 +146,10 @@ export const amcos = pgTable('amcos', {
 export const users = pgTable('users', {
   id: id(),
   fullName: text().notNull(),
-  phone: text().notNull().unique(), // 2557XXXXXXXX
-  email: text().unique(),
+  // v0.37.3: namba/email ni ya kipekee kati ya akaunti ZILIZO HAI tu — mtu aliyezimwa (mf. Mhasibu wa zamani)
+  // anaweza kupewa akaunti mpya kwa namba ile ile; akaunti ya zamani inabaki na historia yake.
+  phone: text().notNull(), // 2557XXXXXXXX
+  email: text(),
   passwordHash: text().notNull(),
   role: roleEnum().notNull(),
   unionId: uuid().references(() => unions.id),
@@ -167,7 +169,9 @@ export const users = pgTable('users', {
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (t) => [
-  index().on(t.amcosId), index().on(t.unionId), index().on(t.role),
+  index().on(t.amcosId), index().on(t.unionId), index().on(t.role), index('users_phone_idx').on(t.phone),
+  uniqueIndex('users_phone_active_unique').on(t.phone).where(sql`is_active`),
+  uniqueIndex('users_email_active_unique').on(t.email).where(sql`is_active and email is not null`),
   // Kila AMCOS: Meneja mmoja, Mhasibu mmoja, Storekeeper mmoja (walio hai)
   uniqueIndex('users_one_staff_per_role').on(t.amcosId, t.role)
     .where(sql`is_active and role in ('AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK')`),

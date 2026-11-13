@@ -8,6 +8,7 @@ import { badRequest, conflict, forbidden, notFound } from '../../lib/errors';
 import { requirePermission, requireReauth } from '../../middleware/auth';
 import { audit } from '../../lib/audit';
 import { sendTempCredentials, tempExpiry } from '../../lib/staff-credentials';
+import { assertPhoneFree } from '../../lib/user-phone';
 import { assignPlan, currentSubscription, today } from '../../lib/subscriptions';
 import { ensureEntranceFee } from '../../lib/fees';
 import { hashPassword, passwordSchemaRule, tempPassword } from '../../lib/security';
@@ -100,9 +101,7 @@ ownerAmcosRouter.post(
     if (b.contactPhone) b.contactName = (await lookupNameOrNull(b.contactPhone, 'Simu ya mawasiliano')) ?? b.contactName ?? null;
     if (b.manager) {
       if (!req.auth!.permissions.includes('amcos.staff')) throw forbidden('Huna ruhusa ya kuunda watumishi wa chama');
-      if (await db.query.users.findFirst({ where: eq(schema.users.phone, b.manager.phone), columns: { id: true } })) {
-        throw conflict('Namba ya simu ya Meneja tayari inatumika na akaunti nyingine');
-      }
+      await assertPhoneFree(b.manager.phone); // akaunti zilizozimwa haziizuii namba
     }
     const managerTemp = b.manager && !b.manager.password ? tempPassword() : null;
     const managerHash = b.manager ? await hashPassword(b.manager.password ?? managerTemp!) : null;
@@ -379,7 +378,7 @@ ownerAmcosRouter.post('/:id/staff', requirePermission('amcos.staff'), ah(async (
   const holder = await db.query.users.findFirst({ where: and(eq(U.amcosId, id), eq(U.role, body.role), eq(U.isActive, true)) });
   if (holder && !body.replace) await assertSlotFree(db, id, body.role);
   if (holder) await requireReauth(req);
-  if (await db.query.users.findFirst({ where: eq(U.phone, body.phone) })) throw conflict('Namba hii ya simu tayari inatumika na akaunti nyingine');
+  await assertPhoneFree(body.phone);
   const ownPassword = !!body.password;
   const password = body.password ?? tempPassword();
   const pending = a.status !== 'ACTIVE';
@@ -431,6 +430,7 @@ ownerAmcosRouter.post('/:id/staff/:userId/active', requirePermission('amcos.staf
   if (u.isActive === isActive) throw badRequest(isActive ? 'Akaunti tayari iko hai' : 'Akaunti tayari imezimwa');
   if (!isActive) await requireReauth(req);
   if (isActive) {
+    await assertPhoneFree(u.phone, u.id);
     if (u.role === 'AMCOS_VIEWER') throw badRequest('AMCOS ina watumishi watatu tu: Meneja, Mhasibu na Storekeeper');
     await assertSlotFree(db, id, u.role, u.id);
   }

@@ -229,7 +229,7 @@ test('Watumishi wa chama: Meneja bila nenosiri la Owner anatumiwa nenosiri la mu
 test('Namba iliyo na akaunti: inaelezwa mapema; mfanyakazi aliyezimwa anarejeshwa kwa cheo kipya', async () => {
   const pc = await call('GET', `/api/v1/owner/staff/phone-check?phone=${fin.phone}`, owner);
   assert.equal(pc.status, 200); assert.equal(pc.body.available, false); assert.equal(pc.body.holder.reusable, false);
-  assert.match(pc.body.holder.message, /Tumia namba nyingine/);
+  assert.match(pc.body.holder.message, /tumia namba nyingine/);
   const free = await call('GET', `/api/v1/owner/staff/phone-check?phone=${uniqPhone('25566')}`, owner);
   assert.equal(free.body.available, true);
   const dup = await call('POST', '/api/v1/owner/staff', owner, { fullName: 'Nakala', phone: fin.phone, role: 'FINANCE_MANAGER' });
@@ -240,10 +240,32 @@ test('Namba iliyo na akaunti: inaelezwa mapema; mfanyakazi aliyezimwa anarejeshw
   await call('POST', `/api/v1/owner/staff/${c.body.staff.id}/active`, owner, { isActive: false });
   const h = (await call('GET', `/api/v1/owner/staff/phone-check?phone=${phone}`, owner)).body.holder;
   assert.equal(h.reusable, true);
-  assert.equal((await call('POST', '/api/v1/owner/staff', owner, { fullName: `Juma Zamani ${RUN}`, phone, role: 'CUSTOMER_SUPPORT' })).status, 409, 'bila ruhusa ya kurejesha');
+  assert.equal(h.blocked, false, 'akaunti iliyozimwa haizuii namba');
   const r = await call('POST', '/api/v1/owner/staff', owner, { fullName: `Juma Zamani ${RUN}`, phone, role: 'CUSTOMER_SUPPORT', reactivate: true });
   assert.equal(r.status, 201, JSON.stringify(r.body)); assert.equal(r.body.reactivated, true);
   assert.equal(r.body.staff.id, c.body.staff.id, 'akaunti ile ile'); assert.equal(r.body.staff.role, 'CUSTOMER_SUPPORT'); assert.equal(r.body.staff.isActive, true);
   const pw = smsPassword(phone)!;
   assert.ok((await login(phone, pw)).token);
+});
+
+test('Namba ile ile: Mhasibu wa zamani wa chama (amezimwa) anapewa akaunti ya CoopLink; ya zamani inabaki', async () => {
+  const p = uniqPhone('25579');
+  const a = await call('POST', `/api/v1/owner/amcos/${amcosId}/staff`, owner, { role: 'ACCOUNTANT', fullName: `Mhasibu Zamani ${RUN}`, phone: p });
+  assert.equal(a.status, 201, JSON.stringify(a.body));
+  const oldId = a.body.user.id;
+  // Akiwa hai: namba imezuiwa
+  const busy = (await call('GET', `/api/v1/owner/staff/phone-check?phone=${p}`, owner)).body;
+  assert.equal(busy.available, false); assert.match(busy.holder.message, /Mhasibu wa Desk/);
+  assert.equal((await call('POST', `/api/v1/owner/amcos/${amcosId}/staff/${oldId}/active`, owner, { isActive: false, confirmPassword: OWNER_PW })).status, 200);
+  const free = (await call('GET', `/api/v1/owner/staff/phone-check?phone=${p}`, owner)).body;
+  assert.equal(free.available, true); assert.equal(free.holder.reusable, false); assert.match(free.holder.message, /historia yake/);
+  const s = await call('POST', '/api/v1/owner/staff', owner, { fullName: `Mhasibu Zamani ${RUN}`, phone: p, role: 'FINANCE_MANAGER', email: `zamani.${RUN.toLowerCase()}@example.com` });
+  assert.equal(s.status, 201, JSON.stringify(s.body)); assert.notEqual(s.body.staff.id, oldId, 'akaunti mpya');
+  const t = await login(p, smsPassword(p)!);
+  assert.equal(t.user.role, 'FINANCE_MANAGER', 'anaingia kwenye akaunti iliyo hai');
+  const [old] = (await db.execute<{ is_active: boolean; amcos_id: string }>(sql`select is_active, amcos_id from users where id = ${oldId}`)).rows;
+  assert.equal(old.is_active, false); assert.equal(old.amcos_id, amcosId, 'ya zamani haijaguswa');
+  // Ya zamani haiwezi kuwashwa wakati namba inatumika na akaunti nyingine iliyo hai
+  const re = await call('POST', `/api/v1/owner/amcos/${amcosId}/staff/${oldId}/active`, owner, { isActive: true });
+  assert.equal(re.status, 409, JSON.stringify(re.body));
 });

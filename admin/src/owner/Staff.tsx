@@ -158,9 +158,9 @@ function StaffWizard({ cat, onClose, onSaved }: { cat: Catalog; onClose: () => v
   // Namba moja = akaunti moja: inakaguliwa mapema (kabla ya hatua ya mwisho)
   const digits = ph.replace(/\D/g, '');
   const dph = useDebounced(digits.length >= 9 ? ph : '', 400);
-  const check = useFetch<{ available: boolean; holder: { fullName: string; title: string; reusable: boolean; isMe: boolean; message: string } | null }>(dph ? '/owner/staff/phone-check' : null, { phone: dph });
+  const check = useFetch<{ available: boolean; holder: { blocked: boolean; fullName: string; title: string; reusable: boolean; isMe: boolean; message: string } | null }>(dph ? '/owner/staff/phone-check' : null, { phone: dph });
   const holder = dph && check.data && !check.loading ? check.data.holder : null;
-  const blocked = !!holder && !(holder.reusable && reactivate);
+  const blocked = !!holder?.blocked;
   const emailOk = !email || /^\S+@\S+\.\S+$/.test(email);
   const step1Ok = fullName.trim().length >= 3 && digits.length >= 9 && emailOk && !blocked && !!dph && !check.loading;
   const effective = perms ?? cat.roleDefaults[role] ?? [];
@@ -191,10 +191,10 @@ function StaffWizard({ cat, onClose, onSaved }: { cat: Catalog; onClose: () => v
                 {!dph ? null : check.loading ? <span className="muted st-small">Inakagua namba…</span>
                   : check.error ? <Alert>{check.error}</Alert>
                   : !holder ? <span className="pc-ok">✓ Namba hii iko wazi — inaweza kusajiliwa</span>
-                  : <div className={`pc-taken ${holder.reusable ? 'reuse' : ''}`}>
-                      <b>{holder.reusable ? 'Mfanyakazi wa zamani' : 'Namba hii haiwezi kutumika'}</b>
+                  : <div className={`pc-taken ${holder.blocked ? '' : 'reuse'}`}>
+                      <b>{holder.blocked ? 'Namba hii haiwezi kutumika sasa' : '✓ Namba inaweza kutumika tena'}</b>
                       <span>{holder.message}</span>
-                      {holder.reusable && <label className="chk"><input type="checkbox" checked={reactivate} onChange={(e) => setReactivate(e.target.checked)} /> Rejesha akaunti ya {holder.fullName} (historia yake inabaki) na umpe cheo kipya</label>}
+                      {holder.reusable && <label className="chk"><input type="checkbox" checked={reactivate} onChange={(e) => setReactivate(e.target.checked)} /> Rejesha akaunti yake ya zamani ya CoopLink (badala ya kuunda mpya)</label>}
                     </div>}
               </div>
               <TextField label="Email (hiari)" type="email" value={email} onChange={setEmail} help={emailOk ? undefined : 'Email si sahihi'} />

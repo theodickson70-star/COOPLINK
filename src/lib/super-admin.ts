@@ -114,7 +114,7 @@ export async function ensureSuperAdmin() {
     : `ℹ️  SUPER_ADMIN ${mask(phone)} tayari yuko sawa — hakuna kilichobadilishwa`);
 
   // 5. UTHIBITISHO dhidi ya database hii — njia ile ile ya login (bila kuonyesha siri)
-  const user = await db.query.users.findFirst({ where: eq(schema.users.phone, phone) });
+  const user = await db.query.users.findFirst({ where: eq(schema.users.phone, phone), orderBy: (u, { desc }) => [desc(u.isActive), desc(u.updatedAt)] });
   const fail = (m: string) => { throw new Error(`UTHIBITISHO UMESHINDWA: ${m}`); };
   if (!user || user.id !== result.targetId) fail('akaunti haipatikani kwa namba hii');
   if (user!.role !== 'SUPER_ADMIN') fail('akaunti si SUPER_ADMIN');
