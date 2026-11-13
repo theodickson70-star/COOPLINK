@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, apiDownload, type Paged } from '../lib/api';
 import { useAction, useDebounced, useFetch } from '../lib/hooks';
@@ -10,6 +10,7 @@ import { AssignPlanModal, type Plan } from './Subscriptions';
 import { AmcosFeesSection } from './Fees';
 import { PhoneNameFields } from '../components/PhoneName';
 import { RecordPaymentModal } from './Finance';
+import { AccountHelp, CustomerPanel } from './Customer';
 
 interface Row {
   id: string; name: string; code: string; region: string | null; district: string | null; status: string; statusReason: string | null; training?: boolean;
@@ -29,6 +30,13 @@ export function OwnerAmcos() {
   const { data, error, loading, reload } = useFetch<Paged<Row>>('/owner/amcos', { search: q, status, subscription, page, pageSize: 25 });
   const [open, setOpen] = useState(false);
   const setFilter = (k: string, v: string) => { const p = new URLSearchParams(params); if (v) p.set(k, v); else p.delete(k); setParams(p); setPage(1); };
+  // Kutoka CRM: "Sajili chama" kwa lead — fomu inajazwa, na chama kikisajiliwa lead inakuwa mteja (WON)
+  const leadId = params.get('lead');
+  const lead = useFetch<{ lead: { id: string; name: string; phone: string; amcosName: string; region: string | null; district: string | null; email: string | null } }>(leadId && has('leads.read') ? `/owner/leads/${leadId}` : null);
+  const leadOpened = useRef<string | null>(null);
+  useEffect(() => { if (lead.data && leadOpened.current !== lead.data.lead.id && has('amcos.create')) { leadOpened.current = lead.data.lead.id; setOpen(true); } }, [lead.data, has]);
+  const prefill = lead.data ? { name: lead.data.lead.amcosName, region: lead.data.lead.region ?? 'Tabora', district: lead.data.lead.district ?? '',
+    contactName: lead.data.lead.name, contactPhone: lead.data.lead.phone.replace(/^255/, '0') } : undefined;
 
   return (
     <>
@@ -71,7 +79,12 @@ export function OwnerAmcos() {
         )}
         <Pager meta={data?.meta} onPage={setPage} />
       </section>
-      {open && <AmcosFormModal onClose={() => setOpen(false)} onSaved={(id, created) => { setOpen(false); reload(); nav(`/owner/amcos/${id}`, { state: { created } }); }} />}
+      {leadId && lead.data && <Alert kind="warn">Unasajili chama kutoka kwenye lead ya <strong>{lead.data.lead.name}</strong> ({lead.data.lead.amcosName}). Kikisajiliwa, lead itahesabiwa kuwa mteja.</Alert>}
+      {open && <AmcosFormModal prefill={prefill} onClose={() => { setOpen(false); if (leadId) setFilter('lead', ''); }} onSaved={async (id, created) => {
+        setOpen(false); reload();
+        if (leadId) await api(`/owner/leads/${leadId}/convert`, { method: 'POST', body: { amcosId: id } }).catch(() => undefined);
+        nav(`/owner/amcos/${id}`, { state: { created } });
+      }} />}
     </>
   );
 }
@@ -85,13 +98,13 @@ interface AmcosFull {
 
 export interface Created { code: string; manager: { fullName: string; phone: string } | null; active: boolean }
 
-function AmcosFormModal({ initial, onClose, onSaved }: { initial?: AmcosFull; onClose: () => void; onSaved: (id: string, created?: Created) => void }) {
+function AmcosFormModal({ initial, prefill, onClose, onSaved }: { initial?: AmcosFull; prefill?: { name: string; region: string; district: string; contactName: string; contactPhone: string }; onClose: () => void; onSaved: (id: string, created?: Created) => void }) {
   const { has } = useAuth();
   const plans = useFetch<{ data: Plan[] }>(has('subscriptions.read') ? '/owner/subscriptions/plans' : null);
   const [f, setF] = useState({
-    name: initial?.name ?? '', code: initial?.code ?? '', regNumber: initial?.regNumber ?? '', region: initial?.region ?? 'Tabora',
-    district: initial?.district ?? '', ward: initial?.ward ?? '', village: initial?.village ?? '', phone: initial?.phone?.replace(/^255/, '0') ?? '',
-    email: initial?.email ?? '', contactName: initial?.contactName ?? '', contactPhone: initial?.contactPhone?.replace(/^255/, '0') ?? '',
+    name: initial?.name ?? prefill?.name ?? '', code: initial?.code ?? '', regNumber: initial?.regNumber ?? '', region: initial?.region ?? prefill?.region ?? 'Tabora',
+    district: initial?.district ?? prefill?.district ?? '', ward: initial?.ward ?? '', village: initial?.village ?? '', phone: initial?.phone?.replace(/^255/, '0') ?? '',
+    email: initial?.email ?? '', contactName: initial?.contactName ?? prefill?.contactName ?? '', contactPhone: initial?.contactPhone?.replace(/^255/, '0') ?? prefill?.contactPhone ?? '',
   });
   const [activate, setActivate] = useState(has('amcos.approve'));
   // Vyama vya tumbaku vinakopesha pembejeo kwa dola (inabadilishwa baadaye na Mhasibu kwenye Fedha → Dola)
@@ -259,6 +272,8 @@ export function OwnerAmcosDetail() {
 
       <TrainingSection a={a} onChanged={reload} />
 
+      {a.status !== 'REJECTED' && <CustomerPanel amcosId={a.id} />}
+
       {has('subscriptions.read') && a.status !== 'PENDING' && a.status !== 'REJECTED' && (
         <div style={{ marginBottom: 16 }}><AmcosFeesSection amcosId={a.id} active={a.status === 'ACTIVE' || a.status === 'SUSPENDED'} /></div>
       )}
@@ -402,6 +417,7 @@ function StaffSlots({ amcosId, disabled }: { amcosId: string; disabled: boolean 
   const [off, setOff] = useState<StaffUser | null>(null);
   const [secret, setSecret] = useState<{ name: string; phone: string; password: string | null } | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [help, setHelp] = useState<string | null>(null);
   const act = useAction();
   const manage = has('amcos.staff') && !disabled;
   return (
@@ -417,6 +433,7 @@ function StaffSlots({ amcosId, disabled }: { amcosId: string; disabled: boolean 
                 <div className="staff-slot-body">
                   <div><strong>{s.holder.fullName}</strong> · {phone(s.holder.phone)}</div>
                   <small className="muted">{s.holder.mustChangePassword ? 'Bado hajaingia (nenosiri la muda)' : s.holder.lastLoginAt ? `Aliingia ${dateTime(s.holder.lastLoginAt)}` : ''}</small>
+                  {has('amcos.help') && <div className="actions"><Button size="sm" variant="ghost" onClick={() => setHelp(s.holder!.id)}>🛟 Msaada wa akaunti</Button></div>}
                   {manage && (
                     <div className="actions">
                       <Button size="sm" variant="secondary" busy={act.busy} onClick={async () => {
@@ -439,6 +456,7 @@ function StaffSlots({ amcosId, disabled }: { amcosId: string; disabled: boolean 
         </tbody></table>
       )}
       <p className="muted" style={{ fontSize: 13, marginBottom: 0 }}>Kila AMCOS ina mtumishi mmoja kwa kila cheo. Mtumishi akibadilishwa, akaunti ya zamani inazimwa (haifutwi) na historia yake yote inabaki.</p>
+      {help && <AccountHelp amcosId={amcosId} userId={help} onClose={() => setHelp(null)} />}
       {assign && <AssignStaff amcosId={amcosId} slot={assign} onClose={() => setAssign(null)} onDone={(sec) => { setAssign(null); setSecret(sec); reload(); }} />}
       <ConfirmDialog open={!!off} danger title={`Zima ${off?.fullName ?? ''}`} confirmLabel="Zima akaunti" onClose={() => setOff(null)}
         message="Mtumishi atatolewa kwenye mfumo mara moja. Rekodi zake zote zinabaki. Nafasi itakuwa wazi hadi uweke mtu mwingine."

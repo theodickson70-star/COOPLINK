@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api, type Paged } from '../lib/api';
 import { useAction, useDebounced, useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
@@ -16,7 +17,9 @@ export function OwnerComms() {
   const [page, setPage] = useState(1);
   const list = useFetch<Paged<Ann>>('/owner/comms/announcements', { page, pageSize: 20 });
   const health = useFetch<{ integrations: { sms: string; email: string } }>(has('system.read') ? '/owner/system/health' : null);
-  const [compose, setCompose] = useState(false);
+  const [sp] = useSearchParams();
+  const segParam = sp.get('segment');
+  const [compose, setCompose] = useState(!!segParam && has('comms.send'));
   const [detail, setDetail] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const act = useAction();
@@ -55,7 +58,7 @@ export function OwnerComms() {
         )}
         <Pager meta={list.data?.meta} onPage={setPage} />
       </Section>
-      {compose && <Compose onClose={() => setCompose(false)} onSent={(msg) => { setCompose(false); setResult(msg); list.reload(); }} />}
+      {compose && <Compose segment={segParam} onClose={() => setCompose(false)} onSent={(msg) => { setCompose(false); setResult(msg); list.reload(); }} />}
       {detail && <DeliveryDetail id={detail} onClose={() => setDetail(null)} />}
     </>
   );
@@ -63,11 +66,14 @@ export function OwnerComms() {
 
 const fmtStats = (s: Record<string, number>) => Object.entries(s).map(([k, v]) => `${LABELS[k] ?? k} ${v}`).join(' · ') || '—';
 
-function Compose({ onClose, onSent }: { onClose: () => void; onSent: (msg: string) => void }) {
+function Compose({ onClose, onSent, segment: seg0 }: { onClose: () => void; onSent: (msg: string) => void; segment?: string | null }) {
   const [kind, setKind] = useState('ANNOUNCEMENT');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [audience, setAudience] = useState('ALL');
+  const [audience, setAudience] = useState(seg0 ? 'SEGMENT' : 'ALL');
+  const [segment, setSegment] = useState(seg0 ?? '');
+  const segs = useFetch<{ data: { key: string; label: string; desc: string; count: number }[] }>('/owner/customers/segments');
+  const segInfo = segs.data?.data.find((x) => x.key === segment);
   const [selected, setSelected] = useState<string[]>([]);
   const [channels, setChannels] = useState<string[]>(['IN_APP']);
   const [search, setSearch] = useState('');
@@ -77,14 +83,16 @@ function Compose({ onClose, onSent }: { onClose: () => void; onSent: (msg: strin
   const toggle = (arr: string[], v: string) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   return (
     <Modal open title="Tangazo jipya" onClose={onClose}
-      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={title.length < 3 || body.length < 3 || !channels.length || (audience === 'SELECTED' && !selected.length)} onClick={async () => {
-        const r = await run(() => api<{ targets: number; deliveries: Record<string, number> }>('/owner/comms/announcements', { method: 'POST', body: { kind, title, body, audience, amcosIds: audience === 'SELECTED' ? selected : undefined, channels } }));
+      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={title.length < 3 || body.length < 3 || !channels.length || (audience === 'SELECTED' && !selected.length) || (audience === 'SEGMENT' && !segInfo?.count)} onClick={async () => {
+        const r = await run(() => api<{ targets: number; deliveries: Record<string, number> }>('/owner/comms/announcements', { method: 'POST', body: { kind, title, body, audience, amcosIds: audience === 'SELECTED' ? selected : undefined, segment: audience === 'SEGMENT' ? segment : undefined, channels } }));
         if (r) onSent(`Tangazo limetumwa kwa vyama ${r.targets}: ${fmtStats(r.deliveries)}`);
       }}>Tuma</Button></>}>
       <Alert>{error}</Alert>
       <div className="form-grid">
         <SelectField label="Aina" value={kind} onChange={setKind} options={['ANNOUNCEMENT', 'SYSTEM_UPDATE', 'MARKETING'].map((v) => ({ value: v, label: LABELS[v] }))} />
-        <SelectField label="Walengwa" value={audience} onChange={setAudience} options={[{ value: 'ALL', label: 'Vyama vyote (hai na vilivyositishwa)' }, { value: 'SELECTED', label: 'Vyama nitakavyochagua' }]} />
+        <SelectField label="Walengwa" value={audience} onChange={setAudience} options={[{ value: 'ALL', label: 'Vyama vyote (hai na vilivyositishwa)' }, { value: 'SEGMENT', label: 'Kundi la wateja (mf. ada imepita muda)' }, { value: 'SELECTED', label: 'Vyama nitakavyochagua' }]} />
+        {audience === 'SEGMENT' && <SelectField label="Kundi" value={segment} onChange={setSegment} placeholder="Chagua kundi…"
+          options={(segs.data?.data ?? []).map((g) => ({ value: g.key, label: `${g.label} (${g.count})` }))} help={segInfo?.desc} />}
       </div>
       <TextField label="Kichwa *" maxLength={120} value={title} onChange={setTitle} />
       <Field label="Ujumbe *" help={`${body.length}/1000 · SMS zinakatwa kwenye herufi 459`}>{(id) => <Textarea id={id} maxLength={1000} value={body} onChange={(e) => setBody(e.target.value)} />}</Field>

@@ -232,6 +232,13 @@
       "when": 1794525379155,
       "tag": "0032_amcos_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794590295712,
+      "tag": "0033_staff_desks",
+      "breakpoints": true
     }
   ]
 }

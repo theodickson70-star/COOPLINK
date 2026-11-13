@@ -24,8 +24,8 @@ export const ROLE_LABEL: Record<string, string> = {
   AMCOS_VIEWER: 'Mtazamaji (amezimwa)',
   FINANCE_MANAGER: 'Meneja wa Fedha',
   TECH_SUPPORT: 'Msaada wa Kiufundi',
-  CUSTOMER_SUPPORT: 'Huduma kwa Wateja',
-  MARKETING_MANAGER: 'Meneja wa Masoko',
+  CUSTOMER_SUPPORT: 'Huduma kwa Wateja na Masoko',
+  MARKETING_MANAGER: 'Huduma kwa Wateja na Masoko',
 };
 export const OWNER_ROLE_LABEL = 'Owner Super Admin';
 

@@ -140,6 +140,12 @@ PAGE_LOADERS.push(load_Backup_owner);
 const load_Business_owner = () => import('./owner/Business');
 const OwnerBusiness = lazyPage(load_Business_owner, 'OwnerBusiness');
 PAGE_LOADERS.push(load_Business_owner);
+const load_Leads_owner = () => import('./owner/Leads');
+const OwnerLeads = lazyPage(load_Leads_owner, 'OwnerLeads');
+PAGE_LOADERS.push(load_Leads_owner);
+const load_Customer_owner = () => import('./owner/Customer');
+const OwnerSuccess = lazyPage(load_Customer_owner, 'OwnerSuccess');
+PAGE_LOADERS.push(load_Customer_owner);
 const load_Settings_owner = () => import('./owner/Settings');
 const OwnerSettings = lazyPage(load_Settings_owner, 'OwnerSettings');
 PAGE_LOADERS.push(load_Settings_owner);
@@ -207,7 +213,12 @@ function Perm({ p, children }: { p: Permission; children: ReactNode }) {
 }
 
 function OwnerHome() {
-  const { has } = useAuth();
+  const { has, user } = useAuth();
+  // Kila mfanyakazi anaanzia kwenye kazi zake: Fedha -> Finance, Huduma kwa Wateja na Masoko -> Customer Success
+  if (user?.role !== 'SUPER_ADMIN') {
+    if (has('finance.read') && !has('leads.read')) return <Navigate to="/owner/finance" replace />;
+    if (has('leads.read')) return <Navigate to="/owner/success" replace />;
+  }
   if (has('platform.dashboard')) return <OwnerDashboard />;
   const first = OWNER_NAV.find((n) => n.to !== '/owner' && (!n.perm || has(n.perm)));
   return <Navigate to={first?.to ?? '/owner/settings'} replace />;
@@ -260,6 +271,8 @@ export default function App() {
             <Route path="backup" element={<Perm p="backup.read"><OwnerBackup /></Perm>} />
             <Route path="business" element={<Perm p="business.read"><OwnerBusiness /></Perm>} />
             <Route path="support" element={<Perm p="support.read"><OwnerSupport /></Perm>} />
+            <Route path="leads" element={<Perm p="leads.read"><OwnerLeads /></Perm>} />
+            <Route path="success" element={<Perm p="leads.read"><OwnerSuccess /></Perm>} />
             <Route path="support/:id" element={<Perm p="support.read"><OwnerSupportDetail /></Perm>} />
             <Route path="settings" element={<OwnerSettings />} />
             <Route path="*" element={<Empty>Ukurasa haupo.</Empty>} />

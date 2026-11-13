@@ -5,13 +5,14 @@
 // =====================================================================
 import { Router } from 'express';
 import { z } from 'zod';
+import { alias } from 'drizzle-orm/pg-core';
 import { and, count, desc, eq, gte, lt, sql, type SQL } from 'drizzle-orm';
 import { db, schema } from '../../db';
 import { ah, decimalSchema, paged, paginationQuery, uuidParam } from '../../lib/http';
-import { badRequest, conflict, notFound } from '../../lib/errors';
+import { badRequest, conflict, forbidden, notFound } from '../../lib/errors';
 import { requirePermission, requireReauth } from '../../middleware/auth';
 import { audit } from '../../lib/audit';
-import { extendSubscription, nextInvoiceNo } from '../../lib/subscriptions';
+import { extendSubscription, nextInvoiceNo, today } from '../../lib/subscriptions';
 import { rangeQuery, toCsv } from './common';
 
 export const financeRouter = Router();
@@ -34,11 +35,18 @@ financeRouter.get(
       q.amcosId ? eq(Pay.amcosId, q.amcosId) : undefined,
       r ? and(gte(Pay.paidAt, r.fromTs), lt(Pay.paidAt, r.toTs)) : undefined,
     );
-    const rows = await db.select({ p: Pay, amcos: { id: schema.amcos.id, name: schema.amcos.name, code: schema.amcos.code } })
+    const Rec = alias(schema.users, 'rec'); const Ver = alias(schema.users, 'ver');
+    const rows = await db.select({ p: Pay, amcos: { id: schema.amcos.id, name: schema.amcos.name, code: schema.amcos.code }, recordedBy: Rec.fullName, verifiedBy: Ver.fullName })
       .from(Pay).leftJoin(schema.amcos, eq(schema.amcos.id, Pay.amcosId))
+      .leftJoin(Rec, eq(Rec.id, Pay.createdById)).leftJoin(Ver, eq(Ver.id, Pay.verifiedById))
       .where(where).orderBy(desc(Pay.paidAt)).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
     const [{ total }] = await db.select({ total: count() }).from(Pay).where(where);
-    res.json(paged(rows.map((x) => ({ ...x.p, amcos: x.amcos })), total, q.page, q.pageSize));
+    const me = req.auth!;
+    res.json(paged(rows.map((x) => ({
+      ...x.p, amcos: x.amcos, recordedBy: x.recordedBy, verifiedBy: x.verifiedBy,
+      // Mtu wa pili tu ndiye anayethibitisha (Owner peke yake ndiye anaweza kuthibitisha alichorekodi)
+      canVerify: x.p.status === 'PENDING' && (me.role === 'SUPER_ADMIN' || x.p.createdById !== me.userId),
+    })), total, q.page, q.pageSize));
   }),
 );
 
@@ -86,6 +94,13 @@ financeRouter.post(
   }),
 );
 
+/** Maker-checker: aliyerekodi hathibitishi mwenyewe (isipokuwa Owner — mmiliki wa kampuni). */
+export function assertSecondPerson(me: { role: string; userId: string }, createdById: string | null, what: string) {
+  if (me.role !== 'SUPER_ADMIN' && createdById && createdById === me.userId) {
+    throw forbidden(`Huwezi ${what} uliyoirekodi mwenyewe — mtu wa pili wa fedha au Owner afanye hivyo`);
+  }
+}
+
 async function lockPayment(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], id: string) {
   const [p] = await tx.select().from(Pay).where(eq(Pay.id, id)).for('update');
   if (!p) throw notFound('Malipo');
@@ -101,6 +116,7 @@ financeRouter.post(
     const result = await db.transaction(async (tx) => {
       const p = await lockPayment(tx, id);
       if (p.status !== 'PENDING') throw conflict(`Malipo haya ni ${p.status}, hayawezi kuthibitishwa tena`);
+      assertSecondPerson(req.auth!, p.createdById, 'kuthibitisha malipo');
       const [v] = await tx.update(Pay).set({ status: 'VERIFIED', verifiedById: req.auth!.userId, verifiedAt: new Date() }).where(eq(Pay.id, id)).returning();
       let extension = null;
       if (p.category === 'SUBSCRIPTION' && p.subscriptionId) {
@@ -157,12 +173,23 @@ financeRouter.get(
   '/expenses',
   requirePermission('finance.read'),
   ah(async (req, res) => {
-    const q = paginationQuery.extend({ category: z.enum(schema.expenseCategoryEnum.enumValues).optional(), from: z.string().optional(), to: z.string().optional() }).parse(req.query);
+    const q = paginationQuery.extend({
+      category: z.enum(schema.expenseCategoryEnum.enumValues).optional(), status: z.enum(schema.expenseStatusEnum.enumValues).optional(),
+      from: z.string().optional(), to: z.string().optional(),
+    }).parse(req.query);
     const r = q.from || q.to ? rangeQuery.parse({ from: q.from, to: q.to }) : null;
-    const where = and(q.category ? eq(Exp.category, q.category) : undefined, r ? sql`${Exp.spentAt} between ${r.from} and ${r.to}` : undefined);
-    const rows = await db.select().from(Exp).where(where).orderBy(desc(Exp.spentAt), desc(Exp.createdAt)).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
+    const where = and(q.category ? eq(Exp.category, q.category) : undefined, q.status ? eq(Exp.status, q.status) : undefined,
+      r && q.status !== 'PENDING' ? sql`${Exp.spentAt} between ${r.from} and ${r.to}` : undefined);
+    const Rec = alias(schema.users, 'rec'); const App = alias(schema.users, 'app');
+    const rows = await db.select({ e: Exp, recordedBy: Rec.fullName, approvedBy: App.fullName }).from(Exp)
+      .leftJoin(Rec, eq(Rec.id, Exp.createdById)).leftJoin(App, eq(App.id, Exp.approvedById))
+      .where(where).orderBy(desc(Exp.spentAt), desc(Exp.createdAt)).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
     const [{ total }] = await db.select({ total: count() }).from(Exp).where(where);
-    res.json(paged(rows, total, q.page, q.pageSize));
+    const me = req.auth!;
+    res.json(paged(rows.map((x) => ({
+      ...x.e, recordedBy: x.recordedBy, approvedBy: x.approvedBy,
+      canApprove: x.e.status === 'PENDING' && (me.role === 'SUPER_ADMIN' || x.e.createdById !== me.userId),
+    })), total, q.page, q.pageSize));
   }),
 );
 
@@ -175,14 +202,44 @@ financeRouter.post(
       amount: decimalSchema({ min: 0.01 }),
       description: z.string().trim().min(3),
       vendor: z.string().trim().nullable().optional(),
-      spentAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      spentAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((d) => d <= today(), 'Tarehe ya matumizi haiwezi kuwa ya baadaye'),
+      method: z.enum(schema.paymentMethodEnum.enumValues).nullable().optional(),
+      reference: z.string().trim().max(80).nullable().optional(),
     }).parse(req.body);
+    // Owner: yanaingia moja kwa moja. Mfanyakazi: yanasubiri idhini ya mtu wa pili.
+    const owner = req.auth!.role === 'SUPER_ADMIN';
     const row = await db.transaction(async (tx) => {
-      const [e] = await tx.insert(Exp).values({ ...b, createdById: req.auth!.userId }).returning();
+      const [e] = await tx.insert(Exp).values({
+        ...b, method: b.method ?? null, reference: b.reference || null, createdById: req.auth!.userId,
+        status: owner ? 'APPROVED' : 'PENDING', ...(owner ? { approvedById: req.auth!.userId, approvedAt: new Date() } : {}),
+      }).returning();
       await audit(tx, req, { action: 'PLATFORM_EXPENSE_RECORD', entity: 'PlatformExpense', entityId: e.id, after: e });
       return e;
     });
     res.status(201).json({ expense: row });
+  }),
+);
+
+financeRouter.post(
+  '/expenses/:id/decision',
+  requirePermission('finance.manage'),
+  ah(async (req, res) => {
+    const { id } = uuidParam.parse(req.params);
+    const b = z.object({ approve: z.boolean(), reason: z.string().trim().max(300).optional() })
+      .refine((x) => x.approve || (x.reason?.length ?? 0) >= 3, { message: 'Andika sababu ya kukataa', path: ['reason'] }).parse(req.body);
+    const row = await db.transaction(async (tx) => {
+      const [e] = await tx.select().from(Exp).where(eq(Exp.id, id)).for('update');
+      if (!e) throw notFound('Matumizi');
+      if (e.status !== 'PENDING') throw conflict('Matumizi haya yameshaamuliwa');
+      assertSecondPerson(req.auth!, e.createdById, 'kuidhinisha matumizi');
+      const [v] = await tx.update(Exp).set(b.approve
+        ? { status: 'APPROVED', approvedById: req.auth!.userId, approvedAt: new Date() }
+        : { status: 'REJECTED', approvedById: req.auth!.userId, approvedAt: new Date(), rejectReason: b.reason! }).where(eq(Exp.id, id)).returning();
+      await audit(tx, req, { action: b.approve ? 'PLATFORM_EXPENSE_APPROVE' : 'PLATFORM_EXPENSE_REJECT', entity: 'PlatformExpense', entityId: id,
+        before: { status: e.status }, after: { status: v.status, amount: e.amount, reason: b.reason ?? null } });
+      return v;
+    });
+    res.json({ expense: row });
   }),
 );
 
@@ -195,7 +252,7 @@ async function buildReport(from: string, to: string, fromTs: Date, toTs: Date) {
   const refunds = await one(sql`select coalesce(sum(amount), 0) as total, count(*)::int as n from platform_payments where status = 'REFUNDED' and refunded_at >= ${fromTs} and refunded_at < ${toTs}`);
   const expenses = (await db.execute(sql`
     select category, coalesce(sum(amount), 0) as total, count(*)::int as n from platform_expenses
-    where spent_at between ${from} and ${to} group by category`)).rows as { category: string; total: string; n: number }[];
+    where status = 'APPROVED' and spent_at between ${from} and ${to} group by category`)).rows as { category: string; total: string; n: number }[];
   const tx = await one(sql`
     select count(*) filter (where status = 'VERIFIED')::int as successful, count(*) filter (where status = 'FAILED')::int as failed,
       count(*) filter (where status = 'PENDING')::int as pending, count(*) filter (where status = 'REFUNDED')::int as refunded
@@ -210,7 +267,7 @@ async function buildReport(from: string, to: string, fromTs: Date, toTs: Date) {
       date_trunc('month', ${toTs}::timestamptz at time zone 'Africa/Dar_es_Salaam'), interval '1 month') as m)
     select to_char(m, 'YYYY-MM') as month,
       (select coalesce(sum(amount), 0) from platform_payments p where p.status = 'VERIFIED' and date_trunc('month', p.paid_at at time zone 'Africa/Dar_es_Salaam') = m) as revenue,
-      (select coalesce(sum(amount), 0) from platform_expenses e where date_trunc('month', e.spent_at) = m) as expenses
+      (select coalesce(sum(amount), 0) from platform_expenses e where e.status = 'APPROVED' and date_trunc('month', e.spent_at) = m) as expenses
     from months order by m`)).rows as { month: string; revenue: string; expenses: string }[];
 
   const sum = (rows: { total: string }[]) => rows.reduce((s, r) => s + Number(r.total), 0);
@@ -243,7 +300,7 @@ financeRouter.get(
     const rep = await buildReport(r.from, r.to, r.fromTs, r.toTs);
     const pays = await db.select({ p: Pay, name: schema.amcos.name }).from(Pay).leftJoin(schema.amcos, eq(schema.amcos.id, Pay.amcosId))
       .where(and(gte(Pay.paidAt, r.fromTs), lt(Pay.paidAt, r.toTs))).orderBy(Pay.paidAt);
-    const exps = await db.select().from(Exp).where(sql`${Exp.spentAt} between ${r.from} and ${r.to}`).orderBy(Exp.spentAt);
+    const exps = await db.select().from(Exp).where(and(eq(Exp.status, 'APPROVED'), sql`${Exp.spentAt} between ${r.from} and ${r.to}`)).orderBy(Exp.spentAt);
     const rows: (string | number | null)[][] = [
       ['COOPLINK - RIPOTI YA FEDHA ZA KAMPUNI', `${r.from} hadi ${r.to}`],
       [],

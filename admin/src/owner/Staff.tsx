@@ -103,6 +103,10 @@ function StaffForm({ cat, onClose, onSaved }: { cat: Catalog; onClose: () => voi
         <SelectField label="Role *" value={role} onChange={(v) => { setRole(v as Role); setPerms(null); }} options={cat.roles.map((r) => ({ value: r, label: ROLE_LABEL[r] }))} />
       </div>
       <PermissionPicker cat={cat} role={role} value={perms} onChange={setPerms} />
+      <p className="muted" style={{ fontSize: 12.5, margin: '8px 0 0' }}>
+        <strong>Finance Manager</strong>: malipo, madeni ya ada, matumizi, bajeti na ripoti za kampuni. <strong>Huduma kwa Wateja na Masoko</strong>: leads (CRM), msaada wa vyama na akaunti, tiketi na matangazo.
+        Msaada wa kiufundi (mfumo, backup, usalama) unabaki kwa Owner.
+      </p>
     </Modal>
   );
 }
@@ -125,12 +129,13 @@ function StaffDetail({ staff, cat, onClose, onChanged }: { staff: Staff; cat: Ca
           <div className="form-grid">
             <LockedNameField label="Jina" phone={staff.phone} value={fullName} onChange={setFullName} />
             <TextField label="Cheo" value={jobTitle} onChange={setJobTitle} />
-            <SelectField label="Role" value={role} onChange={(v) => { setRole(v as Role); setPerms(null); }} options={cat.roles.map((r) => ({ value: r, label: ROLE_LABEL[r] }))} />
+            <SelectField label="Role" value={role} onChange={(v) => { setRole(v as Role); setPerms(null); }}
+              options={[...(cat.roles.includes(staff.role) ? [] : [{ value: staff.role, label: `${ROLE_LABEL[staff.role]} (cheo cha zamani)` }]), ...cat.roles.map((r) => ({ value: r, label: ROLE_LABEL[r] }))]} />
           </div>
           <PermissionPicker cat={cat} role={role} value={perms} onChange={setPerms} />
           <Alert kind="warn">Ukibadilisha role au ruhusa, mfanyakazi atatolewa kwenye vifaa vyote na kuingia upya.</Alert>
           <div className="actions">
-            <Button busy={act.busy} onClick={async () => { if (await act.run(() => api(`/owner/staff/${staff.id}`, { method: 'PATCH', body: { fullName, jobTitle: jobTitle || null, role, permissions: perms } }))) { onChanged(); onClose(); } }}>Hifadhi</Button>
+            <Button busy={act.busy} onClick={async () => { if (await act.run(() => api(`/owner/staff/${staff.id}`, { method: 'PATCH', body: { fullName, jobTitle: jobTitle || null, ...(role !== staff.role ? { role } : {}), permissions: perms } }))) { onChanged(); onClose(); } }}>Hifadhi</Button>
             <Button variant="secondary" busy={act.busy} onClick={async () => { const r = await act.run(() => api<{ temporaryPassword: string }>(`/owner/staff/${staff.id}/reset-password`, { method: 'POST' })); if (r) { onChanged(r.temporaryPassword); onClose(); } }}>Nenosiri jipya</Button>
             <Button variant={staff.isActive ? 'danger' : 'primary'} busy={act.busy} onClick={async () => { if (await act.run(() => api(`/owner/staff/${staff.id}/active`, { method: 'POST', body: { isActive: !staff.isActive } }))) { onChanged(); onClose(); } }}>
               {staff.isActive ? 'Zima akaunti' : 'Washa akaunti'}

@@ -31,6 +31,10 @@ export const PERMISSIONS = {
   'business.manage': 'Kuhariri malengo na wasifu wa biashara',
   'support.read': 'Kuona tiketi za msaada za vyama',
   'support.manage': 'Kujibu, kugawa na kufunga tiketi za msaada',
+  // v0.36 — Huduma kwa Wateja na Masoko
+  'amcos.help': 'Msaada wa akaunti za watumishi wa vyama (kutoka vifaa vyote, maelekezo ya nenosiri) — bila kuona wala kuweka nenosiri',
+  'leads.read': 'Kuona wateja watarajiwa (leads)',
+  'leads.manage': 'Kusimamia leads: kuongeza, kupangia, kufuatilia na kugeuza kuwa wateja',
 } as const;
 export type Permission = keyof typeof PERMISSIONS;
 export const ALL_PERMISSIONS = Object.keys(PERMISSIONS) as Permission[];
@@ -38,14 +42,25 @@ const OWNER_ONLY: Permission[] = ['staff.manage'];
 
 export const PLATFORM_ROLES: Role[] = ['SUPER_ADMIN', 'FINANCE_MANAGER', 'TECH_SUPPORT', 'CUSTOMER_SUPPORT', 'MARKETING_MANAGER'];
 export const STAFF_ROLES: Role[] = ['FINANCE_MANAGER', 'TECH_SUPPORT', 'CUSTOMER_SUPPORT', 'MARKETING_MANAGER'];
+/**
+ * Vyeo vinavyotolewa kwa wafanyakazi WAPYA (v0.36):
+ *  - FINANCE_MANAGER — fedha za kampuni.
+ *  - CUSTOMER_SUPPORT — "Huduma kwa Wateja na Masoko" (Customer Support + Marketing vimeunganishwa).
+ * TECH_SUPPORT inabaki kwa Owner mwenyewe; TECH_SUPPORT na MARKETING_MANAGER za zamani zinaendelea kufanya kazi.
+ */
+export const HIRABLE_ROLES: Role[] = ['FINANCE_MANAGER', 'CUSTOMER_SUPPORT'];
 export const isPlatformRole = (r: Role) => PLATFORM_ROLES.includes(r);
 export const isStaffRole = (r: Role) => STAFF_ROLES.includes(r);
 
+const SUCCESS_TEAM: Permission[] = [
+  'platform.dashboard', 'amcos.read', 'amcos.create', 'amcos.help', 'subscriptions.read',
+  'comms.read', 'comms.send', 'support.read', 'support.manage', 'business.read', 'leads.read', 'leads.manage',
+];
 export const ROLE_DEFAULTS: Record<string, Permission[]> = {
   FINANCE_MANAGER: ['platform.dashboard', 'amcos.read', 'subscriptions.read', 'subscriptions.manage', 'finance.read', 'finance.manage', 'business.read', 'support.read', 'support.manage'],
-  TECH_SUPPORT: ['platform.dashboard', 'amcos.read', 'system.read', 'system.manage', 'backup.read', 'security.read', 'support.read', 'support.manage'],
-  CUSTOMER_SUPPORT: ['platform.dashboard', 'amcos.read', 'amcos.create', 'subscriptions.read', 'comms.read', 'comms.send', 'support.read', 'support.manage'],
-  MARKETING_MANAGER: ['platform.dashboard', 'amcos.read', 'comms.read', 'comms.send', 'business.read'],
+  TECH_SUPPORT: ['platform.dashboard', 'amcos.read', 'amcos.help', 'system.read', 'system.manage', 'backup.read', 'security.read', 'support.read', 'support.manage'],
+  CUSTOMER_SUPPORT: SUCCESS_TEAM,
+  MARKETING_MANAGER: SUCCESS_TEAM, // cheo cha zamani — sasa ni sawa na Huduma kwa Wateja na Masoko
 };
 
 /** Ruhusa halisi za mtumiaji. */

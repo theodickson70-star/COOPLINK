@@ -10,6 +10,7 @@ import { audit } from '../../lib/audit';
 import { sendEmail, sendSms, type DeliveryResult } from '../../lib/notify';
 import { getSetting } from '../../lib/settings';
 import { addDays, today } from '../../lib/subscriptions';
+import { SEGMENTS, segmentIds, type Segment } from './customers.routes';
 
 export const commsRouter = Router();
 const AN = schema.announcements;
@@ -48,9 +49,9 @@ commsRouter.get(
   }),
 );
 
-type Target = { id: string; name: string; phone: string | null; email: string | null };
+export type Target = { id: string; name: string; phone: string | null; email: string | null };
 
-async function resolveTargets(audience: 'ALL' | 'SELECTED', amcosIds?: string[]): Promise<Target[]> {
+export async function resolveTargets(audience: 'ALL' | 'SELECTED', amcosIds?: string[]): Promise<Target[]> {
   const where = audience === 'ALL'
     ? inArray(schema.amcos.status, ['ACTIVE', 'SUSPENDED'])
     : inArray(schema.amcos.id, amcosIds ?? []);
@@ -64,7 +65,7 @@ async function smsRecipients(amcosId: string, amcosPhone: string | null) {
   return [...new Set([amcosPhone, ...admins.map((a) => a.phone)].filter(Boolean) as string[])];
 }
 
-async function deliver(announcementId: string, targets: Target[], channels: string[], message: (t: Target) => string, subject: string) {
+export async function deliver(announcementId: string, targets: Target[], channels: string[], message: (t: Target) => string, subject: string) {
   const counts: Record<string, number> = {};
   const bump = (s: string) => { counts[s] = (counts[s] ?? 0) + 1; };
   let smsSent = 0;
@@ -104,16 +105,20 @@ commsRouter.post(
       kind: z.enum(['ANNOUNCEMENT', 'SYSTEM_UPDATE', 'MARKETING']),
       title: z.string().trim().min(3).max(120),
       body: z.string().trim().min(3).max(1000),
-      audience: z.enum(['ALL', 'SELECTED']),
+      audience: z.enum(['ALL', 'SELECTED', 'SEGMENT']),
       amcosIds: z.array(z.string().uuid()).max(2000).optional(),
+      segment: z.enum(Object.keys(SEGMENTS) as [Segment, ...Segment[]]).optional(),  // v0.36: kundi la wateja (mf. ada imepita muda)
       channels: z.array(z.enum(CHANNELS)).min(1),
     }).parse(req.body);
     if (b.audience === 'SELECTED' && !b.amcosIds?.length) throw badRequest('Chagua angalau chama kimoja');
-    const targets = await resolveTargets(b.audience, b.amcosIds);
+    if (b.audience === 'SEGMENT' && !b.segment) throw badRequest('Chagua kundi la wateja');
+    const targets = b.audience === 'SEGMENT'
+      ? await resolveTargets('SELECTED', await segmentIds(b.segment!))
+      : await resolveTargets(b.audience, b.amcosIds);
     if (!targets.length) throw badRequest('Hakuna chama cha kutumiwa');
     const [a] = await db.insert(AN).values({
-      kind: b.kind, title: b.title, body: b.body, audience: b.audience,
-      amcosIds: b.audience === 'SELECTED' ? targets.map((t) => t.id) : null, channels: b.channels, createdById: req.auth!.userId,
+      kind: b.kind, title: b.title, body: b.body, audience: b.audience === 'SEGMENT' ? `SEGMENT:${b.segment}` : b.audience,
+      amcosIds: b.audience === 'ALL' ? null : targets.map((t) => t.id), channels: b.channels, createdById: req.auth!.userId,
     }).returning();
     await audit(db, req, { action: 'ANNOUNCEMENT_SEND', entity: 'Announcement', entityId: a.id, after: { ...b, targets: targets.length } });
     const counts = await deliver(a.id, targets, b.channels, () => `CoopLink: ${b.title}\n${b.body}`.slice(0, 459), b.title);

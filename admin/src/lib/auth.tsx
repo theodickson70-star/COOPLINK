@@ -11,7 +11,7 @@ export type Permission =
   | 'subscriptions.read' | 'subscriptions.manage' | 'finance.read' | 'finance.manage' | 'staff.manage'
   | 'system.read' | 'system.manage' | 'comms.read' | 'comms.send' | 'security.read' | 'security.manage'
   | 'backup.read' | 'backup.manage' | 'business.read' | 'business.manage' | 'amcos.staff'
-  | 'support.read' | 'support.manage';
+  | 'support.read' | 'support.manage' | 'amcos.help' | 'leads.read' | 'leads.manage';
 
 /** Ruhusa za watumishi wa AMCOS (zinatoka backend kwenye /auth/me; backend inazikagua tena kila ombi). */
 export type AmcosPermission =

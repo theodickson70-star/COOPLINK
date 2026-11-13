@@ -21,7 +21,7 @@ async function call(method: string, path: string, token?: string, body?: unknown
 }
 const login = (phone: string, password: string) => call('POST', '/api/v1/auth/login', undefined, { phone, password });
 
-let owner: string, manager: string, clerk: string, accountant: string, other: string, marketing: string, support: string, supportId: string;
+let owner: string, manager: string, clerk: string, accountant: string, other: string, marketing: string, marketingId: string, support: string, supportId: string;
 // PNG ndogo halali (1x1)
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
@@ -32,9 +32,9 @@ async function staffOf(amcosId: string, role: string) {
   const t = (await login(phone, r.body.temporaryPassword)).body.token;
   return (await call('POST', '/api/v1/auth/change-password', t, { currentPassword: r.body.temporaryPassword, newPassword: 'Staff12345' })).body.token as string;
 }
-async function platformStaff(role: string) {
+async function platformStaff(role: string, permissions?: string[]) {
   const phone = uniqPhone('25568');
-  const c = await call('POST', '/api/v1/owner/staff', owner, { fullName: `${role} ${RUN}`, phone, role });
+  const c = await call('POST', '/api/v1/owner/staff', owner, { fullName: `${role} ${RUN}`, phone, role, ...(permissions ? { permissions } : {}) });
   assert.equal(c.status, 201, JSON.stringify(c.body));
   const t = (await login(phone, c.body.temporaryPassword)).body.token;
   return { id: c.body.staff.id as string, token: (await call('POST', '/api/v1/auth/change-password', t, { currentPassword: c.body.temporaryPassword, newPassword: 'Staff12345x' })).body.token as string };
@@ -59,7 +59,9 @@ before(async () => {
   clerk = await staffOf(a.id, 'CLERK');
   accountant = await staffOf(a.id, 'ACCOUNTANT');
   other = (await newAmcos('B')).manager;
-  marketing = (await platformStaff('MARKETING_MANAGER')).token;
+  // Mfanyakazi aliyepunguziwa ruhusa (masoko tu, bila msaada)
+  const mk0 = await platformStaff('CUSTOMER_SUPPORT', ['platform.dashboard', 'comms.read', 'comms.send']);
+  marketing = mk0.token; marketingId = mk0.id;
   const s = await platformStaff('CUSTOMER_SUPPORT');
   support = s.token; supportId = s.id;
 });
@@ -120,8 +122,7 @@ test('Tiketi za msaada: kufungua, kuonekana kwa wanaostahili, majibu, maelezo ya
   // Kugawa kwa mtu asiye na ruhusa ya msaada kunakataliwa; kipaumbele; kufunga na kufungua upya
   const mk = (await call('GET', '/api/v1/owner/support/assignees', support)).body.data;
   assert.ok(mk.some((u: any) => u.id === supportId));
-  const mkt = await db.execute<{ id: string }>(sql`select id from users where role = 'MARKETING_MANAGER' limit 1`);
-  assert.equal((await call('PATCH', `/api/v1/owner/support/tickets/${id}`, support, { assignedToId: mkt.rows[0].id })).status, 400);
+  assert.equal((await call('PATCH', `/api/v1/owner/support/tickets/${id}`, support, { assignedToId: marketingId })).status, 400);
   assert.equal((await call('PATCH', `/api/v1/owner/support/tickets/${id}`, support, { status: 'CLOSED' })).status, 200);
   assert.equal((await call('GET', '/api/v1/support/tickets?status=ACTIVE', clerk)).body.data.filter((t: any) => t.id === id).length, 0);
   assert.equal((await call('POST', `/api/v1/support/tickets/${id}/messages`, clerk, { body: 'Limerudi tena leo.' })).status, 201);

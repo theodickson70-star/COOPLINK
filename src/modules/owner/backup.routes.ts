@@ -24,7 +24,8 @@ const EXPORT_TABLES = [
   'unions', 'amcos', 'users', 'seasons', 'buyers', 'members', 'farms', 'estimates', 'input_items', 'input_prices',
   'input_issues', 'input_issue_lines', 'stock_movements', 'member_ledger_entries', 'markets', 'bales', 'exchange_rates',
   'deduction_rules', 'settlements', 'settlement_lines', 'payment_batches', 'payments', 'subscription_plans', 'subscriptions',
-  'platform_payments', 'platform_expenses', 'business_targets', 'platform_settings', 'announcements', 'audit_logs',
+  'platform_payments', 'platform_expenses', 'platform_budgets', 'business_targets', 'platform_settings', 'announcements', 'audit_logs',
+  'demo_requests', 'lead_activities', 'amcos_notes',
 ];
 const SECRET_COLUMNS: Record<string, string[]> = { users: ['password_hash', 'totp_secret', 'token_version'] };
 

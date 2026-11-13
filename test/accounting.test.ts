@@ -1242,12 +1242,13 @@ test('Tovuti: ombi la maonyesho linafika Business Center', async () => {
   assert.equal((await call('POST', '/api/v1/public/demo-request', undefined, { name: 'Roboti', phone: '0712345678', amcosName: 'Spam AMCOS', website: 'http://spam' })).status, 400, 'Mtego wa roboti');
   const ok = await call('POST', '/api/v1/public/demo-request', undefined, { name: 'Juma Hassan', phone: '0712 345 678', amcosName: 'Usoke AMCOS ' + RUN, region: 'Urambo' });
   assert.equal(ok.status, 201, JSON.stringify(ok.body));
-  const list = (await call('GET', '/api/v1/owner/business/demo-requests?status=NEW', owner)).body;
+  // v0.36: ombi linaingia kwenye CRM (leads) likiwa "Mpya", chanzo "Tovuti"
+  const list = (await call('GET', '/api/v1/owner/leads?stage=NEW', owner)).body;
   const r = list.data.find((x: any) => x.amcosName === 'Usoke AMCOS ' + RUN);
-  assert.ok(r); assert.equal(r.phone, '255712345678'); assert.equal(r.ip, undefined, 'IP haionyeshwi');
-  assert.equal((await call('GET', '/api/v1/owner/business/demo-requests', manager)).status, 403);
-  const u = await call('PATCH', `/api/v1/owner/business/demo-requests/${r.id}`, owner, { status: 'CONTACTED' });
-  assert.equal(u.status, 200); assert.equal(u.body.request.status, 'CONTACTED');
+  assert.ok(r); assert.equal(r.phone, '255712345678'); assert.equal(r.ip, undefined, 'IP haionyeshwi'); assert.equal(r.source, 'WEBSITE');
+  assert.equal((await call('GET', '/api/v1/owner/leads', manager)).status, 403);
+  const u = await call('PATCH', `/api/v1/owner/leads/${r.id}`, owner, { stage: 'CONTACTED' });
+  assert.equal(u.status, 200); assert.equal(u.body.lead.stage, 'CONTACTED'); assert.equal(u.body.lead.status, 'CONTACTED', 'status ya zamani inafuata');
 });
 
 // v0.35 — Mipangilio: kila mtumishi anaona sehemu zake; ruhusa zinalindwa kwenye server, si kwa kuficha menu

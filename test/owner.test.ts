@@ -140,17 +140,20 @@ test('Malipo: PENDING -> uthibitisho (nenosiri) -> subscription inasogea; hakuna
   const dup = await call('POST', '/api/v1/owner/finance/payments', finToken, { subscriptionId: subId, category: 'SUBSCRIPTION', amount: '45000', method: 'MOBILE_MONEY', providerRef: ref, paidAt: today() });
   assert.equal(dup.status, 409);
 
-  const noPw = await call('POST', `/api/v1/owner/finance/payments/${p.body.payment.id}/verify`, finToken, {});
+  const noPw = await call('POST', `/api/v1/owner/finance/payments/${p.body.payment.id}/verify`, owner, {});
   assert.equal(noPw.body.error.code, 'REAUTH_REQUIRED');
-  const badPw = await call('POST', `/api/v1/owner/finance/payments/${p.body.payment.id}/verify`, finToken, { confirmPassword: 'wrong' });
+  const badPw = await call('POST', `/api/v1/owner/finance/payments/${p.body.payment.id}/verify`, owner, { confirmPassword: 'wrong' });
   assert.equal(badPw.body.error.code, 'REAUTH_FAILED');
-  const v = await call('POST', `/api/v1/owner/finance/payments/${p.body.payment.id}/verify`, finToken, { confirmPassword: 'Fedha2026x' });
+  // v0.36 maker-checker: aliyerekodi hathibitishi mwenyewe
+  const self = await call('POST', `/api/v1/owner/finance/payments/${p.body.payment.id}/verify`, finToken, { confirmPassword: 'Fedha2026x' });
+  assert.equal(self.status, 403, 'mtu wa pili athibitishe');
+  const v = await call('POST', `/api/v1/owner/finance/payments/${p.body.payment.id}/verify`, owner, { confirmPassword: OWNER_PW });
   assert.equal(v.status, 200, JSON.stringify(v.body));
   assert.equal(v.body.payment.status, 'VERIFIED');
   const expected = (() => { const d = new Date(`${today()}T00:00:00Z`); d.setUTCMonth(d.getUTCMonth() + 2); return d.toISOString().slice(0, 10); })();
   assert.equal(v.body.extension.to, expected, 'miezi 2 imeongezwa');
   assert.equal(v.body.extension.status, 'ACTIVE');
-  assert.equal((await call('POST', `/api/v1/owner/finance/payments/${p.body.payment.id}/verify`, finToken, { confirmPassword: 'Fedha2026x' })).status, 409);
+  assert.equal((await call('POST', `/api/v1/owner/finance/payments/${p.body.payment.id}/verify`, owner, { confirmPassword: OWNER_PW })).status, 409);
 
   await call('POST', '/api/v1/owner/finance/expenses', finToken, { category: 'SERVER', amount: '20000', description: 'Railway', spentAt: today() });
   const rep = await call('GET', `/api/v1/owner/finance/report?from=${today()}&to=${today()}`, owner);
@@ -266,16 +269,18 @@ test('Dashibodi: takwimu zinatoka database; Tech Support haoni mapato', async ()
   assert.equal(d.body.series.length, 12);
   assert.ok(Number(d.body.revenue.all_time) > 0);
   const phone = uniqPhone('25565');
-  const c = await call('POST', '/api/v1/owner/staff', owner, { fullName: 'Tumaini Tech', phone, role: 'TECH_SUPPORT' });
+  // v0.36: Tech Support ni ya Owner — haitolewi tena kwa wafanyakazi wapya
+  assert.equal((await call('POST', '/api/v1/owner/staff', owner, { fullName: 'Tumaini Tech', phone, role: 'TECH_SUPPORT' })).status, 400);
+  const c = await call('POST', '/api/v1/owner/staff', owner, { fullName: 'Tumaini Huduma', phone, role: 'CUSTOMER_SUPPORT' });
   const t = await login(phone, c.body.temporaryPassword);
   const tech = (await call('POST', '/api/v1/auth/change-password', t.token, { currentPassword: c.body.temporaryPassword, newPassword: 'Tech2026xx' })).body.token;
   const td = await call('GET', '/api/v1/owner/dashboard', tech);
   assert.equal(td.body.revenue, null);
-  assert.equal((await call('GET', '/api/v1/owner/system/health', tech)).status, 200);
+  assert.equal((await call('GET', '/api/v1/owner/system/health', tech)).status, 403, 'Huduma kwa wateja haoni mfumo');
   assert.equal((await call('GET', '/api/v1/owner/finance/report', tech)).status, 403);
   // Mfanyakazi aliyezimwa anatoka mara moja
   await call('POST', `/api/v1/owner/staff/${c.body.staff.id}/active`, owner, { isActive: false });
-  assert.equal((await call('GET', '/api/v1/owner/system/health', tech)).status, 401);
+  assert.equal((await call('GET', '/api/v1/owner/dashboard', tech)).status, 401);
 });
 
 test('Orodha: hesabu za subqueries ni sahihi (AMCOS, mipango, matangazo)', async () => {

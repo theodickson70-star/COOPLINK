@@ -1061,6 +1061,9 @@ export const teepayEvents = pgTable('teepay_events', {
   receivedAt: createdAt(),
 });
 
+// v0.36: matumizi yaliyorekodiwa na mfanyakazi yanasubiri idhini ya mtu wa pili (maker-checker).
+// Ya zamani na ya Owner ni APPROVED. Ripoti zinahesabu APPROVED pekee.
+export const expenseStatusEnum = pgEnum('expense_status', ['PENDING', 'APPROVED', 'REJECTED']);
 export const platformExpenses = pgTable('platform_expenses', {
   id: id(),
   category: expenseCategoryEnum().notNull(),
@@ -1068,9 +1071,26 @@ export const platformExpenses = pgTable('platform_expenses', {
   description: text().notNull(),
   vendor: text(),
   spentAt: date().notNull(),
+  status: expenseStatusEnum().notNull().default('APPROVED'),
+  method: paymentMethodEnum(),
+  reference: text(),                  // namba ya muamala / risiti ya mtoa huduma
+  approvedById: uuid(),
+  approvedAt: timestamp({ withTimezone: true }),
+  rejectReason: text(),
   createdById: uuid(),
   createdAt: createdAt(),
-}, (t) => [index().on(t.spentAt)]);
+}, (t) => [index().on(t.spentAt), index().on(t.status)]);
+
+/** Bajeti ya matumizi ya kampuni kwa mwezi na aina (Finance Manager). */
+export const platformBudgets = pgTable('platform_budgets', {
+  id: id(),
+  period: text().notNull(),           // YYYY-MM
+  category: expenseCategoryEnum().notNull(),
+  amount: money().notNull(),
+  updatedById: uuid(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex().on(t.period, t.category)]);
 
 export const businessTargets = pgTable('business_targets', {
   id: id(),
@@ -1611,7 +1631,9 @@ export const supportAttachments = pgTable('support_attachments', {
   createdAt: createdAt(),
 }, (t) => [index().on(t.messageId)]);
 
-// Maombi ya maonyesho kutoka tovuti ya umma (vyama vinavyotaka kujiunga na COOPLINK)
+export const leadStageEnum = pgEnum('lead_stage', ['NEW', 'CONTACTED', 'DEMO_SCHEDULED', 'DEMO_DONE', 'NEGOTIATION', 'WON', 'LOST']);
+export const leadSourceEnum = pgEnum('lead_source', ['WEBSITE', 'PHONE', 'REFERRAL', 'FIELD_VISIT', 'EVENT', 'SOCIAL', 'OTHER']);
+// Maombi ya maonyesho kutoka tovuti ya umma (vyama vinavyotaka kujiunga na COOPLINK) — tangu v0.36 ni leads za CRM
 export const demoRequests = pgTable('demo_requests', {
   id: id(),
   name: text().notNull(),
@@ -1624,5 +1646,40 @@ export const demoRequests = pgTable('demo_requests', {
   ip: text(),
   handledById: uuid().references(() => users.id),
   handledAt: timestamp({ withTimezone: true }),
+  // v0.36 — CRM (Huduma kwa Wateja na Masoko). `status` ya zamani inafuatana na `stage`.
+  stage: leadStageEnum().notNull().default('NEW'),
+  source: leadSourceEnum().notNull().default('WEBSITE'),
+  email: text(),
+  district: text(),
+  members: integer(),                 // makadirio ya idadi ya wakulima wa chama
+  assignedToId: uuid().references(() => users.id),
+  nextFollowUpAt: timestamp({ withTimezone: true }),
+  lostReason: text(),
+  amcosId: uuid().references(() => amcos.id),   // chama kilichosajiliwa kutokana na lead hii
+  wonAt: timestamp({ withTimezone: true }),
+  createdById: uuid(),                // null = kutoka tovuti
+  updatedAt: timestamp({ withTimezone: true }),
   createdAt: createdAt(),
-}, (t) => [index().on(t.status, t.createdAt)]);
+}, (t) => [index().on(t.status, t.createdAt), index().on(t.stage), index().on(t.assignedToId)]);
+
+export const leadActivityKindEnum = pgEnum('lead_activity_kind', ['NOTE', 'CALL', 'SMS', 'MEETING', 'STAGE', 'ASSIGN']);
+/** Historia ya kila lead: simu, vikao, SMS, mabadiliko ya hatua — haifutwi. */
+export const leadActivities = pgTable('lead_activities', {
+  id: id(),
+  leadId: uuid().notNull().references(() => demoRequests.id),
+  kind: leadActivityKindEnum().notNull(),
+  body: text().notNull(),
+  meta: jsonb(),
+  createdById: uuid(),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.leadId, t.createdAt)]);
+
+/** Maelezo ya ndani ya timu kuhusu mteja (chama) — yanaonekana kwa wafanyakazi wa CoopLink tu, hayafutwi. */
+export const amcosNotes = pgTable('amcos_notes', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  body: text().notNull(),
+  pinned: boolean().notNull().default(false),
+  createdById: uuid().notNull(),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.amcosId, t.createdAt)]);

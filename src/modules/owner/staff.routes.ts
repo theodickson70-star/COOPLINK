@@ -9,7 +9,7 @@ import { activeSessionsWhere, requirePermission } from '../../middleware/auth';
 import { audit } from '../../lib/audit';
 import { hashPassword, tempPassword } from '../../lib/security';
 import { verifiedName } from '../../lib/name-lookup';
-import { effectivePermissions, PERMISSIONS, PLATFORM_ROLES, ROLE_DEFAULTS, sanitizePermissions, STAFF_ROLES } from '../../lib/permissions';
+import { effectivePermissions, HIRABLE_ROLES, PERMISSIONS, PLATFORM_ROLES, ROLE_DEFAULTS, sanitizePermissions, STAFF_ROLES } from '../../lib/permissions';
 
 export const staffRouter = Router();
 staffRouter.use(requirePermission('staff.manage'));
@@ -32,7 +32,7 @@ async function findStaff(id: string) {
 staffRouter.get(
   '/permissions',
   ah(async (_req, res) => {
-    res.json({ permissions: PERMISSIONS, roleDefaults: ROLE_DEFAULTS, roles: STAFF_ROLES });
+    res.json({ permissions: PERMISSIONS, roleDefaults: ROLE_DEFAULTS, roles: HIRABLE_ROLES, legacyRoles: STAFF_ROLES.filter((r) => !HIRABLE_ROLES.includes(r)) });
   }),
 );
 
@@ -44,7 +44,9 @@ staffRouter.get(
   }),
 );
 
-const staffRole = z.enum(STAFF_ROLES as [string, ...string[]]).transform((r) => r as (typeof STAFF_ROLES)[number]);
+// Vyeo vipya: Finance Manager na Huduma kwa Wateja na Masoko pekee (Tech Support ni ya Owner)
+const staffRole = z.string().refine((r) => (HIRABLE_ROLES as string[]).includes(r), 'Chagua cheo: Finance Manager au Huduma kwa Wateja na Masoko')
+  .transform((r) => r as (typeof STAFF_ROLES)[number]);
 
 staffRouter.post(
   '/',

@@ -99,7 +99,7 @@ businessRouter.get('/analytics', requirePermission('business.read'), ah(async (r
       (select count(*) from (select amcos_id, min(paid_at) as first_paid from platform_payments where status = 'VERIFIED' and category = 'SUBSCRIPTION' and amcos_id is not null group by amcos_id) f
         where date_trunc('month', f.first_paid at time zone 'Africa/Dar_es_Salaam') = m)::int as converted,
       ${finance ? sql`(select coalesce(sum(amount),0) from platform_payments p where p.status = 'VERIFIED' and date_trunc('month', p.paid_at at time zone 'Africa/Dar_es_Salaam') = m)` : sql`null`} as revenue,
-      ${finance ? sql`(select coalesce(sum(amount),0) from platform_expenses e where date_trunc('month', e.spent_at) = m)` : sql`null`} as expenses
+      ${finance ? sql`(select coalesce(sum(amount),0) from platform_expenses e where e.status = 'APPROVED' and date_trunc('month', e.spent_at) = m)` : sql`null`} as expenses
     from months order by m`)).rows as Record<string, string | number | null>[];
   const [totals] = (await db.execute(sql`
     select (select count(*) from amcos where status = 'ACTIVE')::int as active_amcos,
@@ -119,24 +119,4 @@ businessRouter.get('/analytics', requirePermission('business.read'), ah(async (r
   });
 }));
 
-// ---------------------------------------------------------------------
-//  MAOMBI YA MAONYESHO kutoka tovuti ya umma — timu ya mauzo inafuatilia kila ombi
-const DR = schema.demoRequests;
-businessRouter.get('/demo-requests', requirePermission('business.read'), ah(async (req, res) => {
-  const q = z.object({ status: z.enum(['NEW', 'CONTACTED', 'CLOSED']).optional() }).parse(req.query);
-  const rows = await db.select({ r: DR, by: schema.users.fullName }).from(DR).leftJoin(schema.users, eq(schema.users.id, DR.handledById))
-    .where(q.status ? eq(DR.status, q.status) : undefined).orderBy(desc(DR.createdAt)).limit(200);
-  const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(DR).where(eq(DR.status, 'NEW'));
-  res.json({ newCount: n, data: rows.map((x) => ({ ...x.r, ip: undefined, handledBy: x.by })) });
-}));
-businessRouter.patch('/demo-requests/:id', requirePermission('business.read'), ah(async (req, res) => {
-  const { id } = uuidParam.parse(req.params);
-  const b = z.object({ status: z.enum(['NEW', 'CONTACTED', 'CLOSED']), note: z.string().trim().max(500).optional() }).parse(req.body);
-  const out = await db.transaction(async (tx) => {
-    const [row] = await tx.update(DR).set({ status: b.status, note: b.note ?? null, handledById: req.auth!.userId, handledAt: new Date() }).where(eq(DR.id, id)).returning();
-    if (!row) throw notFound('Ombi');
-    await audit(tx, req, { action: 'DEMO_REQUEST_UPDATE', entity: 'DemoRequest', entityId: id, after: { status: b.status } });
-    return row;
-  });
-  res.json({ request: out });
-}));
+// Maombi ya maonyesho kutoka tovuti: tangu v0.36 yanafuatiliwa kwenye CRM — /owner/leads (leads.routes.ts)

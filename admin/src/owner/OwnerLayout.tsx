@@ -27,11 +27,15 @@ const I = {
   business: ic(<><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18" /></>),
   settings: ic(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></>),
   menu: ic(<path d="M3 6h18M3 12h18M3 18h18" />),
+  success: ic(<><path d="M12 21s-7-4.4-9.3-9A5.2 5.2 0 0 1 12 6.5 5.2 5.2 0 0 1 21.3 12C19 16.6 12 21 12 21z" /></>),
+  leads: ic(<><path d="M3 4h18l-7 8.5V19l-4 2v-8.5z" /></>),
 };
 
 // Menyu ya Owner kwa makundi (bila namba)
 export const OWNER_NAV: { to: string; label: string; sub: string; icon: ReactNode; perm?: Permission; group: string }[] = [
   { to: '/owner', label: 'Owner Dashboard', sub: 'Muhtasari wa biashara', icon: I.dash, perm: 'platform.dashboard', group: 'Muhtasari' },
+  { to: '/owner/success', label: 'Customer Success', sub: 'Afya ya wateja na kazi za leo', icon: I.success, perm: 'leads.read', group: 'Wateja' },
+  { to: '/owner/leads', label: 'Leads & CRM', sub: 'Wateja watarajiwa', icon: I.leads, perm: 'leads.read', group: 'Wateja' },
   { to: '/owner/amcos', label: 'AMCOS Management', sub: 'Wateja (vyama)', icon: I.amcos, perm: 'amcos.read', group: 'Wateja' },
   { to: '/owner/support', label: 'Support Tickets', sub: 'Msaada kwa vyama', icon: I.support, perm: 'support.read', group: 'Wateja' },
   { to: '/owner/subscriptions', label: 'Subscriptions & Pricing', sub: 'Mipango na bei', icon: I.subs, perm: 'subscriptions.read', group: 'Wateja' },
@@ -43,7 +47,7 @@ export const OWNER_NAV: { to: string; label: string; sub: string; icon: ReactNod
   { to: '/owner/system', label: 'System Control Center', sub: 'Hali ya mfumo', icon: I.system, perm: 'system.read', group: 'Mfumo na Usalama' },
   { to: '/owner/security', label: 'Security & Audit', sub: 'Usalama na kumbukumbu', icon: I.security, perm: 'security.read', group: 'Mfumo na Usalama' },
   { to: '/owner/backup', label: 'Backup & Database', sub: 'Hifadhi ya data', icon: I.backup, perm: 'backup.read', group: 'Mfumo na Usalama' },
-  { to: '/owner/settings', label: 'Owner Settings', sub: 'Akaunti yangu', icon: I.settings, group: 'Akaunti' },
+  { to: '/owner/settings', label: 'Akaunti yangu', sub: 'Nenosiri, 2FA na vifaa', icon: I.settings, group: 'Akaunti' },
 ];
 
 export function OwnerLayout() {
@@ -76,7 +80,8 @@ export function OwnerLayout() {
   const alerts = useFetch<{ open: number; critical: number }>(user && has('system.read') ? '/owner/system/alerts/summary' : null, { p: loc.pathname, tick });
   if (!user) return null;
   const isOwner = user.role === 'SUPER_ADMIN';
-  const items = OWNER_NAV.filter((n) => !n.perm || has(n.perm));
+  // Dashibodi ya Owner ni ya Owner; wafanyakazi wanaanzia kwenye dawati lao la kazi
+  const items = OWNER_NAV.filter((n) => (!n.perm || has(n.perm)) && (n.to !== '/owner' || user?.role === 'SUPER_ADMIN'));
   const groups = items.reduce<{ name: string; items: typeof items }[]>((acc, it) => {
     const g = acc.find((x) => x.name === it.group);
     if (g) g.items.push(it); else acc.push({ name: it.group, items: [it] });
