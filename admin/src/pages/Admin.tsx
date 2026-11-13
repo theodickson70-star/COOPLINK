@@ -68,12 +68,12 @@ export function Users() {
   const q = useDebounced(search);
   const { data, loading, error, reload } = useFetch<Paged<UserRow>>('/users', { search: q, page, pageSize: 25 });
   const [open, setOpen] = useState(false);
-  const [secret, setSecret] = useState<{ name: string; phone: string; password: string } | null>(null);
+  const [secret, setSecret] = useState<{ name: string; phone: string; password: string | null; delivery?: { status: string; phone: string } | null } | null>(null);
   const act = useAction();
 
   const reset = async (u: UserRow) => {
-    const r = await act.run(() => api<{ temporaryPassword: string }>(`/users/${u.id}/reset-password`, { method: 'POST' }));
-    if (r) setSecret({ name: u.fullName, phone: u.phone, password: r.temporaryPassword });
+    const r = await act.run(() => api<{ temporaryPassword: string | null; delivery: { status: string; phone: string } }>(`/users/${u.id}/reset-password`, { method: 'POST' }));
+    if (r) setSecret({ name: u.fullName, phone: u.phone, password: r.temporaryPassword, delivery: r.delivery });
   };
   const toggle = async (u: UserRow) => {
     const r = await act.run(() => api(`/users/${u.id}`, { method: 'PATCH', body: { isActive: !u.isActive } }));
@@ -117,16 +117,23 @@ export function Users() {
         <Pager meta={data?.meta} onPage={setPage} />
       </section>
       <NewUser open={open} onClose={() => setOpen(false)} onCreated={(s) => { setOpen(false); setSecret(s); reload(); }} />
-      <Modal open={!!secret} title="Nenosiri la muda" onClose={() => setSecret(null)} footer={<Button onClick={() => setSecret(null)}>Nimelinakili</Button>}>
-        <p style={{ margin: 0 }}>Mpe <strong>{secret?.name}</strong> ({phone(secret?.phone)}) nenosiri hili. Ataombwa kulibadilisha akiingia mara ya kwanza.</p>
-        <div className="secret">{secret?.password}</div>
-        <Alert kind="warn">Nenosiri hili linaonyeshwa mara moja tu. Usilitume kwenye kikundi cha WhatsApp.</Alert>
+      <Modal open={!!secret} title={secret?.delivery?.status === 'SENT' ? 'Nenosiri limetumwa kwa SMS' : 'Nenosiri la muda'} onClose={() => setSecret(null)} footer={<Button onClick={() => setSecret(null)}>{secret?.password ? 'Nimelinakili' : 'Sawa'}</Button>}>
+        {secret?.delivery?.status === 'SENT' ? <div className="sent-ok">
+          <span className="sent-ic" aria-hidden="true">✓</span>
+          <p><strong>{secret.name}</strong> ametumiwa SMS kwenye <strong>{secret.delivery.phone}</strong> yenye nenosiri la muda. Ataweka nenosiri lake akiingia.</p>
+          <p className="muted st-small">🔐 Kwa usalama, nenosiri halionyeshwi hapa. Linaisha baada ya saa 72.</p>
+        </div> : <>
+          {secret?.delivery && <Alert kind="warn">SMS haikutumwa kwa {secret.delivery.phone}.</Alert>}
+          <p style={{ margin: 0 }}>Mpe <strong>{secret?.name}</strong> ({phone(secret?.phone)}) nenosiri hili. Ataombwa kulibadilisha akiingia mara ya kwanza.</p>
+          <div className="secret">{secret?.password}</div>
+          <Alert kind="warn">Nenosiri hili linaonyeshwa mara moja tu. Usilitume kwenye kikundi cha WhatsApp.</Alert>
+        </>}
       </Modal>
     </>
   );
 }
 
-function NewUser({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (s: { name: string; phone: string; password: string }) => void }) {
+function NewUser({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (s: { name: string; phone: string; password: string | null; delivery?: { status: string; phone: string } | null }) => void }) {
   const { user } = useAuth();
   const roles = CREATABLE[user?.role ?? ''] ?? [];
   const [fullName, setFullName] = useState('');
@@ -141,11 +148,11 @@ function NewUser({ open, onClose, onCreated }: { open: boolean; onClose: () => v
   const { busy, error, run } = useAction();
 
   const save = async () => {
-    const r = await run(() => api<{ user: UserRow; temporaryPassword: string }>('/users', {
+    const r = await run(() => api<{ user: UserRow; temporaryPassword: string | null; delivery: { status: string; phone: string } }>('/users', {
       method: 'POST',
       body: { fullName, phone: ph, role, amcosId: needsAmcos ? amcosId : undefined, unionId: needsUnion ? unionId : undefined },
     }));
-    if (r) { setFullName(''); setPh(''); onCreated({ name: r.user.fullName, phone: r.user.phone, password: r.temporaryPassword }); }
+    if (r) { setFullName(''); setPh(''); onCreated({ name: r.user.fullName, phone: r.user.phone, password: r.temporaryPassword, delivery: r.delivery }); }
   };
   return (
     <Modal open={open} title="Mtumiaji mpya" onClose={onClose}

@@ -96,7 +96,7 @@ interface AmcosFull {
   training?: boolean; trainingResetAt?: string | null;
 }
 
-export interface Created { code: string; manager: { fullName: string; phone: string } | null; active: boolean }
+export interface Created { code: string; manager: { fullName: string; phone: string } | null; active: boolean; delivery?: { status: string; phone: string } | null; password?: string | null }
 
 function AmcosFormModal({ initial, prefill, onClose, onSaved }: { initial?: AmcosFull; prefill?: { name: string; region: string; district: string; contactName: string; contactPhone: string }; onClose: () => void; onSaved: (id: string, created?: Created) => void }) {
   const { has } = useAuth();
@@ -113,8 +113,9 @@ function AmcosFormModal({ initial, prefill, onClose, onSaved }: { initial?: Amco
   const [withManager, setWithManager] = useState(!initial && has('amcos.staff'));
   const [mgr, setMgr] = useState({ fullName: '', phone: '', email: '', password: '', confirm: '' });
   const [showPw, setShowPw] = useState(false);
+  const [smsPw, setSmsPw] = useState(true); // inapendekezwa: Meneja anatumiwa nenosiri la muda kwa SMS
   const pwOk = mgr.password.length >= 8 && /[A-Za-z]/.test(mgr.password) && /\d/.test(mgr.password);
-  const mgrOk = !withManager || (mgr.fullName.trim().length >= 3 && mgr.phone.trim().length >= 9 && pwOk && mgr.password === mgr.confirm);
+  const mgrOk = !withManager || (mgr.fullName.trim().length >= 3 && mgr.phone.trim().length >= 9 && (smsPw || (pwOk && mgr.password === mgr.confirm)));
   const [trialPlanId, setTrialPlanId] = useState('');
   const set = (k: keyof typeof f) => (v: string) => setF((s) => ({ ...s, [k]: v }));
   const { busy, error, run } = useAction();
@@ -126,9 +127,9 @@ function AmcosFormModal({ initial, prefill, onClose, onSaved }: { initial?: Amco
       if (r) onSaved(r.amcos.id);
     } else {
       delete body.code; // code inatolewa na mfumo
-      const manager = withManager ? { fullName: mgr.fullName.trim(), phone: mgr.phone.trim(), email: mgr.email.trim() || null, password: mgr.password } : undefined;
-      const r = await run(() => api<{ amcos: AmcosFull; manager: { fullName: string; phone: string } | null }>('/owner/amcos', { method: 'POST', body: { ...body, inputCurrency, activate, trialPlanId: activate && trialPlanId ? trialPlanId : undefined, manager } }));
-      if (r) onSaved(r.amcos.id, { code: r.amcos.code, manager: r.manager, active: r.amcos.status === 'ACTIVE' });
+      const manager = withManager ? { fullName: mgr.fullName.trim(), phone: mgr.phone.trim(), email: mgr.email.trim() || null, ...(smsPw ? {} : { password: mgr.password }) } : undefined;
+      const r = await run(() => api<{ amcos: AmcosFull; manager: { fullName: string; phone: string } | null; managerDelivery: { status: string; phone: string } | null; managerTemporaryPassword: string | null }>('/owner/amcos', { method: 'POST', body: { ...body, inputCurrency, activate, trialPlanId: activate && trialPlanId ? trialPlanId : undefined, manager } }));
+      if (r) onSaved(r.amcos.id, { code: r.amcos.code, manager: r.manager, active: r.amcos.status === 'ACTIVE', delivery: r.managerDelivery, password: r.managerTemporaryPassword });
     }
   };
   return (
@@ -162,16 +163,21 @@ function AmcosFormModal({ initial, prefill, onClose, onSaved }: { initial?: Amco
               <div className="form-grid">
                 <PhoneNameFields phoneLabel="Simu ya Meneja (ya kuingia) *" phone={mgr.phone} onPhone={(v) => setMgr((m) => ({ ...m, phone: v }))} nameLabel="Jina kamili la Meneja" name={mgr.fullName} onName={(v) => setMgr((m) => ({ ...m, fullName: v }))} />
                 <TextField label="Email ya Meneja" type="email" value={mgr.email} onChange={(v) => setMgr({ ...mgr, email: v })} />
-                <span />
+              </div>
+              <div className="pw-choice" role="radiogroup" aria-label="Nenosiri la Meneja">
+                <label className={smsPw ? 'on' : ''}><input type="radio" checked={smsPw} onChange={() => setSmsPw(true)} /><span><b>📱 Tuma nenosiri la muda kwa SMS</b><small>Inapendekezwa — Meneja analipokea kwenye simu yake; wewe hulioni.</small></span></label>
+                <label className={!smsPw ? 'on' : ''}><input type="radio" checked={!smsPw} onChange={() => setSmsPw(false)} /><span><b>🔑 Nitaweka nenosiri mwenyewe</b><small>Utampa Meneja kwa mkono.</small></span></label>
+              </div>
+              {!smsPw && <div className="form-grid">
                 <TextField label="Nenosiri la kuanzia *" type={showPw ? 'text' : 'password'} autoComplete="new-password" value={mgr.password} onChange={(v) => setMgr({ ...mgr, password: v })}
                   help={mgr.password && !pwOk ? 'Herufi 8 au zaidi, ziwe na herufi na namba' : 'Herufi 8+, herufi na namba'} />
                 <TextField label="Rudia nenosiri *" type={showPw ? 'text' : 'password'} autoComplete="new-password" value={mgr.confirm} onChange={(v) => setMgr({ ...mgr, confirm: v })}
                   help={mgr.confirm && mgr.confirm !== mgr.password ? 'Halilingani' : undefined} />
-              </div>
-              <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14 }}>
+              </div>}
+              {!smsPw && <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14 }}>
                 <input type="checkbox" checked={showPw} onChange={(e) => setShowPw(e.target.checked)} /> Onyesha nenosiri
-              </label>
-              <p className="muted" style={{ fontSize: 13, margin: '6px 0 0' }}>Mpe Meneja namba hii na nenosiri hili. Akiingia mara ya kwanza, atalazimika kuweka nenosiri lake mwenyewe.</p>
+              </label>}
+              <p className="muted" style={{ fontSize: 13, margin: '6px 0 0' }}>Akiingia mara ya kwanza, Meneja atalazimika kuweka nenosiri lake mwenyewe.</p>
             </>
           )}
         </fieldset>
@@ -240,7 +246,11 @@ export function OwnerAmcosDetail() {
           <Alert kind="ok">
             Chama kimesajiliwa kwa code <strong>{created.code}</strong>.{' '}
             {created.manager
-              ? <>Meneja <strong>{created.manager.fullName}</strong> anaingia kwa simu <strong>{phone(created.manager.phone)}</strong> na nenosiri ulilloweka; atalazimika kulibadilisha akiingia mara ya kwanza.{!created.active && ' Ataweza kuingia baada ya chama kuidhinishwa.'}</>
+              ? created.delivery?.status === 'SENT'
+                ? <>Meneja <strong>{created.manager.fullName}</strong> ametumiwa nenosiri la muda kwa SMS kwenye <strong>{created.delivery.phone}</strong>; ataweka nenosiri lake akiingia.{!created.active && ' Ataweza kuingia baada ya chama kuidhinishwa.'}</>
+                : created.password
+                  ? <>SMS haikutumwa. Mpe Meneja <strong>{created.manager.fullName}</strong> nenosiri hili la muda (linaonyeshwa mara moja tu): <span className="secret" style={{ display: 'inline-block' }}>{created.password}</span></>
+                  : <>Meneja <strong>{created.manager.fullName}</strong> anaingia kwa simu <strong>{phone(created.manager.phone)}</strong> na nenosiri ulilloweka; atalazimika kulibadilisha akiingia mara ya kwanza.{!created.active && ' Ataweza kuingia baada ya chama kuidhinishwa.'}</>
               : <>Weka Meneja kwenye sehemu ya <strong>Watumishi (3)</strong> hapa chini.</>}
           </Alert>
         </div>
@@ -415,7 +425,7 @@ function StaffSlots({ amcosId, disabled }: { amcosId: string; disabled: boolean 
   const { data, loading, reload } = useFetch<{ slots: Slot[]; history: StaffUser[] }>(`/owner/amcos/${amcosId}/staff`);
   const [assign, setAssign] = useState<Slot | null>(null);
   const [off, setOff] = useState<StaffUser | null>(null);
-  const [secret, setSecret] = useState<{ name: string; phone: string; password: string | null } | null>(null);
+  const [secret, setSecret] = useState<{ name: string; phone: string; password: string | null; delivery?: { status: string; phone: string } | null } | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [help, setHelp] = useState<string | null>(null);
   const act = useAction();
@@ -437,9 +447,9 @@ function StaffSlots({ amcosId, disabled }: { amcosId: string; disabled: boolean 
                   {manage && (
                     <div className="actions">
                       <Button size="sm" variant="secondary" busy={act.busy} onClick={async () => {
-                        const r = await act.run(() => api<{ temporaryPassword: string }>(`/owner/amcos/${amcosId}/staff/${s.holder!.id}/reset-password`, { method: 'POST' }));
-                        if (r) setSecret({ name: s.holder!.fullName, phone: s.holder!.phone, password: r.temporaryPassword });
-                      }}>Nenosiri jipya</Button>
+                        const r = await act.run(() => api<{ temporaryPassword: string | null; delivery: { status: string; phone: string } }>(`/owner/amcos/${amcosId}/staff/${s.holder!.id}/reset-password`, { method: 'POST' }));
+                        if (r) setSecret({ name: s.holder!.fullName, phone: s.holder!.phone, password: r.temporaryPassword, delivery: r.delivery });
+                      }}>Tuma nenosiri jipya (SMS)</Button>
                       <Button size="sm" variant="secondary" onClick={() => setAssign(s)}>Badilisha mtumishi</Button>
                       <Button size="sm" variant="ghost" onClick={() => setOff(s.holder)}>Zima</Button>
                     </div>
@@ -461,8 +471,13 @@ function StaffSlots({ amcosId, disabled }: { amcosId: string; disabled: boolean 
       <ConfirmDialog open={!!off} danger title={`Zima ${off?.fullName ?? ''}`} confirmLabel="Zima akaunti" onClose={() => setOff(null)}
         message="Mtumishi atatolewa kwenye mfumo mara moja. Rekodi zake zote zinabaki. Nafasi itakuwa wazi hadi uweke mtu mwingine."
         onConfirm={async (c) => { await api(`/owner/amcos/${amcosId}/staff/${off!.id}/active`, { method: 'POST', body: { isActive: false, ...c } }); setOff(null); reload(); }} />
-      <Modal open={!!secret} title={secret?.password ? 'Nenosiri la muda' : 'Akaunti imeundwa'} onClose={() => setSecret(null)} footer={<Button onClick={() => setSecret(null)}>{secret?.password ? 'Nimelinakili' : 'Sawa'}</Button>}>
-        {secret?.password ? <>
+      <Modal open={!!secret} title={secret?.delivery?.status === 'SENT' ? 'Nenosiri limetumwa kwa SMS' : secret?.password ? 'Nenosiri la muda' : 'Akaunti imeundwa'} onClose={() => setSecret(null)} footer={<Button onClick={() => setSecret(null)}>{secret?.password ? 'Nimelinakili' : 'Sawa'}</Button>}>
+        {secret?.delivery?.status === 'SENT' ? <div className="sent-ok">
+          <span className="sent-ic" aria-hidden="true">✓</span>
+          <p><strong>{secret.name}</strong> ametumiwa SMS kwenye <strong>{secret.delivery.phone}</strong> yenye nenosiri la muda. Ataweka nenosiri lake akiingia.</p>
+          <p className="muted st-small">🔐 Kwa usalama, nenosiri halionyeshwi hapa. Linaisha baada ya saa 72.</p>
+        </div> : secret?.password ? <>
+          {secret.delivery && <Alert kind="warn">SMS haikutumwa kwa {secret.delivery.phone}. Mpe nenosiri hili kwa njia salama.</Alert>}
           <p style={{ margin: 0 }}>Mpe <strong>{secret.name}</strong> ({phone(secret.phone)}) nenosiri hili. Ataombwa kulibadilisha akiingia mara ya kwanza.</p>
           <div className="secret">{secret.password}</div>
           <Alert kind="warn">Linaonyeshwa mara moja tu.</Alert>
@@ -474,7 +489,7 @@ function StaffSlots({ amcosId, disabled }: { amcosId: string; disabled: boolean 
 
 const STAFF_TITLE_OF = (r: string) => ({ AMCOS_ADMIN: 'Meneja', ACCOUNTANT: 'Mhasibu', CLERK: 'Storekeeper', AMCOS_VIEWER: 'Mtazamaji' } as Record<string, string>)[r] ?? r;
 
-function AssignStaff({ amcosId, slot, onClose, onDone }: { amcosId: string; slot: Slot; onClose: () => void; onDone: (s: { name: string; phone: string; password: string | null }) => void }) {
+function AssignStaff({ amcosId, slot, onClose, onDone }: { amcosId: string; slot: Slot; onClose: () => void; onDone: (s: { name: string; phone: string; password: string | null; delivery?: { status: string; phone: string } | null }) => void }) {
   const [fullName, setFullName] = useState('');
   const [ph, setPh] = useState('');
   const [email, setEmail] = useState('');
@@ -488,11 +503,11 @@ function AssignStaff({ amcosId, slot, onClose, onDone }: { amcosId: string; slot
   return (
     <Modal open title={replace ? `Badilisha ${slot.title}` : `Weka ${slot.title}`} onClose={onClose}
       footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button variant={replace ? 'danger' : 'primary'} busy={busy} disabled={fullName.trim().length < 3 || !ph || (replace && !pw) || !initOk} onClick={async () => {
-        const r = await run(() => api<{ user: StaffUser; temporaryPassword: string | null }>(`/owner/amcos/${amcosId}/staff`, { method: 'POST', body: {
+        const r = await run(() => api<{ user: StaffUser; temporaryPassword: string | null; delivery: { status: string; phone: string } | null }>(`/owner/amcos/${amcosId}/staff`, { method: 'POST', body: {
           role: slot.role, fullName, phone: ph, email: email || null, password: initPw || undefined,
           ...(replace ? { replace: true, confirmPassword: pw, confirmCode: code || undefined } : {}),
         } }));
-        if (r) onDone({ name: r.user.fullName, phone: r.user.phone, password: r.temporaryPassword });
+        if (r) onDone({ name: r.user.fullName, phone: r.user.phone, password: r.temporaryPassword, delivery: r.delivery });
       }}>{replace ? 'Badilisha' : 'Unda akaunti'}</Button></>}>
       {replace && <Alert kind="warn"><strong>{slot.holder!.fullName}</strong> atazimwa (hafutwi) na kutolewa kwenye mfumo mara moja. Rekodi na audit zake zinabaki.</Alert>}
       <Alert>{error}</Alert>
@@ -502,7 +517,7 @@ function AssignStaff({ amcosId, slot, onClose, onDone }: { amcosId: string; slot
       </div>
       <div className="form-grid">
         <TextField label="Nenosiri la kuanzia (hiari)" type="password" autoComplete="new-password" value={initPw} onChange={setInitPw}
-          help={initPw && !(initPw.length >= 8 && /[A-Za-z]/.test(initPw) && /\d/.test(initPw)) ? 'Herufi 8+, herufi na namba' : 'Ukiacha wazi, mfumo utatoa nenosiri la muda'} />
+          help={initPw && !(initPw.length >= 8 && /[A-Za-z]/.test(initPw) && /\d/.test(initPw)) ? 'Herufi 8+, herufi na namba' : 'Inapendekezwa uache wazi: nenosiri la muda litatumwa kwa SMS kwa mtumishi'} />
         {initPw && <TextField label="Rudia nenosiri" type="password" autoComplete="new-password" value={initPw2} onChange={setInitPw2} help={initPw2 && initPw2 !== initPw ? 'Halilingani' : undefined} />}
       </div>
       {replace && <div className="form-grid">

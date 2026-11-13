@@ -8,6 +8,7 @@ import { badRequest, forbidden, notFound } from '../lib/errors';
 import { requireRole, ROLES, type Role } from '../middleware/auth';
 import { canAccessAmcos } from '../middleware/tenant';
 import { audit } from '../lib/audit';
+import { sendTempCredentials, tempExpiry } from '../lib/staff-credentials';
 import { isPlatformRole, isStaffRole } from '../lib/permissions';
 import { verifiedName } from '../lib/name-lookup';
 import { assertSlotFree } from '../lib/amcos-staff';
@@ -118,13 +119,16 @@ usersRouter.post(
     const user = await db.transaction(async (tx) => {
       const [u] = await tx
         .insert(schema.users)
-        .values({ ...body, passwordHash: await hashPassword(password), mustChangePassword: true })
+        .values({ ...body, passwordHash: await hashPassword(password), mustChangePassword: true, tempPasswordExpiresAt: tempExpiry() })
         .returning(userCols);
       await audit(tx, req, { action: 'USER_CREATE', entity: 'User', entityId: u.id, amcosId: u.amcosId, after: u });
       return u;
     });
-    // Nenosiri la muda linaonyeshwa MARA MOJA tu — mpe mtumiaji, atalibadilisha akiingia
-    res.status(201).json({ user, temporaryPassword: password });
+    // Nenosiri la muda linatumwa kwa SMS kwa mtumiaji mwenyewe; SMS ikishindwa, linaonyeshwa MARA MOJA tu
+    const a = user.amcosId ? await db.query.amcos.findFirst({ where: eq(schema.amcos.id, user.amcosId), columns: { name: true } }) : null;
+    const delivery = await sendTempCredentials(user, password, { kind: 'NEW', amcosName: a?.name });
+    await audit(db, req, { action: 'STAFF_CREDENTIALS_SENT', entity: 'User', entityId: user.id, amcosId: user.amcosId, after: { channel: 'SMS', status: delivery.status, kind: 'NEW' } });
+    res.status(201).json({ user, delivery, temporaryPassword: delivery.status === 'SENT' ? null : password });
   }),
 );
 
@@ -193,10 +197,13 @@ usersRouter.post(
     await db.transaction(async (tx) => {
       await tx
         .update(schema.users)
-        .set({ passwordHash: await hashPassword(password), mustChangePassword: true, tokenVersion: sql`${schema.users.tokenVersion} + 1` })
+        .set({ passwordHash: await hashPassword(password), mustChangePassword: true, tempPasswordExpiresAt: tempExpiry(), tokenVersion: sql`${schema.users.tokenVersion} + 1` })
         .where(eq(schema.users.id, id));
       await audit(tx, req, { action: 'USER_PASSWORD_RESET', entity: 'User', entityId: id, amcosId: existing.amcosId });
     });
-    res.json({ temporaryPassword: password });
+    const a = existing.amcosId ? await db.query.amcos.findFirst({ where: eq(schema.amcos.id, existing.amcosId), columns: { name: true } }) : null;
+    const delivery = await sendTempCredentials(existing, password, { kind: existing.lastLoginAt ? 'RESET' : 'NEW', amcosName: a?.name });
+    await audit(db, req, { action: 'STAFF_CREDENTIALS_SENT', entity: 'User', entityId: id, amcosId: existing.amcosId, after: { channel: 'SMS', status: delivery.status, kind: 'RESET' } });
+    res.json({ delivery, temporaryPassword: delivery.status === 'SENT' ? null : password });
   }),
 );

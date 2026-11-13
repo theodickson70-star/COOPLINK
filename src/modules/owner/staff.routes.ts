@@ -5,9 +5,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, schema } from '../../db';
 import { ah, phoneSchema, uuidParam } from '../../lib/http';
 import { badRequest, conflict, forbidden, notFound } from '../../lib/errors';
-import { sendNow } from '../../lib/sms';
-import { getSetting } from '../../lib/settings';
-import { ROLE_TITLE_SW, TEMP_PASSWORD_HOURS } from '../../lib/staff-credentials';
+import { sendTempCredentials, tempExpiry } from '../../lib/staff-credentials';
 import { activeSessionsWhere, requirePermission } from '../../middleware/auth';
 import { audit } from '../../lib/audit';
 import { hashPassword, tempPassword } from '../../lib/security';
@@ -25,24 +23,6 @@ const cols = {
 };
 const withPerms = <T extends { role: (typeof schema.roleEnum.enumValues)[number]; permissions: string[] | null }>(u: T) =>
   ({ ...u, customPermissions: u.permissions !== null, permissions: effectivePermissions(u.role, u.permissions) });
-
-/**
- * Nenosiri la muda linatumwa kwa SMS kwa mfanyakazi mwenyewe (Owner haoni nenosiri).
- * Kumbukumbu ya SMS inahifadhiwa BILA nenosiri. SMS ikishindwa, nenosiri linarudishwa kwa Owner mara moja tu ili ampe kwa mkono.
- */
-async function sendCredentials(u: { id: string; fullName: string; phone: string; role: string }, password: string, kind: 'NEW' | 'RESET') {
-  const site = (await getSetting('business.profile')).website || 'cooplink';
-  const local = u.phone.replace(/^255/, '0');
-  const head = kind === 'NEW'
-    ? `CoopLink: Karibu ${u.fullName.split(' ')[0]}! Umesajiliwa kama ${ROLE_TITLE_SW[u.role] ?? 'mfanyakazi'}.`
-    : `CoopLink: ${u.fullName.split(' ')[0]}, nenosiri jipya la muda limetolewa kwa akaunti yako.`;
-  const tail = `Ingia: ${site}/login Simu: ${local} Nenosiri la muda: ${password} (linaisha baada ya saa ${TEMP_PASSWORD_HOURS}). Utaweka nenosiri lako. Usimpe mtu yeyote.`;
-  const r = await sendNow({ kind: 'STAFF_CREDENTIALS', phone: u.phone, userId: u.id, text: `${head} ${tail}`,
-    logText: `${head} ${tail.replace(password, '••••••••')}` });
-  const masked = local.replace(/^(\d{4})\d{3}(\d{3})$/, '$1•••$2');
-  return { status: r.status, phone: masked, error: r.status === 'SENT' ? null : r.error ?? null };
-}
-const tempExpiry = () => new Date(Date.now() + TEMP_PASSWORD_HOURS * 3600_000);
 
 async function findStaff(id: string) {
   const [u] = await db.select(cols).from(U).where(and(eq(U.id, id), inArray(U.role, PLATFORM_ROLES)));
@@ -90,7 +70,7 @@ staffRouter.post(
       await audit(tx, req, { action: 'STAFF_CREATE', entity: 'User', entityId: u.id, after: u });
       return u;
     });
-    const delivery = await sendCredentials(user, password, 'NEW');
+    const delivery = await sendTempCredentials(user, password, { kind: 'NEW' });
     await audit(db, req, { action: 'STAFF_CREDENTIALS_SENT', entity: 'User', entityId: user.id, after: { channel: 'SMS', status: delivery.status, kind: 'NEW' } });
     // Nenosiri linarudishwa kwa Owner TU kama SMS haikutumwa (ili ampe kwa mkono)
     res.status(201).json({ staff: withPerms(user), delivery, temporaryPassword: delivery.status === 'SENT' ? null : password });
@@ -153,7 +133,7 @@ staffRouter.post(
       await tx.update(schema.userSessions).set({ revokedAt: new Date(), revokedById: req.auth!.userId }).where(activeSessionsWhere(id));
       await audit(tx, req, { action: 'STAFF_PASSWORD_RESET', entity: 'User', entityId: id });
     });
-    const delivery = await sendCredentials(before, password, before.lastLoginAt ? 'RESET' : 'NEW');
+    const delivery = await sendTempCredentials(before, password, { kind: before.lastLoginAt ? 'RESET' : 'NEW' });
     await audit(db, req, { action: 'STAFF_CREDENTIALS_SENT', entity: 'User', entityId: id, after: { channel: 'SMS', status: delivery.status, kind: 'RESET' } });
     res.json({ delivery, temporaryPassword: delivery.status === 'SENT' ? null : password });
   }),

@@ -7,6 +7,7 @@ import { sql } from 'drizzle-orm';
 import { createApp } from '../src/app';
 import { db, pool } from '../src/db';
 import { hashPassword } from '../src/lib/security';
+import { dryOutbox } from '../src/lib/sms';
 import { clearStaffingCache } from '../src/lib/amcos-permissions';
 import { D } from '../src/lib/money';
 import { paye } from '../src/lib/payroll';
@@ -80,8 +81,13 @@ before(async () => {
   for (const role of ['AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK']) {
     const p = uniqPhone('25576');
     const r = await call('POST', `/api/v1/owner/amcos/${amcosId}/staff`, owner, { role, fullName: `${role} ${RUN}`, phone: p });
-    const t = (await login(p, r.body.temporaryPassword)).token;
-    tokens[role] = (await call('POST', '/api/v1/auth/change-password', t, { currentPassword: r.body.temporaryPassword, newPassword: 'Staff12345' })).body.token;
+    // v0.37: nenosiri la muda linatumwa kwa SMS (Owner halioni) — kwenye majaribio linasomwa kutoka SMS ya DRY
+    assert.equal(r.body.temporaryPassword, null); assert.equal(r.body.delivery.status, 'SENT');
+    const sms = [...dryOutbox].reverse().find((x) => x.phone === p && /Nenosiri la muda: /.test(x.text))!;
+    assert.match(sms.text, /Uhasibu .* AMCOS/, 'SMS inataja chama');
+    const pw = /Nenosiri la muda: (\S+)/.exec(sms.text)![1];
+    const t = (await login(p, pw)).token;
+    tokens[role] = (await call('POST', '/api/v1/auth/change-password', t, { currentPassword: pw, newPassword: 'Staff12345' })).body.token;
   }
   manager = tokens.AMCOS_ADMIN; accountant = tokens.ACCOUNTANT; storekeeper = tokens.CLERK;
   cash = (await call('POST', '/api/v1/finance/accounts', accountant, { name: 'Taslimu ofisini', kind: 'CASH', openingBalance: '2000000' })).body.account;

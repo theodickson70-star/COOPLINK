@@ -211,3 +211,17 @@ test('Usajili wa wafanyakazi: nenosiri la muda kwa SMS, halihifadhiwi kwenye kum
   assert.equal(u.e, null, 'muda unaondoka akibadilisha');
   assert.equal((await call('POST', `/api/v1/owner/staff/${c.body.staff.id}/reset-password`, cs.token, {})).status, 403, 'Owner pekee');
 });
+
+test('Watumishi wa chama: Meneja bila nenosiri la Owner anatumiwa nenosiri la muda kwa SMS', async () => {
+  const mPhone = uniqPhone('25578');
+  const r = await call('POST', '/api/v1/owner/amcos', owner, { name: `Sms ${RUN} AMCOS`, activate: true, manager: { fullName: `Meneja Sms ${RUN}`, phone: mPhone } });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.managerDelivery.status, 'SENT'); assert.equal(r.body.managerTemporaryPassword, null);
+  const pw = smsPassword(mPhone)!;
+  const t = await login(mPhone, pw);
+  assert.ok(t.token); assert.equal(t.user.mustChangePassword, true);
+  // Owner akiomba nenosiri jipya, linaenda kwa SMS
+  const rs = await call('POST', `/api/v1/owner/amcos/${r.body.amcos.id}/staff/${t.user.id}/reset-password`, owner, {});
+  assert.equal(rs.status, 200); assert.equal(rs.body.temporaryPassword, null);
+  assert.notEqual(smsPassword(mPhone), pw);
+});

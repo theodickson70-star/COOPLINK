@@ -1920,3 +1920,10 @@ a.user-chip:hover { background: var(--line-2); }
 .sent-ok p { margin: 0; }
 .sent-steps { text-align: left; margin: 4px 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; }
 @media (max-width: 720px) { .role-cards { grid-template-columns: 1fr; } .wiz-steps li { font-size: 0; gap: 0; justify-content: center; } .wiz-steps li span { font-size: 12px; } }
+.pw-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+.pw-choice label { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); border-radius: 12px; padding: 12px; cursor: pointer; background: var(--paper); }
+.pw-choice label.on { border-color: var(--green); box-shadow: inset 0 0 0 1px var(--green); }
+.pw-choice input { accent-color: var(--green); margin-top: 3px; }
+.pw-choice span { display: flex; flex-direction: column; gap: 2px; }
+.pw-choice small { color: var(--muted); font-size: 12.5px; }
+@media (max-width: 720px) { .pw-choice { grid-template-columns: 1fr; } }

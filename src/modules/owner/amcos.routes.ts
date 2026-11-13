@@ -7,6 +7,7 @@ import { ah, paged, paginationQuery, phoneSchema, uuidParam } from '../../lib/ht
 import { badRequest, conflict, forbidden, notFound } from '../../lib/errors';
 import { requirePermission, requireReauth } from '../../middleware/auth';
 import { audit } from '../../lib/audit';
+import { sendTempCredentials, tempExpiry } from '../../lib/staff-credentials';
 import { assignPlan, currentSubscription, today } from '../../lib/subscriptions';
 import { ensureEntranceFee } from '../../lib/fees';
 import { hashPassword, passwordSchemaRule, tempPassword } from '../../lib/security';
@@ -92,7 +93,8 @@ ownerAmcosRouter.post(
         fullName: z.string().trim().min(3, 'Jina la Meneja angalau herufi 3'),
         phone: phoneSchema,
         email: z.string().email().nullable().optional(),
-        password: z.string().refine(passwordSchemaRule.test, passwordSchemaRule.message),
+        // Hiari: bila nenosiri, Meneja anatumiwa nenosiri la muda kwa SMS (inapendekezwa — Owner halioni)
+        password: z.string().refine(passwordSchemaRule.test, passwordSchemaRule.message).optional(),
       }).optional(),
     }).parse(req.body);
     if (b.contactPhone) b.contactName = (await lookupNameOrNull(b.contactPhone, 'Simu ya mawasiliano')) ?? b.contactName ?? null;
@@ -102,7 +104,8 @@ ownerAmcosRouter.post(
         throw conflict('Namba ya simu ya Meneja tayari inatumika na akaunti nyingine');
       }
     }
-    const managerHash = b.manager ? await hashPassword(b.manager.password) : null;
+    const managerTemp = b.manager && !b.manager.password ? tempPassword() : null;
+    const managerHash = b.manager ? await hashPassword(b.manager.password ?? managerTemp!) : null;
     // Bila ruhusa ya kuidhinisha, chama kipya kinasubiri idhini (PENDING)
     const canApprove = req.auth!.permissions.includes('amcos.approve');
     const activate = !!b.activate && canApprove;
@@ -124,19 +127,24 @@ ownerAmcosRouter.post(
       if (plan) await assignPlan(tx, { amcosId: a.id, plan, cycle: 'TRIAL', startDate: today(), discountPercent: '0', userId: req.auth!.userId });
       if (activate) await ensureEntranceFee(tx, a.id, req.auth!.userId); // ada ya kingilio inaanza kuhesabiwa chama kikifunguliwa
       await audit(tx, req, { action: 'AMCOS_REGISTER', entity: 'Amcos', entityId: a.id, amcosId: a.id, after: a });
-      let mgr: { id: string; fullName: string; phone: string } | null = null;
+      let mgr: { id: string; fullName: string; phone: string; role: string; amcosId: string | null } | null = null;
       if (manager && managerHash) {
         const [u] = await tx.insert(schema.users).values({
           fullName: manager.fullName, phone: manager.phone, email: manager.email ?? null, role: 'AMCOS_ADMIN', amcosId: a.id,
-          passwordHash: managerHash, mustChangePassword: true,
-        }).returning({ id: schema.users.id, fullName: schema.users.fullName, phone: schema.users.phone });
+          passwordHash: managerHash, mustChangePassword: true, tempPasswordExpiresAt: managerTemp && activate ? tempExpiry() : null,
+        }).returning({ id: schema.users.id, fullName: schema.users.fullName, phone: schema.users.phone, role: schema.users.role, amcosId: schema.users.amcosId });
         // Nenosiri halihifadhiwi kwenye audit log
-        await audit(tx, req, { action: 'AMCOS_STAFF_ASSIGN', entity: 'User', entityId: u.id, amcosId: a.id, after: { ...u, role: 'AMCOS_ADMIN', title: 'Meneja', initialPasswordSetBy: 'owner' } });
+        await audit(tx, req, { action: 'AMCOS_STAFF_ASSIGN', entity: 'User', entityId: u.id, amcosId: a.id, after: { ...u, role: 'AMCOS_ADMIN', title: 'Meneja', initialPasswordSetBy: managerTemp ? 'sms' : 'owner' } });
         mgr = u;
       }
       return { amcos: a, manager: mgr };
     });
-    res.status(201).json(result);
+    let managerDelivery = null;
+    if (result.manager && managerTemp) {
+      managerDelivery = await sendTempCredentials(result.manager, managerTemp, { kind: 'NEW', amcosName: result.amcos.name, pending: !activate });
+      await audit(db, req, { action: 'STAFF_CREDENTIALS_SENT', entity: 'User', entityId: result.manager.id, amcosId: result.amcos.id, after: { channel: 'SMS', status: managerDelivery.status, kind: 'NEW' } });
+    }
+    res.status(201).json({ ...result, managerDelivery, managerTemporaryPassword: managerTemp && managerDelivery?.status !== 'SENT' ? managerTemp : null });
   }),
 );
 
@@ -374,6 +382,7 @@ ownerAmcosRouter.post('/:id/staff', requirePermission('amcos.staff'), ah(async (
   if (await db.query.users.findFirst({ where: eq(U.phone, body.phone) })) throw conflict('Namba hii ya simu tayari inatumika na akaunti nyingine');
   const ownPassword = !!body.password;
   const password = body.password ?? tempPassword();
+  const pending = a.status !== 'ACTIVE';
   const user = await db.transaction(async (tx) => {
     if (holder) {
       await tx.update(U).set({ isActive: false, tokenVersion: sql`${U.tokenVersion} + 1` }).where(eq(U.id, holder.id));
@@ -381,13 +390,16 @@ ownerAmcosRouter.post('/:id/staff', requirePermission('amcos.staff'), ah(async (
     }
     const [u] = await tx.insert(U).values({
       fullName: body.fullName, phone: body.phone, email: body.email ?? null, role: body.role, amcosId: id,
-      passwordHash: await hashPassword(password), mustChangePassword: true,
+      passwordHash: await hashPassword(password), mustChangePassword: true, tempPasswordExpiresAt: ownPassword || pending ? null : tempExpiry(),
     }).returning(staffCols);
     await audit(tx, req, { action: 'AMCOS_STAFF_ASSIGN', entity: 'User', entityId: u.id, amcosId: id, after: { ...u, title: STAFF_TITLE[body.role as AmcosStaffRole], replaced: holder?.id ?? null } });
     return u;
   });
-  // Nenosiri la muda linaonyeshwa MARA MOJA tu; nenosiri alilochagua Owner halirudishwi
-  res.status(201).json({ user, temporaryPassword: ownPassword ? null : password });
+  // Nenosiri la muda linatumwa kwa SMS kwa mtumishi (Owner halioni); SMS ikishindwa, linarudishwa mara moja.
+  // Nenosiri alilochagua Owner halitumwi wala halirudishwi.
+  const delivery = ownPassword ? null : await sendTempCredentials({ ...user, amcosId: id }, password, { kind: 'NEW', amcosName: a.name, pending });
+  if (delivery) await audit(db, req, { action: 'STAFF_CREDENTIALS_SENT', entity: 'User', entityId: user.id, amcosId: id, after: { channel: 'SMS', status: delivery.status, kind: 'NEW' } });
+  res.status(201).json({ user, delivery, temporaryPassword: ownPassword || delivery?.status === 'SENT' ? null : password });
 }));
 
 async function scopedStaff(amcosId: string, userId: string) {
@@ -400,12 +412,16 @@ ownerAmcosRouter.post('/:id/staff/:userId/reset-password', requirePermission('am
   const { id, userId } = z.object({ id: z.string().uuid(), userId: z.string().uuid() }).parse(req.params);
   const u = await scopedStaff(id, userId);
   if (!u.isActive) throw badRequest('Akaunti hii imezimwa');
+  const a = await findAmcos(id);
+  const pending = a.status !== 'ACTIVE';
   const password = tempPassword();
   await db.transaction(async (tx) => {
-    await tx.update(U).set({ passwordHash: await hashPassword(password), mustChangePassword: true, tokenVersion: sql`${U.tokenVersion} + 1` }).where(eq(U.id, userId));
+    await tx.update(U).set({ passwordHash: await hashPassword(password), mustChangePassword: true, tempPasswordExpiresAt: pending ? null : tempExpiry(), tokenVersion: sql`${U.tokenVersion} + 1` }).where(eq(U.id, userId));
     await audit(tx, req, { action: 'AMCOS_STAFF_PASSWORD_RESET', entity: 'User', entityId: userId, amcosId: id });
   });
-  res.json({ temporaryPassword: password });
+  const delivery = await sendTempCredentials(u, password, { kind: u.lastLoginAt ? 'RESET' : 'NEW', amcosName: a.name, pending });
+  await audit(db, req, { action: 'STAFF_CREDENTIALS_SENT', entity: 'User', entityId: userId, amcosId: id, after: { channel: 'SMS', status: delivery.status, kind: 'RESET' } });
+  res.json({ delivery, temporaryPassword: delivery.status === 'SENT' ? null : password });
 }));
 
 ownerAmcosRouter.post('/:id/staff/:userId/active', requirePermission('amcos.staff'), ah(async (req, res) => {
