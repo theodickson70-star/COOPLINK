@@ -2,11 +2,12 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { PortalSummary } from '../components/FarmerPortalAccess';
 import { useT } from '../lib/prefs';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, type Paged } from '../lib/api';
+import { api, ApiError, type Paged } from '../lib/api';
 import { useAction, useDebounced, useFetch } from '../lib/hooks';
 import { date, phone } from '../lib/format';
 import { useAuth } from '../lib/auth';
 import { NameNote, PhoneNameFields, usePhoneName } from '../components/PhoneName';
+import { PhoneOtpStep } from '../components/FarmerOtp';
 import { Alert, Badge, Button, Empty, Input, Loading, PageHead, Pager, Select, SelectField, TextField } from '../components/ui';
 
 export interface Member {
@@ -427,20 +428,41 @@ export const clearMemberDraft = () => writeDraft(null);
 
 export function MemberNew() {
   const nav = useNavigate();
-  const { busy, error, run } = useAction();
+  const { busy, error, setError, run } = useAction();
+  // v0.40: namba za mkulima zinathibitishwa kwa OTP kabla ya usajili (backend ikirudisha PHONE_OTP_REQUIRED)
+  const [pending, setPending] = useState<{ p: Record<string, unknown>; photo: { mimeType: string; data: string } | null; phones: string[] } | null>(null);
+  const save = async (p: Record<string, unknown>, photo: { mimeType: string; data: string } | null, extra: Record<string, unknown> = {}) => {
+    setError(null);
+    const r = await run(async () => {
+      let res: { member: Member };
+      try {
+        res = await api<{ member: Member }>('/members', { method: 'POST', body: { ...p, ...extra } });
+      } catch (e) {
+        if (e instanceof ApiError && e.code === 'PHONE_OTP_REQUIRED') {
+          const phones = [...new Set([p.phone, p.mobileMoneyNumber].map((x) => (typeof x === 'string' ? x.trim() : '')).filter(Boolean))];
+          setPending({ p, photo, phones });
+          return null;
+        }
+        throw e;
+      }
+      // Picha ni ya hiari: ikishindwa kupakia, mkulima amesajiliwa na picha inaweza kuwekwa baadaye
+      if (photo) await api(`/members/${res.member.id}/photo`, { method: 'PUT', body: { mimeType: photo.mimeType, data: photo.data } }).catch(() => undefined);
+      return res;
+    });
+    if (r) { clearMemberDraft(); nav(`/members/${r.member.id}`); }
+  };
   return (
     <>
       <PageHead title="Sajili mwanachama" sub="Weka namba ya uanachama aliyonayo, au acha wazi ili mfumo utoe mpya" />
-      <MemberForm submitLabel="Sajili mwanachama" busy={busy} error={error}
-        onSubmit={async (p, photo) => {
-          const r = await run(async () => {
-            const res = await api<{ member: Member }>('/members', { method: 'POST', body: p });
-            // Picha ni ya hiari: ikishindwa kupakia, mkulima amesajiliwa na picha inaweza kuwekwa baadaye
-            if (photo) await api(`/members/${res.member.id}/photo`, { method: 'PUT', body: { mimeType: photo.mimeType, data: photo.data } }).catch(() => undefined);
-            return res;
-          });
-          if (r) { clearMemberDraft(); nav(`/members/${r.member.id}`); }
-        }} />
+      {pending ? (
+        <section className="card" style={{ padding: 20 }}>
+          <PhoneOtpStep target={{ registerName: `${String(pending.p.firstName ?? '')} ${String(pending.p.lastName ?? '')}`.trim() }} phones={pending.phones}
+            saveLabel="Sajili mwanachama" busy={busy} error={error} onBack={() => setPending(null)} onVerified={(extra) => save(pending.p, pending.photo, extra)} />
+        </section>
+      ) : (
+        <MemberForm submitLabel="Sajili mwanachama" busy={busy} error={error}
+          onSubmit={async (p, photo) => save(p as Record<string, unknown>, photo ?? null)} />
+      )}
     </>
   );
 }

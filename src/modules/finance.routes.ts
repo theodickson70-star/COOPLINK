@@ -1,3 +1,5 @@
+import { smsMemberReceipt, smsPaymentSent } from '../lib/sms-events';
+import { assertCashConfirmed } from '../lib/cash-otp';
 // =====================================================================
 //  FEDHA ZA CHAMA (Mhasibu) — mapato, matumizi, malipo, akaunti, bajeti, ripoti
 //   Mapato             -> yanarekodiwa moja kwa moja (POSTED)
@@ -232,6 +234,8 @@ financeRouter.post('/income', requireAmcosPerm('finance.record'), ah(async (req,
       await audit(tx, req, { action: 'MEMBER_ENTRY_FEE_PAID', entity: 'Member', entityId: member.id, amcosId, before: { entryFeePaid: false }, after: { entryFeePaid: true, reference: t.txnNo, amount: t.amount } });
     }
     await audit(tx, req, { action: 'FINANCE_INCOME_RECORD', entity: 'FinanceTransaction', entityId: t.id, amcosId, after: t });
+    // Risiti kwa mkulima (kiingilio / ada / marejesho ya deni)
+    if (member) await smsMemberReceipt(tx, member, { txnId: t.id, txnNo: t.txnNo, amount: t.amount, label: INCOME_CATEGORIES[body.category as keyof typeof INCOME_CATEGORIES] ?? 'malipo', showDebt: body.category === 'FARMER_REPAYMENT' });
     return t;
   });
   res.status(201).json({ transaction: txn });
@@ -326,7 +330,7 @@ financeRouter.post('/supplier-payments', requireAmcosPerm('finance.record'), ah(
 /** Mhasibu anakamilisha malipo yaliyoidhinishwa (fedha zimetoka kweli). */
 financeRouter.post('/transactions/:id/post', requireAmcosPerm('finance.post'), ah(async (req, res) => {
   const { id } = uuidParam.parse(req.params);
-  const body = z.object({ accountId: z.string().uuid().optional(), txnDate: dateStr.optional(), reference: z.string().trim().optional() }).parse(req.body);
+  const body = z.object({ accountId: z.string().uuid().optional(), txnDate: dateStr.optional(), reference: z.string().trim().optional(), cashOverride: z.string().trim().max(300).optional() }).parse(req.body);
   const t = await scopedTxn(req, id);
   if (t.status !== 'APPROVED') throw badRequest(t.status === 'PENDING_APPROVAL' ? 'Muamala huu bado unasubiri idhini ya Meneja' : 'Muamala huu hauwezi kukamilishwa');
   if (t.kind === 'TRANSFER') {
@@ -350,6 +354,9 @@ financeRouter.post('/transactions/:id/post', requireAmcosPerm('finance.post'), a
   }
   const account = (await activeAccount(req, body.accountId ?? t.accountId, true))!;
   const date = await postDate(t.amcosId, body.txnDate, t.txnDate);
+  // Malipo ya taslimu kwa mkulima: mkulima athibitishe kwa OTP kwamba amepokea (au Meneja aandike sababu)
+  const payee = t.kind === 'FARMER_PAYMENT' && t.memberId ? await db.query.members.findFirst({ where: eq(schema.members.id, t.memberId) }) : null;
+  const cashHow = payee && account.kind === 'CASH' ? (await assertCashConfirmed(req, [{ id: t.id, memberNo: payee.memberNo }], body.cashOverride)).get(t.id) : undefined;
   const txn = await db.transaction(async (tx) => {
     await lockAccount(tx, account.id);
     const bal = await accountBalance(tx, account.id);
@@ -365,7 +372,9 @@ financeRouter.post('/transactions/:id/post', requireAmcosPerm('finance.post'), a
         description: `${FARMER_PAYMENT_CATEGORIES[p.category] ?? 'Malipo'} ${p.txnNo}`, referenceType: 'FINANCE_TXN', referenceId: p.id, createdById: req.auth!.userId,
       });
     }
-    await audit(tx, req, { action: 'FINANCE_TXN_POST', entity: 'FinanceTransaction', entityId: id, amcosId: t.amcosId, before: { status: t.status }, after: p });
+    await audit(tx, req, { action: 'FINANCE_TXN_POST', entity: 'FinanceTransaction', entityId: id, amcosId: t.amcosId, before: { status: t.status },
+      after: { ...p, ...(cashHow ? { cashConfirm: cashHow, overrideReason: cashHow === 'OVERRIDE' ? body.cashOverride : undefined } : {}) } });
+    if (payee) await smsPaymentSent(tx, payee, { paymentId: p.id, amount: p.amount, method: account.kind, destination: account.kind === 'MOBILE_MONEY' ? payee.mobileMoneyNumber ?? payee.phone : null, label: 'malipo', refType: 'FinanceTransaction' });
     return p;
   });
   res.json({ transaction: txn });

@@ -19,12 +19,12 @@ export function PortalAccess({ memberId, memberName }: { memberId: string; membe
   const t = useT();
   const { data, reload } = useFetch<State>(`/members/${memberId}/portal`);
   const act = useAction();
-  const [pin, setPin] = useState<{ pin: string; memberNo: string } | null>(null);
+  const [pin, setPin] = useState<{ pin: string | null; memberNo: string; delivery?: { status: 'SENT' | 'FAILED' | 'OFF'; phoneMasked?: string; error?: string } } | null>(null);
   const [confirm, setConfirm] = useState<'reset' | 'revoke' | null>(null);
   if (!data) return null;
 
   const issue = async () => {
-    const r = await act.run(() => api<{ pin: string; memberNo: string }>(`/members/${memberId}/portal/pin`, { method: 'POST' }));
+    const r = await act.run(() => api<{ pin: string | null; memberNo: string; delivery?: { status: 'SENT' | 'FAILED' | 'OFF'; phoneMasked?: string; error?: string } }>(`/members/${memberId}/portal/pin`, { method: 'POST' }));
     setConfirm(null);
     if (r) { setPin(r); reload(); }
   };
@@ -74,9 +74,20 @@ export function PortalAccess({ memberId, memberName }: { memberId: string; membe
           : t('PIN ya zamani ya {name} itaacha kufanya kazi mara moja, na simu zote alizoingia nazo zitatolewa nje. Fanya hivi tu mkulima akiwa mbele yako.', { name: memberName })}</p>
       </Modal>
 
-      <Modal open={!!pin} title="PIN ya mkulima" onClose={() => setPin(null)} footer={<Button onClick={() => setPin(null)}>{t('Nimempa mkulima')}</Button>}>
-        {pin && (
+      <Modal open={!!pin} title="PIN ya mkulima" onClose={() => setPin(null)} footer={<Button onClick={() => setPin(null)}>{pin?.pin ? t('Nimempa mkulima') : t('Sawa')}</Button>}>
+        {pin && !pin.pin && (
           <div className="pin-slip">
+            <Alert kind="ok">{t('PIN imetumwa moja kwa moja kwa simu ya mkulima')} ({pin.delivery?.phoneMasked}). {t('Wewe huioni — ni yake peke yake.')}</Alert>
+            <div className="pin-slip-box">
+              <div><span>{t('Namba ya uanachama')}</span><strong>{pin.memberNo}</strong></div>
+              <div><span>{t('Ingia hapa')}</span><strong>{portalUrl().replace(/^https?:\/\//, '')}</strong></div>
+            </div>
+            <p className="muted" style={{ fontSize: 13 }}>{t('Akiingia mara ya kwanza, mfumo utamtaka aweke PIN yake mwenyewe. Hajapata SMS? Toa PIN mpya baada ya dakika chache.')}</p>
+          </div>
+        )}
+        {pin?.pin && (
+          <div className="pin-slip">
+            {pin.delivery?.status === 'FAILED' && <Alert kind="warn">{t('SMS ya PIN haikufika kwa mkulima — mpe PIN hii mwenyewe.')}</Alert>}
             <Alert kind="warn">{t('Mpe mkulima PIN hii sasa. Haitaonekana tena — ikipotea, utatoa mpya.')}</Alert>
             <div className="pin-slip-box">
               <div><span>{t('Namba ya uanachama')}</span><strong>{pin.memberNo}</strong></div>

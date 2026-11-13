@@ -2122,3 +2122,18 @@ a.dl-stat:hover { background: rgba(6, 30, 21, .35); }
 .dl-legend a { color: var(--ink); }
 :root[data-theme="dark"] .range-filter .seg button.on { color: var(--head); }
 :root[data-theme="dark"] .dl-task.bad { border-color: rgba(194, 72, 58, .55); }
+
+/* ===================== v0.40 — OTP ya mkulima ===================== */
+.otp-box.ok { border-style: solid; border-color: var(--green); background: var(--tint-green); }
+.otp-head { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.otp-head .grow { display: flex; flex-direction: column; min-width: 0; }
+.otp-code { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.otp-code > .muted { flex-basis: 100%; }
+.otp-code .field { flex: 1 1 180px; margin: 0; }
+.otp-list { display: flex; flex-direction: column; gap: 10px; max-height: 55vh; overflow: auto; padding-right: 2px; }
+.otp-override { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; border-top: 1px solid var(--line-2); }
+.otp-override .chk { white-space: normal; }
+@media (max-width: 760px) {
+  .otp-code { flex-direction: column; align-items: stretch; }
+  .otp-head .btn { width: 100%; justify-content: center; }
+}

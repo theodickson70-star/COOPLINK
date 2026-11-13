@@ -26,7 +26,7 @@ import { currentSeason } from './seasons.routes';
 import { activeGroups } from '../lib/groups';
 import { smsConfigured, smsEnabled } from '../lib/sms';
 import { issueOtp, verifyOtp } from '../lib/otp';
-import { farmerPhone, smsGroupInputTaken, smsInputHandedOver } from '../lib/sms-events';
+import { farmerPhone, smsAccountCorrection, smsGroupInputTaken, smsInputHandedOver } from '../lib/sms-events';
 
 export const inputsRouter = Router();
 export const inputIssuesRouter = Router();
@@ -643,6 +643,8 @@ inputIssuesRouter.post(
           description: `Kufutwa kwa ${issue.issueNo}`, referenceType: 'INPUT_ISSUE', referenceId: id, createdById: req.auth!.userId });
       }
       await audit(tx, req, { action: 'INPUT_ISSUE_CANCEL', entity: 'InputIssue', entityId: id, amcosId: issue.amcosId, before: issue, after: { ...upd, reason } });
+      const mem = await tx.query.members.findFirst({ where: eq(schema.members.id, issue.memberId) });
+      if (mem) await smsAccountCorrection(tx, mem, { refType: 'InputIssue', refId: id, what: `pembejeo ${issue.issueNo} zimefutwa (${reason.slice(0, 50)}) na deni lake limeondolewa` });
     });
     res.json({ issue: await loadIssue(id) });
   }),

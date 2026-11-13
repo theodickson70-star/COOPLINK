@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useT } from '../lib/prefs';
 import { Link, useSearchParams } from 'react-router-dom';
-import { api, apiDownload, type Paged } from '../lib/api';
+import { api, apiDownload, ApiError, type Paged } from '../lib/api';
+import { CashOtpModal } from '../components/FarmerOtp';
 import { usd, useFx } from '../lib/fx';
 import { useAction, useDebounced, useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
@@ -189,18 +190,27 @@ function TxnDetail({ id, onClose, onChanged }: { id: string; onClose: () => void
   const [accountId, setAccountId] = useState('');
   const [reference, setReference] = useState('');
   const [reason, setReason] = useState('');
-  const [mode, setMode] = useState<'view' | 'reverse'>('view');
-  const { busy, error, run } = useAction();
+  const [mode, setMode] = useState<'view' | 'reverse' | 'cash'>('view');
+  const { busy, error, setError, run } = useAction();
   useEffect(() => { if (data?.transaction.accountId) setAccountId(data.transaction.accountId); }, [data]);
+  // v0.40: malipo ya taslimu kwa mkulima — mkulima anathibitisha kwa OTP (backend ikirudisha CASH_OTP_REQUIRED)
+  const post = async (cashOverride?: string) => {
+    setError(null);
+    const r = await run(async () => {
+      try { return await api(`/finance/transactions/${id}/post`, { method: 'POST', body: { accountId, reference: reference || undefined, cashOverride } }); }
+      catch (e) { if (e instanceof ApiError && e.code === 'CASH_OTP_REQUIRED' && mode !== 'cash') { setMode('cash'); return null; } throw e; }
+    });
+    if (r && data) onChanged(`${data.transaction.txnNo} imekamilishwa`);
+  };
   if (loading || !data) return <Modal open title="Muamala" onClose={onClose}><Loading /></Modal>;
   const t = data.transaction;
   const canPost = t.status === 'APPROVED' && may('finance.post') && !(t.kind === 'TRANSFER' && t.direction === 'IN');
   const canReverse = t.status === 'POSTED' && t.kind !== 'REVERSAL' && !t.reversed && !t.reversalPending && may('finance.record');
+  if (mode === 'cash') return <CashOtpModal type="txn" busy={busy} error={error} onClose={() => setMode('view')} onConfirm={(o) => post(o)}
+    items={[{ id: t.id, memberNo: '', name: t.payee ?? '', amount: t.amount }]} />;
   return (
     <Modal open title={`${t.txnNo} · ${TXN_KIND_LABEL[t.kind]}`} onClose={onClose}
-      footer={canPost ? <Button busy={busy} disabled={!accountId} onClick={async () => {
-        if (await run(() => api(`/finance/transactions/${id}/post`, { method: 'POST', body: { accountId, reference: reference || undefined } }))) onChanged(`${t.txnNo} imekamilishwa`);
-      }}>{tt('Kamilisha — fedha zimetoka')}</Button>
+      footer={canPost ? <Button busy={busy} disabled={!accountId} onClick={() => post()}>{tt('Kamilisha — fedha zimetoka')}</Button>
         : mode === 'reverse' ? <Button variant="danger" busy={busy} disabled={reason.trim().length < 5} onClick={async () => {
           if (await run(() => api(`/finance/transactions/${id}/reverse`, { method: 'POST', body: { reason } }))) onChanged(`Ombi la kusahihisha ${t.txnNo} limetumwa kwa Meneja`);
         }}>{tt('Tuma ombi la kusahihisha')}</Button>

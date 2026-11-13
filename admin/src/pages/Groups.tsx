@@ -5,7 +5,8 @@
 // =====================================================================
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
+import { ConsentOtpModal, useOtpConfig } from '../components/FarmerOtp';
 import { useAction, useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
 import { date, tsh } from '../lib/format';
@@ -63,14 +64,29 @@ function GroupForm({ onClose, onDone }: { onClose: () => void; onDone: (m: strin
   const [notes, setNotes] = useState('');
   const [members, setMembers] = useState<MemberLite[]>([]);
   const [leader, setLeader] = useState('');
-  const { busy, error, run } = useAction();
+  const { busy, error, setError, run } = useAction();
+  const cfg = useOtpConfig();
+  const [consent, setConsent] = useState(false);
+  // v0.40: kila mwanachama anakubali dhamana kwa OTP kabla ombi halijaenda kwa Meneja
+  const submit = async (consentOverride?: string) => {
+    setError(null);
+    const r = await run(async () => {
+      try {
+        return await api<{ approval: { requestNo: string }; group: { groupNo: string } }>('/groups', { method: 'POST', body: { name, village: village || null, notes: notes || null, memberIds: members.map((m) => m.id), leaderMemberId: leader || null, consentOverride } });
+      } catch (e) {
+        if (e instanceof ApiError && e.code === 'GROUP_CONSENT_REQUIRED' && !consent) { setConsent(true); return null; }
+        throw e;
+      }
+    });
+    if (r) onDone(`Kikundi ${r.group.groupNo} kimetumwa kwa Meneja (${r.approval.requestNo}).`);
+  };
+  if (consent) return <ConsentOtpModal groupName={name.trim()} items={members.map((m) => ({ id: m.id, memberNo: m.memberNo, name: `${m.firstName} ${m.lastName}` }))}
+    busy={busy} error={error} onClose={() => setConsent(false)} onConfirm={(o) => submit(o)} />;
   return (
     <Modal open title="Kikundi kipya cha wakulima" onClose={onClose}
-      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={name.trim().length < 2 || members.length < 2} onClick={async () => {
-        const r = await run(() => api<{ approval: { requestNo: string }; group: { groupNo: string } }>('/groups', { method: 'POST', body: { name, village: village || null, notes: notes || null, memberIds: members.map((m) => m.id), leaderMemberId: leader || null } }));
-        if (r) onDone(`Kikundi ${r.group.groupNo} kimetumwa kwa Meneja (${r.approval.requestNo}).`);
-      }}>Tuma kwa Meneja</Button></>}>
-      <Alert kind="warn">Wanachama wote wanadhaminiana: mmoja akishindwa kumaliza deni lake la pembejeo kwenye mauzo, salio linakatwa kwa wenzake. Hakikisha wote wamekubali.</Alert>
+      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={name.trim().length < 2 || members.length < 2} onClick={() => (cfg?.group ? setConsent(true) : submit())}>
+        {cfg?.group ? 'Endelea: ridhaa ya wanachama →' : 'Tuma kwa Meneja'}</Button></>}>
+      <Alert kind="warn">Wanachama wote wanadhaminiana: mmoja akishindwa kumaliza deni lake la pembejeo kwenye mauzo, salio linakatwa kwa wenzake.{cfg?.group ? ' Kila mmoja atakubali kwa OTP kwenye simu yake.' : ' Hakikisha wote wamekubali.'}</Alert>
       <Alert>{error}</Alert>
       <div className="form-grid">
         <TextField label="Jina la kikundi *" value={name} onChange={setName} placeholder="mf. Tumaini" />
@@ -140,21 +156,35 @@ export function GroupDetail() {
           ))}</tbody>
         </table></div>
       </Section>
-      {add && <AddMember groupId={g.id} onClose={() => setAdd(false)} onDone={(m) => { setAdd(false); setOk(m); reload(); }} />}
+      {add && <AddMember groupId={g.id} groupName={g.name} onClose={() => setAdd(false)} onDone={(m) => { setAdd(false); setOk(m); reload(); }} />}
       {remove && <RemoveMember groupId={g.id} m={remove} onClose={() => setRemove(null)} onDone={(msg) => { setRemove(null); setOk(msg); reload(); }} />}
     </>
   );
 }
 
-function AddMember({ groupId, onClose, onDone }: { groupId: string; onClose: () => void; onDone: (m: string) => void }) {
+function AddMember({ groupId, groupName, onClose, onDone }: { groupId: string; groupName: string; onClose: () => void; onDone: (m: string) => void }) {
   const [m, setM] = useState<MemberLite | null>(null);
-  const { busy, error, run } = useAction();
+  const { busy, error, setError, run } = useAction();
+  const cfg = useOtpConfig();
+  const [consent, setConsent] = useState(false);
+  const submit = async (consentOverride?: string) => {
+    setError(null);
+    const r = await run(async () => {
+      try {
+        return await api<{ approval: { requestNo: string } }>(`/groups/${groupId}/members`, { method: 'POST', body: { memberId: m!.id, consentOverride } });
+      } catch (e) {
+        if (e instanceof ApiError && e.code === 'GROUP_CONSENT_REQUIRED' && !consent) { setConsent(true); return null; }
+        throw e;
+      }
+    });
+    if (r) onDone(`Ombi ${r.approval.requestNo} limetumwa kwa Meneja`);
+  };
+  if (consent && m) return <ConsentOtpModal groupName={groupName} items={[{ id: m.id, memberNo: m.memberNo, name: `${m.firstName} ${m.lastName}` }]}
+    busy={busy} error={error} onClose={() => setConsent(false)} onConfirm={(o) => submit(o)} />;
   return (
     <Modal open title="Ongeza mwanachama kwenye kikundi" onClose={onClose}
-      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={!m} onClick={async () => {
-        const r = await run(() => api<{ approval: { requestNo: string } }>(`/groups/${groupId}/members`, { method: 'POST', body: { memberId: m!.id } }));
-        if (r) onDone(`Ombi ${r.approval.requestNo} limetumwa kwa Meneja`);
-      }}>Tuma kwa Meneja</Button></>}>
+      footer={<><Button variant="secondary" onClick={onClose}>Ghairi</Button><Button busy={busy} disabled={!m} onClick={() => (cfg?.group ? setConsent(true) : submit())}>
+        {cfg?.group ? 'Endelea: ridhaa ya mkulima →' : 'Tuma kwa Meneja'}</Button></>}>
       <Alert>{error}</Alert>
       <MemberPicker value={m} onChange={setM} />
     </Modal>

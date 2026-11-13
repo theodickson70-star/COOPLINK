@@ -7,6 +7,7 @@ import { useAuth } from '../lib/auth';
 import { Alert, Badge, Button, Loading, Modal, PageHead, SelectField, Stat, TextField } from '../components/ui';
 import { fromMember, maritalLabel, MemberForm, type Member } from './Members';
 import { PortalAccess } from '../components/FarmerPortalAccess';
+import { normTz, PhoneOtpStep } from '../components/FarmerOtp';
 
 interface Farm { id: string; name: string | null; village: string | null; acres: string; isActive: boolean }
 interface Balance { totalDebit: string; totalCredit: string; balance: string; amountOwed: string }
@@ -116,7 +117,6 @@ export function MemberDetail() {
   );
 }
 
-const normTz = (p?: string | null) => { const d = (p ?? '').replace(/\D/g, ''); return d.startsWith('0') ? `255${d.slice(1)}` : d.length === 9 ? `255${d}` : d; };
 
 function EditMember({ member, photoUrl, onDone }: { member: Member; photoUrl: string | null; onDone: () => void }) {
   const { busy, error, setError, run } = useAction();
@@ -142,65 +142,11 @@ function EditMember({ member, photoUrl, onDone }: { member: Member; photoUrl: st
       onDone();
     } catch (e) { setError((e as Error).message); }
   };
-  if (pending) return <PhoneOtpStep memberId={member.id} phones={pending.phones} busy={busy} error={error} onBack={() => setPending(null)}
+  if (pending) return <PhoneOtpStep target={{ memberId: member.id }} saveLabel="Hifadhi mabadiliko" phones={pending.phones} busy={busy} error={error} onBack={() => setPending(null)}
     onVerified={(extra) => save(pending.p, pending.photo, extra)} />;
   return (
     <MemberForm initial={fromMember(member)} editing currentPhoto={photoUrl} submitLabel="Hifadhi mabadiliko" busy={busy} error={error}
       onSubmit={async (p, photo) => save(p as Record<string, unknown>, photo ?? null)} />
-  );
-}
-
-/** Namba mpya ya simu ya mkulima inathibitishwa kwa OTP: mkulima anapokea namba kwenye simu mpya na kuitaja */
-function PhoneOtpStep({ memberId, phones, busy, error, onBack, onVerified }: { memberId: string; phones: string[]; busy: boolean; error: string | null; onBack: () => void; onVerified: (extra: Record<string, unknown>) => void }) {
-  const { may } = useAuth();
-  const [state, setState] = useState<Record<string, { sent?: string; code: string; ok?: boolean; err?: string; busy?: boolean }>>({});
-  const [override, setOverride] = useState(false);
-  const [reason, setReason] = useState('');
-  const upd = (ph: string, v: Partial<{ sent: string; code: string; ok: boolean; err: string; busy: boolean }>) => setState((s) => ({ ...s, [ph]: { ...{ code: '' }, ...s[ph], ...v } }));
-  const send = async (ph: string) => {
-    upd(ph, { busy: true, err: '' });
-    try { const r = await api<{ phoneMasked: string }>(`/members/${memberId}/phone-otp`, { method: 'POST', body: { phone: ph } }); upd(ph, { sent: r.phoneMasked, busy: false }); }
-    catch (e) { upd(ph, { err: (e as Error).message, busy: false }); }
-  };
-  const verify = async (ph: string) => {
-    upd(ph, { busy: true, err: '' });
-    try { await api(`/members/${memberId}/phone-otp/verify`, { method: 'POST', body: { phone: ph, code: state[ph]?.code } }); upd(ph, { ok: true, busy: false }); }
-    catch (e) { upd(ph, { err: (e as Error).message, busy: false }); }
-  };
-  const allOk = phones.every((ph) => state[ph]?.ok);
-  return (
-    <div className="stack">
-      <Alert kind="warn">Namba mpya ya simu lazima ithibitishwe: mkulima atapokea namba ya tarakimu 6 kwenye simu hiyo mpya, kisha aitaje hapa. Hii inazuia mtu kuweka namba isiyo ya mkulima (malipo yasiende kwa mtu mwingine).</Alert>
-      {phones.map((ph) => {
-        const st = state[ph];
-        return (
-          <div key={ph} className="otp-box">
-            <strong>{phone(normTz(ph))} {st?.ok && <Badge status="APPROVED" label="Imethibitishwa" />}</strong>
-            {!st?.ok && <>
-              <Button variant="secondary" busy={st?.busy && !st?.sent} onClick={() => send(ph)}>{st?.sent ? 'Tuma namba upya' : 'Tuma OTP kwa namba hii'}</Button>
-              {st?.sent && <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                <div style={{ flex: '1 1 160px' }}><TextField label="Namba aliyopokea mkulima" inputMode="numeric" maxLength={6} value={st.code} onChange={(v) => upd(ph, { code: v.replace(/\D/g, '') })} /></div>
-                <Button busy={st.busy} disabled={st.code.length !== 6} onClick={() => verify(ph)}>Thibitisha</Button>
-              </div>}
-              {st?.err && <Alert>{st.err}</Alert>}
-            </>}
-          </div>
-        );
-      })}
-      <Alert>{error}</Alert>
-      {may('members.approve') && (
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14 }}>
-          <input type="checkbox" checked={override} onChange={(e) => setOverride(e.target.checked)} /> Hifadhi bila OTP (Meneja — mkulima hana simu karibu)
-        </label>
-      )}
-      {override && <TextField label="Sababu (itarekodiwa kwenye kumbukumbu)" value={reason} onChange={setReason} />}
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-        <Button variant="secondary" onClick={onBack}>Rudi kwenye fomu</Button>
-        {override
-          ? <Button busy={busy} disabled={reason.trim().length < 10} onClick={() => onVerified({ phoneOtpOverride: reason.trim() })}>Hifadhi bila OTP</Button>
-          : <Button busy={busy} disabled={!allOk} onClick={() => onVerified({})}>Hifadhi mabadiliko</Button>}
-      </div>
-    </div>
   );
 }
 

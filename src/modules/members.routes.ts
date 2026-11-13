@@ -4,8 +4,10 @@ import { and, asc, count, desc, eq, ilike, ne, or, sql } from 'drizzle-orm';
 import { db, schema } from '../db';
 import { ah, decimalSchema, paged, paginationQuery, phoneSchema, uuidParam } from '../lib/http';
 import { AppError, badRequest, conflict, forbidden, notFound } from '../lib/errors';
-import { smsConfigured, smsEnabled } from '../lib/sms';
-import { issueOtp, verifyOtp } from '../lib/otp';
+import { maskPhone, normPhone, sendNow, smsConfigured, smsEnabled } from '../lib/sms';
+import { getSetting } from '../lib/settings';
+import { issueOtp, subjectUuid, verifiedSet, verifyOtp } from '../lib/otp';
+import { farmerPhone, smsMemberApplication, smsMemberRegistered, smsMemberStatus, smsPhoneChanged } from '../lib/sms-events';
 import { requireAmcosPerm, requireReauth } from '../middleware/auth';
 import { checkRows, MAX_IMPORT_ROWS } from '../lib/member-import';
 import { activeGroups } from '../lib/groups';
@@ -139,7 +141,7 @@ export async function findMemberScoped(req: Request, id: string) {
 // ---------------------------------------------------------------------
 async function portalAmcos(req: Request) {
   const amcosId = await readAmcosId(req);
-  const a = await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId), columns: { id: true, farmerPortal: true } });
+  const a = await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId), columns: { id: true, name: true, farmerPortal: true } });
   if (!a) throw notFound('Chama');
   return a;
 }
@@ -185,7 +187,18 @@ membersRouter.post('/:id/portal/pin', requireAmcosPerm('members.portal'), ah(asy
       portalPinIssuedAt: new Date(), portalPinIssuedById: req.auth!.userId }).where(eq(m.id, id));
     await audit(tx, req, { action: row.portalPinHash ? 'FARMER_PORTAL_PIN_RESET' : 'FARMER_PORTAL_PIN_ISSUE', entity: 'Member', entityId: id, amcosId: row.amcosId, after: { memberNo: row.memberNo } });
   });
-  res.status(201).json({ pin, memberNo: row.memberNo });
+  // v0.40: PIN inatumwa moja kwa moja kwa simu ya mkulima — mtumishi haioni. SMS ikishindwa / imezimwa: inaonyeshwa mara moja kama zamani.
+  const phone = normPhone(farmerPhone(row));
+  if (phone && smsConfigured() && (await smsEnabled('FARMER_PORTAL_PIN'))) {
+    const site = (await getSetting('business.profile')).website || 'cooplink';
+    const head = `${a.name}: ${row.firstName}, PIN yako ya kuingia kwenye portal ya mkulima ni`;
+    const tail = `Ingia: ${site}/mkulima kwa namba ${row.memberNo}. Utaweka PIN yako mpya. Usimpe mtu yeyote, hata mtumishi wa chama.`;
+    const r = await sendNow({ kind: 'FARMER_PORTAL_PIN', phone, amcosId: row.amcosId, memberId: row.id, referenceType: 'Member', referenceId: row.id,
+      text: `${head} ${pin}. ${tail}`, logText: `${head} ******. ${tail}` });
+    if (r.status === 'SENT') return res.status(201).json({ pin: null, memberNo: row.memberNo, delivery: { status: 'SENT', phoneMasked: maskPhone(phone) } });
+    return res.status(201).json({ pin, memberNo: row.memberNo, delivery: { status: 'FAILED', error: r.error ?? r.status } });
+  }
+  res.status(201).json({ pin, memberNo: row.memberNo, delivery: { status: 'OFF' } });
 }));
 
 membersRouter.delete('/:id/portal/pin', requireAmcosPerm('members.portal'), ah(async (req, res) => {
@@ -293,6 +306,32 @@ membersRouter.post(
   }),
 );
 
+// ------------------------------ OTP YA NAMBA WAKATI WA USAJILI (v0.40) ------------------------------
+const regSubject = (amcosId: string, phone: string) => subjectUuid(`member-register:${amcosId}:${phone}`);
+membersRouter.post(
+  '/register-otp',
+  requireAmcosPerm('members.write'),
+  ah(async (req, res) => {
+    const b = z.object({ phone: phoneSchema, name: z.string().trim().min(2).max(80), amcosId: z.string().uuid().optional() }).parse(req.body);
+    const amcosId = await resolveWriteAmcosId(req, b.amcosId);
+    if (!smsConfigured() || !(await smsEnabled('MEMBER_PHONE_OTP'))) throw badRequest('OTP ya namba ya mkulima haijawashwa');
+    const amcos = await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId), columns: { name: true } });
+    const o = await issueOtp({ purpose: 'MEMBER_REGISTER', kind: 'MEMBER_PHONE_OTP', subjectId: regSubject(amcosId, b.phone), phone: b.phone, payload: { phone: b.phone }, amcosId, createdById: req.auth!.userId, ip: req.ip ?? null,
+      text: (c) => `${amcos?.name ?? 'Chama'}: namba ${c} inathibitisha kwamba simu hii ni ya ${b.name}, anayesajiliwa kama mwanachama. Mpe mtumishi wa chama tu kama ni wewe.` });
+    res.json(o);
+  }),
+);
+membersRouter.post(
+  '/register-otp/verify',
+  requireAmcosPerm('members.write'),
+  ah(async (req, res) => {
+    const b = z.object({ phone: phoneSchema, code: z.string().trim().min(4).max(10), amcosId: z.string().uuid().optional() }).parse(req.body);
+    const amcosId = await resolveWriteAmcosId(req, b.amcosId);
+    await verifyOtp('MEMBER_REGISTER', regSubject(amcosId, b.phone), b.code);
+    res.json({ verified: true, phone: b.phone });
+  }),
+);
+
 // Mtumishi anasajili -> mkulima "anasubiri uthibitisho" hadi Meneja athibitishe. Meneja akisajili mwenyewe, anakuwa hai moja kwa moja.
 membersRouter.post(
   '/',
@@ -304,6 +343,20 @@ membersRouter.post(
     checkEntryFee(body);
     await verifyMemberNames(req, body);
     await assertUnique(amcosId, body);
+    // v0.40: namba ya simu na ya malipo zinathibitishwa kwa OTP (mtumishi asiweke namba yake). Bila OTP: Meneja tu, kwa sababu.
+    const extra = z.object({ phoneOtpOverride: z.string().trim().min(10, 'Eleza sababu ya kutothibitisha kwa OTP (herufi 10+)').optional() }).parse(req.body);
+    const phones = [...new Set([body.phone, body.mobileMoneyNumber].filter((x): x is string => !!x))];
+    let phoneVerifiedAt: Date | null = null;
+    if (phones.length && smsConfigured() && (await smsEnabled('MEMBER_PHONE_OTP'))) {
+      if (extra.phoneOtpOverride) {
+        if (!canAmcos(req.auth!, 'members.approve')) throw badRequest('Meneja pekee ndiye anaweza kusajili bila kuthibitisha namba kwa OTP');
+      } else {
+        const ok = await verifiedSet('MEMBER_REGISTER', phones.map((ph) => regSubject(amcosId, ph)), 60);
+        const missing = phones.filter((ph) => !ok.has(regSubject(amcosId, ph)));
+        if (missing.length) throw new AppError(400, 'PHONE_OTP_REQUIRED', `Thibitisha namba ${missing.map((x) => '0' + x.slice(3)).join(', ')} kwa OTP kwanza — mkulima ataje namba aliyotumiwa`);
+        if (body.phone) phoneVerifiedAt = new Date();
+      }
+    }
     const { memberNo: givenNo, amcosId: _ignored, ...data } = body;
 
     const member = await db.transaction(async (tx) => {
@@ -317,9 +370,12 @@ membersRouter.post(
       const confirmer = canAmcos(req.auth!, 'members.approve');
       const [row] = await tx
         .insert(m)
-        .values({ ...data, amcosId, memberNo, createdById: req.auth!.userId, status: confirmer ? 'ACTIVE' : 'PENDING' })
+        .values({ ...data, amcosId, memberNo, createdById: req.auth!.userId, status: confirmer ? 'ACTIVE' : 'PENDING', ...(phoneVerifiedAt ? { phoneVerifiedAt } : {}) })
         .returning();
       await audit(tx, req, { action: 'MEMBER_CREATE', entity: 'Member', entityId: row.id, amcosId, after: row });
+      if (extra.phoneOtpOverride && phones.length) await audit(tx, req, { action: 'MEMBER_PHONE_OTP_OVERRIDE', entity: 'Member', entityId: row.id, amcosId, after: { phones, reason: extra.phoneOtpOverride, at: 'REGISTER' } });
+      // SMS: Meneja akisajili -> karibu (amekuwa hai); mtumishi -> ombi limepokelewa
+      if (confirmer) await smsMemberRegistered(tx, row); else await smsMemberApplication(tx, row, 'RECEIVED');
       if (!confirmer) {
         await createApproval(tx, req, {
           amcosId, type: 'MEMBER_REGISTRATION', entityType: 'Member', entityId: row.id,
@@ -332,6 +388,13 @@ membersRouter.post(
     res.status(201).json({ member });
   }),
 );
+
+/** v0.40: OTP zipi zinahitajika kwa mkulima (fomu zinaonyesha hatua ya OTP kulingana na hizi) */
+membersRouter.get('/otp-config', ah(async (_req, res) => {
+  const on = smsConfigured();
+  const [phone, cash, group, pin, handover] = await Promise.all(['MEMBER_PHONE_OTP', 'CASH_PAYOUT_OTP', 'GROUP_CONSENT_OTP', 'FARMER_PORTAL_PIN', 'ISSUE_HANDOVER_OTP'].map((k) => smsEnabled(k as never)));
+  res.json({ phone: on && phone, cash: on && cash, group: on && group, pinBySms: on && pin, handover: on && handover });
+}));
 
 membersRouter.get(
   '/:id',
@@ -383,6 +446,11 @@ membersRouter.patch(
     const member = await db.transaction(async (tx) => {
       const [row] = await tx.update(m).set({ ...body, memberNo: body.memberNo ?? undefined, ...(phoneVerifiedAt ? { phoneVerifiedAt } : body.phone !== undefined && body.phone !== before.phone ? { phoneVerifiedAt: null } : {}) }).where(eq(m.id, id)).returning();
       if (extra.phoneOtpOverride && changed.length) await audit(tx, req, { action: 'MEMBER_PHONE_OTP_OVERRIDE', entity: 'Member', entityId: id, amcosId: before.amcosId, after: { phones: changed, reason: extra.phoneOtpOverride } });
+      // Tahadhari kwa namba ya ZAMANI (kama si mkulima aliyeomba, ataripoti)
+      const phoneCh = body.phone !== undefined && body.phone !== before.phone;
+      const payCh = body.mobileMoneyNumber !== undefined && body.mobileMoneyNumber !== before.mobileMoneyNumber;
+      const olds = [...new Set([phoneCh ? before.phone : null, payCh ? before.mobileMoneyNumber : null].filter((x): x is string => !!x))].filter((ph) => ph !== row.phone && ph !== row.mobileMoneyNumber);
+      if (olds.length) await smsPhoneChanged(tx, row, olds, phoneCh && payCh ? 'simu na malipo' : phoneCh ? 'simu' : 'malipo');
       await audit(tx, req, { action: 'MEMBER_UPDATE', entity: 'Member', entityId: id, amcosId: before.amcosId, before, after: row });
       return row;
     });
@@ -434,6 +502,7 @@ membersRouter.patch(
         action: 'MEMBER_STATUS_CHANGE', entity: 'Member', entityId: id, amcosId: before.amcosId,
         before: { status: before.status }, after: { status: row.status, reason: body.reason },
       });
+      await smsMemberStatus(tx, row, body.reason);
       return row;
     });
     res.json({ member });

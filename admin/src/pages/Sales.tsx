@@ -5,7 +5,8 @@
 import { useT } from '../lib/prefs';
 import { Fragment, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, apiDownload } from '../lib/api';
+import { api, apiDownload, ApiError } from '../lib/api';
+import { CashOtpModal } from '../components/FarmerOtp';
 import { useAction, useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
 import { date, dateTime, num, phone, tsh } from '../lib/format';
@@ -519,15 +520,28 @@ export function BatchDetail() {
   const { data, reload } = useFetch<BatchData>(`/sales/batches/${id}`);
   const accounts = useFetch<{ data: { id: string; name: string; balance: string; isActive: boolean }[] }>(may('sales.manage') ? '/finance/accounts' : null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [mode, setMode] = useState<'confirm' | 'fail' | null>(null);
+  const [mode, setMode] = useState<'confirm' | 'fail' | 'cash' | null>(null);
   const [accountId, setAccountId] = useState('');
   const [reference, setReference] = useState('');
   const [reason, setReason] = useState('');
   const [ok, setOk] = useState<string | null>(null);
-  const { busy, error, run } = useAction();
+  const { busy, error, setError, run } = useAction();
   if (!data) return <Loading />;
   const b = data.batch;
   const payable = ['APPROVED', 'PROCESSING', 'PARTIAL'].includes(b.status) && may('sales.manage');
+  // v0.40: taslimu — kila mkulima anathibitisha kwa OTP (backend ikirudisha CASH_OTP_REQUIRED)
+  const confirm = async (cashOverride?: string) => {
+    setError(null);
+    const r = await run(async () => {
+      try {
+        return await api<{ confirmed: number; status: string }>(`/sales/batches/${b.id}/confirm`, { method: 'POST', body: { accountId, paymentIds: [...picked], reference, cashOverride } });
+      } catch (e) {
+        if (e instanceof ApiError && e.code === 'CASH_OTP_REQUIRED' && mode !== 'cash') { setMode('cash'); return null; }
+        throw e;
+      }
+    });
+    if (r) { setOk(`Malipo ${r.confirmed} yamethibitishwa na kuingia kwenye ledger za wakulima`); setPicked(new Set()); setMode(null); reload(); }
+  };
   const open = data.payments.filter((p) => p.status === 'PENDING' || p.status === 'FAILED');
   const pickedTotal = data.payments.filter((p) => picked.has(p.id)).reduce((t, p) => t + Number(p.amount), 0);
   const toggle = (pid: string) => { const n = new Set(picked); if (n.has(pid)) n.delete(pid); else n.add(pid); setPicked(n); };
@@ -584,12 +598,11 @@ export function BatchDetail() {
           </div>
         </div>
       )}
+      {mode === 'cash' && <CashOtpModal type="payment" busy={busy} error={error} onClose={() => setMode('confirm')} onConfirm={(o) => confirm(o)}
+        items={data.payments.filter((p) => picked.has(p.id) && p.method === 'CASH').map((p) => ({ id: p.id, memberNo: p.memberNo, name: p.memberName, amount: p.amount }))} />}
       {mode === 'confirm' && (
         <Modal open title={`Thibitisha malipo ${picked.size} (${tsh(pickedTotal)})`} onClose={() => setMode(null)}
-          footer={<><Button variant="secondary" onClick={() => setMode(null)}>{t('Ghairi')}</Button><Button busy={busy} disabled={!accountId || reference.trim().length < 2} onClick={async () => {
-            const r = await run(() => api<{ confirmed: number; status: string }>(`/sales/batches/${b.id}/confirm`, { method: 'POST', body: { accountId, paymentIds: [...picked], reference } }));
-            if (r) { setOk(`Malipo ${r.confirmed} yamethibitishwa na kuingia kwenye ledger za wakulima`); setPicked(new Set()); setMode(null); reload(); }
-          }}>{t('Thibitisha')}</Button></>}>
+          footer={<><Button variant="secondary" onClick={() => setMode(null)}>{t('Ghairi')}</Button><Button busy={busy} disabled={!accountId || reference.trim().length < 2} onClick={() => confirm()}>{t('Thibitisha')}</Button></>}>
           <Alert kind="warn">{t('Thibitisha tu malipo ambayo fedha zimeshatoka kweli. Kila mkulima atapata muamala wake na ledger yake itaonyesha malipo.')}</Alert>
           <Alert>{error}</Alert>
           <div className="form-grid">

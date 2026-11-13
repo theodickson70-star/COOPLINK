@@ -7,7 +7,8 @@
 // =====================================================================
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { api, apiDownload } from '../lib/api';
+import { api, apiDownload, ApiError } from '../lib/api';
+import { CashOtpModal } from '../components/FarmerOtp';
 import { useAction, useFetch, useDebounced } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
 import { dateTime, num, phone, tsh } from '../lib/format';
@@ -348,15 +349,28 @@ export function KuniBatch() {
   const { data, reload } = useFetch<{ batch: BatchRow & { label: string }; approval: { requestNo: string; decidedBy: string | null; decidedAt: string | null } | null; loans: Loan[]; summary: { MOBILE_MONEY: string; BANK: string; CASH: string; paid: string; paidUsd: string; pending: number } }>(`/kuni/batches/${id}`);
   const accounts = useFetch<{ data: { id: string; name: string; balance: string; isActive: boolean }[] }>(may('finance.record') ? '/finance/accounts' : null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [mode, setMode] = useState<'confirm' | 'fail' | null>(null);
+  const [mode, setMode] = useState<'confirm' | 'fail' | 'cash' | null>(null);
   const [accountId, setAccountId] = useState('');
   const [reference, setReference] = useState('');
   const [reason, setReason] = useState('');
   const [ok, setOk] = useState<string | null>(null);
-  const { busy, error, run } = useAction();
+  const { busy, error, setError, run } = useAction();
   if (!data) return <Loading />;
   const b = data.batch;
   const um = isUsd(b);
+  // v0.40: mikopo ya taslimu — mkulima anathibitisha kwa OTP akishapokea fedha
+  const confirm = async (cashOverride?: string) => {
+    setError(null);
+    const r = await run(async () => {
+      try {
+        return await api<{ confirmed: number }>(`/kuni/batches/${b.id}/confirm`, { method: 'POST', body: { accountId, loanIds: [...picked], reference, cashOverride } });
+      } catch (e) {
+        if (e instanceof ApiError && e.code === 'CASH_OTP_REQUIRED' && mode !== 'cash') { setMode('cash'); return null; }
+        throw e;
+      }
+    });
+    if (r) { setOk(`Mikopo ${r.confirmed} imethibitishwa — mkopo na riba vimeingia kwenye madeni ya wakulima`); setPicked(new Set()); setMode(null); reload(); }
+  };
   const label = LOAN[b.loanType]?.label ?? b.label;
   const payable = ['APPROVED', 'PROCESSING', 'PARTIAL'].includes(b.status) && may('finance.record');
   const pickedTotal = data.loans.filter((l) => picked.has(l.id)).reduce((s, l) => s + Number(l.amount), 0);
@@ -414,13 +428,13 @@ export function KuniBatch() {
           <div className="actions"><Button variant="secondary" onClick={() => setMode('fail')}>Weka "imeshindwa"</Button><Button onClick={() => setMode('confirm')}>Thibitisha zimetumwa</Button></div>
         </div>
       )}
+      {mode === 'cash' && <CashOtpModal type="loan" busy={busy} error={error} onClose={() => setMode('confirm')} onConfirm={(o) => confirm(o)}
+        items={data.loans.filter((l) => picked.has(l.id) && l.method === 'CASH').map((l) => ({ id: l.id, memberNo: l.memberNo, name: l.memberName, amount: l.amount }))} />}
       {mode === 'confirm' && (
         <Modal open title={`Thibitisha malipo ${picked.size} (${tsh(pickedTotal)})`} onClose={() => setMode(null)}
-          footer={<><Button variant="secondary" onClick={() => setMode(null)}>Ghairi</Button><Button busy={busy} disabled={!accountId || reference.trim().length < 2} onClick={async () => {
-            const r = await run(() => api<{ confirmed: number }>(`/kuni/batches/${b.id}/confirm`, { method: 'POST', body: { accountId, loanIds: [...picked], reference } }));
-            if (r) { setOk(`Mikopo ${r.confirmed} imethibitishwa — mkopo na riba vimeingia kwenye madeni ya wakulima`); setPicked(new Set()); setMode(null); reload(); }
-          }}>Thibitisha</Button></>}>
+          footer={<><Button variant="secondary" onClick={() => setMode(null)}>Ghairi</Button><Button busy={busy} disabled={!accountId || reference.trim().length < 2} onClick={() => confirm()}>Thibitisha</Button></>}>
           <Alert kind="warn">Thibitisha tu pesa zilizotoka kweli.</Alert>
+          <Alert>{error}</Alert>
           <div className="form-grid">
             <SelectField label="Akaunti iliyolipa *" value={accountId} onChange={setAccountId} placeholder="Chagua…" options={accounts.data?.data.filter((a) => a.isActive).map((a) => ({ value: a.id, label: `${a.name} · ${tsh(a.balance)}` })) ?? []} />
             <TextField label="Kumbukumbu ya malipo *" value={reference} onChange={setReference} />

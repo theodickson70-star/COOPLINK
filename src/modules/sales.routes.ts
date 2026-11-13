@@ -6,7 +6,8 @@
 //   4. Orodha ya malipo (payment sheet) -> idhini -> Mhasibu anathibitisha kila malipo yaliyofanyika kweli
 // =====================================================================
 import { Router, type Request } from 'express';
-import { smsPaymentSent } from '../lib/sms-events';
+import { smsPaymentFailed, smsPaymentSent } from '../lib/sms-events';
+import { assertCashConfirmed } from '../lib/cash-otp';
 import { z } from 'zod';
 import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db, schema, type Tx } from '../db';
@@ -595,8 +596,13 @@ salesRouter.post('/batches/:id/confirm', requireAmcosPerm('sales.manage'), ah(as
   const body = z.object({
     accountId: z.string().uuid(), paymentIds: z.array(z.string().uuid()).min(1, 'Chagua malipo yaliyofanyika').max(2000),
     reference: z.string().trim().min(2, 'Weka kumbukumbu ya malipo (mf. namba ya bulk payment / cheki)'), txnDate: dateStr.optional(),
+    cashOverride: z.string().trim().max(300).optional(),
   }).parse(req.body);
   const b = await findBatch(req, id);
+  // Taslimu: kila mkulima amethibitisha kwa OTP kwamba amepokea (au Meneja ameandika sababu)
+  const cashRows = await db.select({ id: PY.id, memberNo: M.memberNo }).from(PY).innerJoin(M, eq(M.id, PY.memberId))
+    .where(and(eq(PY.batchId, id), inArray(PY.id, body.paymentIds), eq(PY.method, 'CASH')));
+  const cashHow = await assertCashConfirmed(req, cashRows, body.cashOverride);
   await assertOpen(db, b.amcosId, body.txnDate ?? todayStr());
   if (!['APPROVED', 'PROCESSING', 'PARTIAL'].includes(b.status)) throw badRequest(b.status === 'DRAFT' ? 'Orodha hii bado inasubiri idhini ya Meneja' : 'Orodha hii haipokei malipo tena');
   const [acc] = await db.select().from(schema.financeAccounts).where(and(eq(schema.financeAccounts.id, body.accountId), eq(schema.financeAccounts.amcosId, b.amcosId)));
@@ -633,7 +639,9 @@ salesRouter.post('/batches/:id/confirm', requireAmcosPerm('sales.manage'), ah(as
     const all = await tx.select({ status: PY.status }).from(PY).where(eq(PY.batchId, id));
     const status = all.every((x) => x.status === 'SUCCESS' || x.status === 'CANCELLED') ? 'COMPLETED' : all.some((x) => x.status === 'FAILED') ? 'PARTIAL' : 'PROCESSING';
     await tx.update(PB).set({ status }).where(eq(PB.id, id));
-    await audit(tx, req, { action: 'PAYMENTS_CONFIRMED', entity: 'PaymentBatch', entityId: id, amcosId: b.amcosId, after: { count: pays.length, total: fmt2(total), reference: body.reference, account: acc.name } });
+    const cashOtp = [...cashHow.values()].filter((v) => v === 'OTP').length, cashOver = [...cashHow.values()].filter((v) => v === 'OVERRIDE').length;
+    await audit(tx, req, { action: 'PAYMENTS_CONFIRMED', entity: 'PaymentBatch', entityId: id, amcosId: b.amcosId, after: { count: pays.length, total: fmt2(total), reference: body.reference, account: acc.name,
+      ...(cashRows.length ? { cash: { total: cashRows.length, byOtp: cashOtp, byOverride: cashOver, overrideReason: cashOver ? body.cashOverride : undefined } } : {}) } });
     return { confirmed: pays.length, total: fmt2(total), status };
   });
   res.json(result);
@@ -646,6 +654,11 @@ salesRouter.post('/batches/:id/fail', requireAmcosPerm('sales.manage'), ah(async
   const rows = await db.transaction(async (tx) => {
     const r = await tx.update(PY).set({ status: 'FAILED', failureReason: body.reason }).where(and(eq(PY.batchId, b.id), inArray(PY.id, body.paymentIds), eq(PY.status, 'PENDING'))).returning();
     if (r.length) await tx.update(PB).set({ status: 'PARTIAL' }).where(eq(PB.id, b.id));
+    if (r.length) {
+      const mems = await tx.select().from(M).where(inArray(M.id, r.map((x) => x.memberId)));
+      const byId = new Map(mems.map((x) => [x.id, x]));
+      await smsPaymentFailed(tx, r.filter((x) => byId.has(x.memberId)).map((x) => ({ member: byId.get(x.memberId)!, refType: 'Payment', refId: x.id, amount: x.amount, what: 'malipo ya mauzo ya tumbaku' })));
+    }
     await audit(tx, req, { action: 'PAYMENTS_FAILED', entity: 'PaymentBatch', entityId: b.id, amcosId: b.amcosId, after: { count: r.length, reason: body.reason } });
     return r;
   });

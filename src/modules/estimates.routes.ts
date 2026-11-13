@@ -6,6 +6,7 @@
 // =====================================================================
 import { Router, type Request } from 'express';
 import { z } from 'zod';
+import { smsEstimateApproved } from '../lib/sms-events';
 import { and, asc, count, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db, schema, type DbOrTx, type Tx } from '../db';
 import { ah, decimalSchema, paged, paginationQuery, uuidParam } from '../lib/http';
@@ -295,6 +296,10 @@ for (const action of ['approve', 'reject'] as const) {
           .returning();
         if (!row) throw conflict('Makisio yamebadilishwa na mtu mwingine, jaribu tena');
         await audit(tx, req, { action: `ESTIMATE_${status}`, entity: 'Estimate', entityId: id, amcosId: before.amcosId, before, after: row });
+        if (status === 'APPROVED') {
+          const mem = await tx.query.members.findFirst({ where: eq(schema.members.id, row.memberId) });
+          if (mem) await smsEstimateApproved(tx, mem, { estimateId: row.id, acres: row.acresPlanted, kg: row.estimatedKg });
+        }
         return row;
       });
       res.json({ estimate });

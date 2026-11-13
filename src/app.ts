@@ -34,6 +34,7 @@ import { payrollRouter } from './modules/payroll.routes';
 import { assetsRouter } from './modules/assets.routes';
 import { groupsRouter } from './modules/groups.routes';
 import { kuniRouter } from './modules/kuni.routes';
+import { cashOtpRouter } from './lib/cash-otp';
 import { billingRouter, feeGuard } from './modules/billing.routes';
 import { lookupRouter } from './modules/lookup.routes';
 import { supportRouter } from './modules/support.routes';
@@ -108,6 +109,7 @@ export function createApp() {
   api.use('/buyers', buyersRouter);
   api.use('/members', membersRouter);
   api.use('/sms', smsRouter);                   // matangazo ya chama kwa SMS, deni la kikundi kwa SMS
+  api.use('/cash-otp', cashOtpRouter);           // OTP ya mkulima kupokea fedha taslimu
   api.use('/kuni', kuniRouter);                 // Pesa ya kuni (mikopo ya fedha kwa wakulima)
   api.use('/groups', groupsRouter);              // Vikundi vya wakulima (dhamana ya pamoja)
   api.use('/estimates', estimatesRouter);

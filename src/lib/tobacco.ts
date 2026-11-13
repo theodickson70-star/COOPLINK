@@ -4,7 +4,7 @@
 //   Meneja anaidhinisha -> ledger ya mkulima + daftari kuu (journal moja kwa soko)
 // =====================================================================
 import type { Request } from 'express';
-import { smsSaleSettled } from './sms-events';
+import { smsGuaranteeUsed, smsSaleSettled } from './sms-events';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { schema, type Tx } from '../db';
 import { D, Decimal, fmt2, tshText } from './money';
@@ -127,6 +127,7 @@ export async function onTobaccoSale(tx: Tx, req: Request, a: Approval, o: Outcom
   let gross = D(0);
   const credits = new Map<string, Decimal>(); // glCode -> kiasi (makato yasiyo ya deni)
   const jl: JLine[] = [];
+  const guaranteeSms: { guarantorId: string; debtorId: string; amount: string; settlementId: string }[] = [];
   for (const s of drafts) {
     gross = gross.plus(s.grossTzs);
     await ledger.post(tx, {
@@ -148,6 +149,7 @@ export async function onTobaccoSale(tx: Tx, req: Request, a: Approval, o: Outcom
           description: `Deni limelipwa na mwanakikundi ${memberName.get(s.memberId) ?? ''} (${s.settlementNo})`.replace('  ', ' '), referenceType: 'SETTLEMENT', referenceId: s.id, createdById: req.auth!.userId,
         });
         jl.push({ code: '1200', credit: l.amount, memberId: l.beneficiaryMemberId, memo: `Dhamana ya kikundi — ${debtor?.memberNo ?? ''}` });
+        guaranteeSms.push({ guarantorId: s.memberId, debtorId: l.beneficiaryMemberId, amount: l.amount, settlementId: s.id });
         // Deni la dola la mdaiwa: kiwango cha soko, kisha malipo ya kikundi yanalipunguza
         jl.push(...await settleUsdDebt(tx, req, { amcosId: a.amcosId, memberId: l.beneficiaryMemberId, seasonId: s.seasonId, rate: market.exchangeRate!, paidTzs: l.amount, ref: s.settlementNo, referenceType: 'SETTLEMENT', referenceId: s.id }));
         continue;
@@ -187,6 +189,13 @@ export async function onTobaccoSale(tx: Tx, req: Request, a: Approval, o: Outcom
   const mems = await tx.select().from(schema.members).where(inArray(schema.members.id, drafts.map((d) => d.memberId)));
   const byId = new Map(mems.map((x) => [x.id, x]));
   await smsSaleSettled(tx, drafts.filter((d) => byId.has(d.memberId)).map((d) => ({ member: byId.get(d.memberId)!, settlementId: d.id, kg: d.totalKg, grossTzs: d.grossTzs, deductions: d.totalDeductions, netTzs: d.netTzs, marketDate: market.marketDate })));
+  // Dhamana ya kikundi: mdhamini na mdaiwa wanaambiwa (baada ya madeni kusasishwa)
+  if (guaranteeSms.length) {
+    const gm = await tx.select().from(schema.members).where(inArray(schema.members.id, [...new Set(guaranteeSms.flatMap((g) => [g.guarantorId, g.debtorId]))]));
+    const gById = new Map(gm.map((x) => [x.id, x]));
+    await smsGuaranteeUsed(tx, guaranteeSms.filter((g) => gById.has(g.guarantorId) && gById.has(g.debtorId))
+      .map((g) => ({ guarantor: gById.get(g.guarantorId)!, debtor: gById.get(g.debtorId)!, amount: g.amount, settlementId: g.settlementId })));
+  }
 }
 
 /** Idhini ya orodha ya malipo ya wakulima. Fedha HAZITOKI hapa: Mhasibu anathibitisha kila malipo yaliyofanyika kweli. */

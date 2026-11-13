@@ -6,7 +6,7 @@
 //  Sheria: hakuna anayeidhinisha ombi alilolianzisha mwenyewe.
 // =====================================================================
 import type { Request } from 'express';
-import { smsMemberRegistered } from './sms-events';
+import { smsAccountCorrection, smsMemberApplication, smsMemberRegistered } from './sms-events';
 import { and, eq, sql } from 'drizzle-orm';
 import { schema, type Tx } from '../db';
 import { AppError, badRequest, conflict, forbidden, notFound } from './errors';
@@ -27,6 +27,7 @@ import { onGroupChange, onGroupRegistration } from './groups';
 import { today as darToday } from './subscriptions';  // tarehe ya Tanzania, si UTC
 import { onKuniBatch, reverseKuniPayment } from './kuni';
 
+const tshShort = (v: string) => `TSh ${Math.round(Number(v)).toLocaleString('en-US')}`;
 type ApprovalType = (typeof schema.approvalTypeEnum.enumValues)[number];
 type Approval = typeof schema.approvalRequests.$inferSelect;
 const A = schema.approvalRequests;
@@ -105,6 +106,7 @@ async function onMember(tx: Tx, req: Request, a: Approval, o: Outcome, note: str
   }
   await audit(tx, req, { action: o === 'APPROVED' ? 'MEMBER_CONFIRM' : 'MEMBER_REGISTRATION_REJECT', entity: 'Member', entityId: row.id, amcosId: a.amcosId, before: { status: 'PENDING' }, after: { status, note } });
   if (o === 'APPROVED') await smsMemberRegistered(tx, row);
+  else if (o === 'REJECTED') await smsMemberApplication(tx, row, 'REJECTED', note);
 }
 
 async function onFinanceTxn(tx: Tx, req: Request, a: Approval, o: Outcome, note: string) {
@@ -224,6 +226,11 @@ async function reverseOne(tx: Tx, req: Request, a: Approval, orig: typeof schema
     const [mem] = await tx.update(M).set({ entryFeePaid: false, entryFeePaidAt: null, entryFeeReference: null })
       .where(and(eq(M.id, orig.memberId), eq(M.entryFeeReference, orig.txnNo))).returning({ id: M.id });
     if (mem) await audit(tx, req, { action: 'MEMBER_ENTRY_FEE_REVERSED', entity: 'Member', entityId: mem.id, amcosId: a.amcosId, after: { entryFeePaid: false, reversedTxn: orig.txnNo } });
+  }
+  if (orig.memberId) {
+    const mem = await tx.query.members.findFirst({ where: eq(schema.members.id, orig.memberId) });
+    const what = orig.kind === 'INCOME' ? `risiti ${orig.txnNo} (${tshShort(orig.amount)}) imefutwa` : `${orig.category === 'CASH_LOAN' ? 'mkopo' : 'malipo'} ${orig.txnNo} (${tshShort(orig.amount)}) yamesahihishwa`;
+    if (mem) await smsAccountCorrection(tx, mem, { refType: 'FinanceTransaction', refId: orig.id, what });
   }
   await audit(tx, req, { action: 'FINANCE_TXN_REVERSED', entity: 'FinanceTransaction', entityId: orig.id, amcosId: a.amcosId, after: { reversal: rev, note } });
 }

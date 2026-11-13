@@ -7,7 +7,8 @@
 //   Deni la dola linakatwa sokoni kwa kiwango cha siku ya soko. Orodha za zamani za TSh zinaendelea kama zilivyo.
 // =====================================================================
 import { Router, type Request } from 'express';
-import { smsLoanSent } from '../lib/sms-events';
+import { smsLoanSent, smsPaymentFailed } from '../lib/sms-events';
+import { assertCashConfirmed } from '../lib/cash-otp';
 import { z } from 'zod';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, schema } from '../db';
@@ -315,8 +316,12 @@ kuniRouter.post('/batches/:id/confirm', requireAmcosPerm('finance.record'), ah(a
   const body = z.object({
     accountId: z.string().uuid(), loanIds: z.array(z.string().uuid()).min(1, 'Chagua waliotumiwa pesa').max(2000),
     reference: z.string().trim().min(2, 'Weka kumbukumbu ya malipo (mf. namba ya bulk payment)'), txnDate: dateStr.optional(),
+    cashOverride: z.string().trim().max(300).optional(),
   }).parse(req.body);
   const b = await findBatch(req, id);
+  const cashRows = await db.select({ id: KL.id, memberNo: M.memberNo }).from(KL).innerJoin(M, eq(M.id, KL.memberId))
+    .where(and(eq(KL.batchId, id), inArray(KL.id, body.loanIds), eq(KL.method, 'CASH')));
+  const cashHow = await assertCashConfirmed(req, cashRows, body.cashOverride);
   if (!['APPROVED', 'PROCESSING', 'PARTIAL'].includes(b.status)) throw badRequest(b.status === 'DRAFT' ? 'Orodha hii bado inasubiri idhini ya Meneja' : 'Orodha hii haipokei malipo tena');
   const date = body.txnDate ?? todayStr();
   await assertOpen(db, b.amcosId, date);
@@ -362,7 +367,8 @@ kuniRouter.post('/batches/:id/confirm', requireAmcosPerm('finance.record'), ah(a
     const all = await tx.select({ status: KL.status }).from(KL).where(eq(KL.batchId, id));
     const status = all.every((x) => x.status === 'SUCCESS' || x.status === 'CANCELLED') ? 'COMPLETED' : all.some((x) => x.status === 'FAILED') ? 'PARTIAL' : 'PROCESSING';
     await tx.update(KB).set({ status }).where(eq(KB.id, id));
-    await audit(tx, req, { action: 'KUNI_PAYMENTS_CONFIRMED', entity: 'KuniBatch', entityId: id, amcosId: b.amcosId, after: { count: loans.length, total: fmt2(total), reference: body.reference, account: acc.name } });
+    await audit(tx, req, { action: 'KUNI_PAYMENTS_CONFIRMED', entity: 'KuniBatch', entityId: id, amcosId: b.amcosId, after: { count: loans.length, total: fmt2(total), reference: body.reference, account: acc.name,
+      ...(cashRows.length ? { cash: { total: cashRows.length, byOtp: [...cashHow.values()].filter((v) => v === 'OTP').length, byOverride: [...cashHow.values()].filter((v) => v === 'OVERRIDE').length, overrideReason: [...cashHow.values()].includes('OVERRIDE') ? body.cashOverride : undefined } } : {}) } });
     return { confirmed: loans.length, total: fmt2(total), status };
   });
   res.json(result);
@@ -375,6 +381,11 @@ kuniRouter.post('/batches/:id/fail', requireAmcosPerm('finance.record'), ah(asyn
   const rows = await db.transaction(async (tx) => {
     const r = await tx.update(KL).set({ status: 'FAILED', failureReason: body.reason }).where(and(eq(KL.batchId, b.id), inArray(KL.id, body.loanIds), eq(KL.status, 'PENDING'))).returning();
     if (r.length) await tx.update(KB).set({ status: 'PARTIAL' }).where(eq(KB.id, b.id));
+    if (r.length) {
+      const mems = await tx.select().from(M).where(inArray(M.id, r.map((x) => x.memberId)));
+      const byId = new Map(mems.map((x) => [x.id, x]));
+      await smsPaymentFailed(tx, r.filter((x) => byId.has(x.memberId)).map((x) => ({ member: byId.get(x.memberId)!, refType: 'KuniLoan', refId: x.id, amount: x.amount, what: LOAN_LABEL[b.loanType].toLowerCase() })));
+    }
     await audit(tx, req, { action: 'KUNI_PAYMENTS_FAILED', entity: 'KuniBatch', entityId: b.id, amcosId: b.amcosId, after: { count: r.length, reason: body.reason } });
     return r;
   });

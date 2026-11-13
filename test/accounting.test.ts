@@ -60,7 +60,16 @@ async function assertBooksBalance() {
 }
 
 async function newMember(first: string) {
-  const m = await call('POST', '/api/v1/members', storekeeper, { firstName: first, lastName: 'Mkulima' + RUN, gender: 'MALE', mobileMoneyNumber: '0754' + String(Math.floor(Math.random() * 1e6)).padStart(6, '0'), mobileMoneyProvider: 'MPESA', preferredPayment: 'MOBILE_MONEY' });
+  const body = { firstName: first, lastName: 'Mkulima' + RUN, gender: 'MALE', mobileMoneyNumber: '0754' + String(Math.floor(Math.random() * 1e6)).padStart(6, '0'), mobileMoneyProvider: 'MPESA', preferredPayment: 'MOBILE_MONEY' };
+  let m = await call('POST', '/api/v1/members', storekeeper, body);
+  if (m.status === 400 && m.body.error?.code === 'PHONE_OTP_REQUIRED') {
+    // v0.40: namba inathibitishwa kwa OTP wakati wa usajili (OTP ya namba ikiwa imewashwa)
+    assert.equal((await call('POST', '/api/v1/members/register-otp', storekeeper, { phone: body.mobileMoneyNumber, name: `${first} Mkulima` })).status, 200);
+    const tzp = '255' + body.mobileMoneyNumber.slice(1);
+    const code = [...dryOutbox].reverse().find((x) => x.phone === tzp && /namba (\d{6}) inathibitisha/.test(x.text))!.text.match(/namba (\d{6})/)![1];
+    assert.equal((await call('POST', '/api/v1/members/register-otp/verify', storekeeper, { phone: body.mobileMoneyNumber, code })).status, 200);
+    m = await call('POST', '/api/v1/members', storekeeper, body);
+  }
   assert.equal(m.status, 201, JSON.stringify(m.body));
   await approve(m.body.member.id);
   return m.body.member;
@@ -1318,6 +1327,104 @@ test('Mipangilio: ruhusa kwa kila cheo, utambulisho ni wa Owner, kila badiliko k
 });
 
 // v0.26 — LAZIMA liwe la mwisho: linafuta data yote ya chama cha majaribio -----------------------------
+// v0.40 — safari ya mkulima: SMS kila hatua, OTP pale anapothibitisha mwenyewe ----------------------------------------
+test('Mkulima: OTP ya usajili, taslimu na ridhaa ya kikundi; SMS za ombi, hali, namba ya zamani, risiti na malipo', async () => {
+  const kinds = { MEMBER_PHONE_OTP: true, CASH_PAYOUT_OTP: true, GROUP_CONSENT_OTP: true, FARMER_PORTAL_PIN: true, MEMBER_APPLICATION: true, MEMBER_REGISTERED: true,
+    MEMBER_STATUS: true, MEMBER_PHONE_CHANGED: true, MEMBER_RECEIPT: true, PAYMENT_SENT: true, ACCOUNT_CORRECTION: true };
+  assert.equal((await call('PUT', '/api/v1/owner/sms/events', owner, { events: kinds, confirmPassword: OWNER_PW })).status, 200);
+  const ph = () => '0767' + String(Math.floor(Math.random() * 1e6)).padStart(6, '0');
+  // SMS za taarifa zinaingia kwenye foleni (sms_logs); OTP na PIN zinatumwa papo hapo (dryOutbox)
+  const sms = async (phone: string, re: RegExp) => {
+    const rows = (await db.execute<{ message: string }>(sql`select message from sms_logs where phone = ${tz(phone)} order by created_at desc`)).rows;
+    return rows.find((r) => re.test(r.message)) ?? [...dryOutbox].reverse().find((x) => x.phone === tz(phone) && re.test(x.text));
+  };
+  try {
+    const cfg = (await call('GET', '/api/v1/members/otp-config', storekeeper)).body;
+    assert.deepEqual([cfg.phone, cfg.cash, cfg.group, cfg.pinBySms], [true, true, true, true]);
+
+    // 1. Usajili: namba lazima ithibitishwe kwa OTP; mtumishi hawezi kupita; Meneja anaweza kwa sababu
+    const p1 = ph();
+    const reg = { firstName: 'Otp', lastName: 'Usajili' + RUN, gender: 'MALE', phone: p1 };
+    const r0 = await call('POST', '/api/v1/members', storekeeper, reg);
+    assert.equal(r0.status, 400); assert.equal(r0.body.error.code, 'PHONE_OTP_REQUIRED');
+    assert.equal((await call('POST', '/api/v1/members', storekeeper, { ...reg, phoneOtpOverride: 'Mkulima hana simu leo kabisa' })).status, 400);
+    assert.equal((await call('POST', '/api/v1/members/register-otp', storekeeper, { phone: p1, name: 'Otp Usajili' })).status, 200);
+    const c1 = lastCode(tz(p1), /namba (\d{6}) inathibitisha kwamba simu hii/);
+    assert.equal((await call('POST', '/api/v1/members/register-otp/verify', storekeeper, { phone: p1, code: c1 === '000000' ? '111111' : '000000' })).status, 400);
+    assert.equal((await call('POST', '/api/v1/members/register-otp/verify', storekeeper, { phone: p1, code: c1 })).status, 200);
+    const r1 = await call('POST', '/api/v1/members', storekeeper, reg);
+    assert.equal(r1.status, 201, JSON.stringify(r1.body)); assert.ok(r1.body.member.phoneVerifiedAt);
+    assert.ok(await sms(p1, /ombi lako la uanachama limepokelewa/), 'SMS: ombi limepokelewa');
+    await approve(r1.body.member.id);
+    assert.ok(await sms(p1, /Karibu Otp/), 'SMS: karibu baada ya idhini');
+    const p2 = ph();
+    const r2 = await call('POST', '/api/v1/members', manager, { firstName: 'Meneja', lastName: 'Amesajili' + RUN, gender: 'FEMALE', phone: p2, phoneOtpOverride: 'Mkulima mzee, simu yake imeharibika' });
+    assert.equal(r2.status, 201, JSON.stringify(r2.body)); assert.equal(r2.body.member.phoneVerifiedAt, null);
+    assert.ok(await sms(p2, /Karibu Meneja/), 'Meneja akisajili mwenyewe, SMS ya karibu inatumwa');
+
+    // 2. Hali ya uanachama na tahadhari kwa namba ya zamani
+    const M1 = r1.body.member;
+    assert.equal((await call('PATCH', `/api/v1/members/${M1.id}/status`, manager, { status: 'SUSPENDED', reason: 'Hajahudhuria vikao' })).status, 200);
+    assert.ok(await sms(p1, /umesitishwa/));
+    assert.equal((await call('PATCH', `/api/v1/members/${M1.id}/status`, manager, { status: 'ACTIVE', reason: 'Amerudi' })).status, 200);
+    const p3 = ph();
+    assert.equal((await call('POST', `/api/v1/members/${M1.id}/phone-otp`, storekeeper, { phone: p3 })).status, 200);
+    assert.equal((await call('POST', `/api/v1/members/${M1.id}/phone-otp/verify`, storekeeper, { phone: p3, code: lastCode(tz(p3), /namba (\d{6}) inathibitisha/) })).status, 200);
+    assert.equal((await call('PATCH', `/api/v1/members/${M1.id}`, storekeeper, { phone: p3 })).status, 200);
+    assert.ok(await sms(p1, /imebadilishwa kutoka/), 'Namba ya zamani inapata tahadhari');
+
+    // 3. Risiti ya marejesho ya deni
+    const rc = await call('POST', '/api/v1/finance/income', accountant, { category: 'FARMER_REPAYMENT', memberId: M1.id, amount: '15000', accountId: cash.id, description: 'Marejesho' });
+    assert.equal(rc.status, 201, JSON.stringify(rc.body));
+    assert.ok(await sms(p3, new RegExp(`tumepokea TSh 15,000 .*Risiti ${rc.body.transaction.txnNo}`)));
+
+    // 4. Malipo ya taslimu: hayathibitishwi bila OTP ya mkulima
+    const fp = await call('POST', '/api/v1/finance/farmer-payments', accountant, { memberId: M1.id, amount: '20000', accountId: cash.id, description: 'Malipo ya ziada' });
+    assert.equal(fp.status, 201, JSON.stringify(fp.body));
+    const tid = fp.body.transaction.id;
+    await approve(tid);
+    const np = await call('POST', `/api/v1/finance/transactions/${tid}/post`, accountant, {});
+    assert.equal(np.status, 400); assert.equal(np.body.error.code, 'CASH_OTP_REQUIRED');
+    assert.equal((await call('POST', `/api/v1/finance/transactions/${tid}/post`, accountant, { cashOverride: 'Mhasibu anajaribu kupita OTP' })).status, 403, 'Meneja tu');
+    assert.equal((await call('POST', `/api/v1/cash-otp/txn/${tid}/otp`, accountant)).status, 200);
+    const c4 = lastCode(tz(p3), /uthibitisho: (\d{6})\. Itaje TU/);
+    assert.equal((await call('POST', `/api/v1/cash-otp/txn/${tid}/otp/verify`, accountant, { code: c4 })).status, 200);
+    const okp = await call('POST', `/api/v1/finance/transactions/${tid}/post`, accountant, {});
+    assert.equal(okp.status, 200, JSON.stringify(okp.body));
+    assert.ok(await sms(p3, /malipo TSh 20,000 umekabidhiwa taslimu/));
+    const au = (await db.execute<{ after: any }>(sql`select after from audit_logs where action = 'FINANCE_TXN_POST' and entity_id = ${tid}`)).rows[0];
+    assert.equal(au.after.cashConfirm, 'OTP');
+
+    // 5. Kikundi: kila mwanachama anakubali dhamana kwa OTP
+    const A = await newMember('Ridhaa'), B = await newMember('Ridhaa2');
+    const gb = { name: 'Ridhaa ' + RUN, memberIds: [A.id, B.id], leaderMemberId: A.id };
+    const g0 = await call('POST', '/api/v1/groups', storekeeper, gb);
+    assert.equal(g0.status, 400); assert.equal(g0.body.error.code, 'GROUP_CONSENT_REQUIRED');
+    assert.equal((await call('POST', '/api/v1/groups', storekeeper, { ...gb, consentOverride: 'Wamekubali kwa mdomo kikaoni' })).status, 403);
+    for (const m of [A, B]) {
+      assert.equal((await call('POST', '/api/v1/groups/consent-otp', storekeeper, { memberId: m.id, groupName: gb.name })).status, 200);
+      const code = lastCode(tz('0' + m.mobileMoneyNumber.slice(3)), /mpe mtumishi namba (\d{6})/i);
+      assert.equal((await call('POST', '/api/v1/groups/consent-otp/verify', storekeeper, { memberId: m.id, code })).status, 200);
+    }
+    const g1 = await call('POST', '/api/v1/groups', storekeeper, gb);
+    assert.equal(g1.status, 201, JSON.stringify(g1.body));
+
+    // 6. PIN ya portal inatumwa kwa SMS — mtumishi haioni; kumbukumbu inaficha PIN
+    const pin = await call('POST', `/api/v1/members/${M1.id}/portal/pin`, accountant);
+    assert.equal(pin.status, 201, JSON.stringify(pin.body));
+    assert.equal(pin.body.pin, null); assert.equal(pin.body.delivery.status, 'SENT');
+    const pinSms = [...dryOutbox].reverse().find((x) => x.phone === tz(p3) && /PIN yako ya kuingia/.test(x.text))!;
+    const realPin = pinSms.text.match(/ni (\d{6})\./)![1];
+    const log = (await db.execute<{ message: string }>(sql`select message from sms_logs where kind = 'FARMER_PORTAL_PIN' order by created_at desc limit 1`)).rows[0];
+    assert.ok(!log.message.includes(realPin) && log.message.includes('******'));
+    const fl = await call('POST', '/api/v1/farmer/login', undefined, { memberNo: M1.memberNo, pin: realPin });
+    assert.equal(fl.status, 200, 'Mkulima anaingia kwa PIN aliyopokea kwa SMS');
+  } finally {
+    const off = Object.fromEntries(Object.keys(kinds).map((k) => [k, false]));
+    await call('PUT', '/api/v1/owner/sms/events', owner, { events: off, confirmPassword: OWNER_PW });
+  }
+});
+
 test('Chama cha mafunzo: Owner pekee anafuta data yote, watumishi wanabaki, namba zinaanza upya, kinga zinabaki', async () => {
   const path = `/api/v1/owner/amcos/${amcosId}`;
   const code = (await call('GET', path, owner)).body.amcos.code;

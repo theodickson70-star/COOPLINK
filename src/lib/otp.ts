@@ -5,13 +5,13 @@
 //   - Kutuma upya: baada ya sekunde 60; si zaidi ya 6 kwa saa kwa jambo moja (gharama + usalama).
 // =====================================================================
 import crypto from 'node:crypto';
-import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db, schema } from '../db';
 import { env } from '../config/env';
 import { AppError } from './errors';
 import { maskPhone, normPhone, sendNow, type SmsKind } from './sms';
 
-export type OtpPurpose = 'LOGIN' | 'PASSWORD_RESET' | 'PHONE_CHANGE' | 'ISSUE_HANDOVER';
+export type OtpPurpose = 'LOGIN' | 'PASSWORD_RESET' | 'PHONE_CHANGE' | 'ISSUE_HANDOVER' | 'MEMBER_REGISTER' | 'CASH_PAYOUT' | 'GROUP_CONSENT';
 const TTL_MIN = 10;
 const MAX_ATTEMPTS = 5;
 const RESEND_SEC = 60;
@@ -69,4 +69,25 @@ export async function verifyOtp(purpose: OtpPurpose, subjectId: string, code: st
   const [used] = await db.update(O).set({ consumedAt: new Date(), verifiedAt: new Date() }).where(and(eq(O.id, row.id), isNull(O.consumedAt))).returning();
   if (!used) throw new AppError(400, 'OTP_INVALID', 'Namba hii imeshatumika');
   return used;
+}
+
+/** Kitambulisho thabiti (uuid) cha jambo lisilo na rekodi bado — mf. namba ya simu kabla mkulima hajasajiliwa. */
+export function subjectUuid(key: string) {
+  const h = crypto.createHash('sha256').update(key).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+
+/** Je, jambo hili limethibitishwa kwa OTP ndani ya dakika hizi? (inarudisha rekodi au null) */
+export async function recentlyVerified(purpose: OtpPurpose, subjectId: string, minutes = 60) {
+  const [row] = await db.select().from(O).where(and(eq(O.purpose, purpose), eq(O.subjectId, subjectId),
+    sql`${O.verifiedAt} > now() - make_interval(mins => ${minutes})`)).orderBy(desc(O.verifiedAt)).limit(1);
+  return row ?? null;
+}
+
+/** Vingi kwa pamoja: subjectIds zilizothibitishwa ndani ya dakika hizi. */
+export async function verifiedSet(purpose: OtpPurpose, subjectIds: string[], minutes = 60) {
+  if (!subjectIds.length) return new Set<string>();
+  const rows = await db.select({ s: O.subjectId }).from(O).where(and(eq(O.purpose, purpose), inArray(O.subjectId, subjectIds),
+    sql`${O.verifiedAt} > now() - make_interval(mins => ${minutes})`));
+  return new Set(rows.map((r) => r.s));
 }

@@ -99,12 +99,13 @@ export async function smsSaleSettled(tx: DbOrTx, rows: { member: Member; settlem
   })));
 }
 
-export async function smsPaymentSent(tx: DbOrTx, m: Member, o: { paymentId: string; amount: string; method: string; destination: string | null }) {
+export async function smsPaymentSent(tx: DbOrTx, m: Member, o: { paymentId: string; amount: string; method: string; destination: string | null; label?: string; refType?: string }) {
   if (!(await smsEnabled('PAYMENT_SENT'))) return;
   const chama = await amcosName(tx, m.amcosId);
   const via = o.method === 'MOBILE_MONEY' ? `kwa simu ${o.destination ? '0' + o.destination.slice(-9) : ''}`.trim() : o.method === 'BANK' ? 'benki' : 'taslimu';
-  await enqueue(tx, { kind: 'PAYMENT_SENT', phone: farmerPhone(m), amcosId: m.amcosId, memberId: m.id, referenceType: 'Payment', referenceId: o.paymentId,
-    text: `${chama}: ${first(m)}, malipo ya mauzo ya tumbaku ${tsh(o.amount)} yametumwa ${via}. Asante.` });
+  const what = o.label ?? 'malipo ya mauzo ya tumbaku';
+  await enqueue(tx, { kind: 'PAYMENT_SENT', phone: farmerPhone(m), amcosId: m.amcosId, memberId: m.id, referenceType: o.refType ?? 'Payment', referenceId: o.paymentId,
+    text: `${chama}: ${first(m)}, ${what} ${tsh(o.amount)} ${o.method === 'CASH' ? 'umekabidhiwa taslimu' : `yametumwa ${via}`}. Asante.` });
 }
 
 // ------------------------------ VIKUNDI ------------------------------
@@ -150,4 +151,84 @@ export async function smsGroupDebt(tx: DbOrTx, groupId: string, by: string) {
     kind: 'GROUP_DEBT', phone: farmerPhone(x), amcosId: g.amcosId, memberId: x.id, userId: by, referenceType: 'MemberGroup', referenceId: g.id,
     text: `${chama}: Kikundi ${g.name} - deni la jumla ${debtText(total)}. Deni lako ${debtText(debts.get(x.id) ?? { tzs: D(0), usd: D(0) })}. Mnadhaminiana: deni la mmoja linalipwa na kikundi.`,
   })));
+}
+
+// ------------------------------ SAFARI YA MKULIMA (v0.40) ------------------------------
+const STATUS_TEXT: Record<string, string> = {
+  ACTIVE: 'uanachama wako umerudishwa — sasa uko HAI na unaweza kuhudumiwa',
+  SUSPENDED: 'uanachama wako umesitishwa kwa muda',
+  EXITED: 'umetoka kwenye uanachama wa chama',
+};
+const local = (p: string | null | undefined) => (p ? `0${p.slice(-9)}` : '');
+
+/** Mtumishi amesajili -> ombi linasubiri Meneja; Meneja akikataa -> sababu */
+export async function smsMemberApplication(tx: DbOrTx, m: Member, outcome: 'RECEIVED' | 'REJECTED', note?: string) {
+  if (!(await smsEnabled('MEMBER_APPLICATION'))) return;
+  const chama = await amcosName(tx, m.amcosId);
+  await enqueue(tx, { kind: 'MEMBER_APPLICATION', phone: farmerPhone(m), amcosId: m.amcosId, memberId: m.id, referenceType: 'Member', referenceId: m.id,
+    text: outcome === 'RECEIVED'
+      ? `${chama}: ${first(m)}, ombi lako la uanachama limepokelewa. Utapata SMS nyingine Meneja akishaidhinisha.`
+      : `${chama}: ${first(m)}, ombi lako la uanachama halikukubaliwa${note ? `: ${note.slice(0, 80)}` : ''}. Wasiliana na chama kwa maelezo.` });
+}
+
+export async function smsMemberStatus(tx: DbOrTx, m: Member, reason: string) {
+  const t = STATUS_TEXT[m.status];
+  if (!t || !(await smsEnabled('MEMBER_STATUS'))) return;
+  const chama = await amcosName(tx, m.amcosId);
+  await enqueue(tx, { kind: 'MEMBER_STATUS', phone: farmerPhone(m), amcosId: m.amcosId, memberId: m.id, referenceType: 'Member', referenceId: m.id,
+    text: `${chama}: ${first(m)}, ${t}. Sababu: ${reason.slice(0, 70)}.${m.status === 'ACTIVE' ? '' : ' Wasiliana na chama kwa maelezo.'}` });
+}
+
+/** Namba ya zamani inaambiwa namba imebadilishwa (kama si yeye, aripoti) */
+export async function smsPhoneChanged(tx: DbOrTx, m: Member, oldPhones: string[], what: 'simu' | 'malipo' | 'simu na malipo') {
+  if (!oldPhones.length || !(await smsEnabled('MEMBER_PHONE_CHANGED'))) return;
+  const chama = await amcosName(tx, m.amcosId);
+  await enqueue(tx, oldPhones.map((ph): SmsMessage => ({ kind: 'MEMBER_PHONE_CHANGED', phone: ph, amcosId: m.amcosId, memberId: m.id, referenceType: 'Member', referenceId: m.id,
+    text: `${chama}: Namba ya ${what} ya mwanachama ${m.memberNo} (${full(m)}) imebadilishwa kutoka ${local(ph)}. Kama hukuomba, ripoti chama MARA MOJA.` })));
+}
+
+export async function smsMemberReceipt(tx: DbOrTx, m: Member, o: { txnId: string; txnNo: string; amount: string; label: string; showDebt: boolean }) {
+  if (!(await smsEnabled('MEMBER_RECEIPT'))) return;
+  const chama = await amcosName(tx, m.amcosId);
+  const d = o.showDebt ? (await debtOf(tx, [m.id])).get(m.id)! : null;
+  await enqueue(tx, { kind: 'MEMBER_RECEIPT', phone: farmerPhone(m), amcosId: m.amcosId, memberId: m.id, referenceType: 'FinanceTransaction', referenceId: o.txnId,
+    text: `${chama}: ${first(m)}, tumepokea ${tsh(o.amount)} (${o.label}). Risiti ${o.txnNo}.${d ? ` Deni lililobaki: ${debtText(d)}.` : ''} Asante.` });
+}
+
+export async function smsEstimateApproved(tx: DbOrTx, m: Member, o: { estimateId: string; acres: string; kg: string }) {
+  if (!(await smsEnabled('ESTIMATE_APPROVED'))) return;
+  const chama = await amcosName(tx, m.amcosId);
+  await enqueue(tx, { kind: 'ESTIMATE_APPROVED', phone: farmerPhone(m), amcosId: m.amcosId, memberId: m.id, referenceType: 'Estimate', referenceId: o.estimateId,
+    text: `${chama}: ${first(m)}, makisio yako ya msimu yameidhinishwa: ekari ${D(o.acres).toNumber()}, kilo ${D(o.kg).toNumber().toLocaleString('en-US')}. Pembejeo zako zitapangwa kwa makisio haya.` });
+}
+
+/** Dhamana ya kikundi: mdhamini (mauzo yake yamekatwa) na mdaiwa (deni lake limepungua) */
+export async function smsGuaranteeUsed(tx: DbOrTx, rows: { guarantor: Member; debtor: Member; amount: string; settlementId: string }[]) {
+  if (!rows.length || !(await smsEnabled('GROUP_GUARANTEE_USED'))) return;
+  const chama = await amcosName(tx, rows[0].guarantor.amcosId);
+  const debts = await debtOf(tx, [...new Set(rows.map((r) => r.debtor.id))]);
+  const msgs: SmsMessage[] = [];
+  for (const r of rows) {
+    msgs.push({ kind: 'GROUP_GUARANTEE_USED', phone: farmerPhone(r.guarantor), amcosId: r.guarantor.amcosId, memberId: r.guarantor.id, referenceType: 'Settlement', referenceId: r.settlementId,
+      text: `${chama}: ${first(r.guarantor)}, ${tsh(r.amount)} kwenye mauzo yako imelipa deni la mwanakikundi ${full(r.debtor)} (dhamana ya kikundi).` });
+    msgs.push({ kind: 'GROUP_GUARANTEE_USED', phone: farmerPhone(r.debtor), amcosId: r.debtor.amcosId, memberId: r.debtor.id, referenceType: 'Settlement', referenceId: r.settlementId,
+      text: `${chama}: ${first(r.debtor)}, mwanakikundi ${full(r.guarantor)} amelipa ${tsh(r.amount)} ya deni lako. Deni lako sasa: ${debtText(debts.get(r.debtor.id) ?? { tzs: D(0), usd: D(0) })}.` });
+  }
+  await enqueue(tx, msgs);
+}
+
+export async function smsPaymentFailed(tx: DbOrTx, rows: { member: Member; refType: string; refId: string; amount: string; what: string }[]) {
+  if (!rows.length || !(await smsEnabled('PAYMENT_FAILED'))) return;
+  const chama = await amcosName(tx, rows[0].member.amcosId);
+  await enqueue(tx, rows.map((r): SmsMessage => ({ kind: 'PAYMENT_FAILED', phone: farmerPhone(r.member), amcosId: r.member.amcosId, memberId: r.member.id, referenceType: r.refType, referenceId: r.refId,
+    text: `${chama}: ${first(r.member)}, ${r.what} ${tsh(r.amount)} haijakufikia bado (imekwama). Chama kinashughulikia. Hakikisha namba yako ya malipo ni sahihi.` })));
+}
+
+/** Pembejeo zimefutwa / muamala wa mkulima umesahihishwa */
+export async function smsAccountCorrection(tx: DbOrTx, m: Member, o: { refType: string; refId: string; what: string }) {
+  if (!(await smsEnabled('ACCOUNT_CORRECTION'))) return;
+  const chama = await amcosName(tx, m.amcosId);
+  const d = (await debtOf(tx, [m.id])).get(m.id)!;
+  await enqueue(tx, { kind: 'ACCOUNT_CORRECTION', phone: farmerPhone(m), amcosId: m.amcosId, memberId: m.id, referenceType: o.refType, referenceId: o.refId,
+    text: `${chama}: ${first(m)}, marekebisho kwenye akaunti yako: ${o.what}. Deni lako sasa: ${debtText(d)}.` });
 }
