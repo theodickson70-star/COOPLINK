@@ -19,6 +19,9 @@ dashboardRouter.get(
     const t = today();
     const soon = addDays(t, cfg.expiringWindowDays);
     const canFinance = req.auth!.permissions.includes('finance.read');
+    const canSupport = req.auth!.permissions.includes('support.read');
+    // kipindi kilichotangulia chenye urefu uleule — kwa kulinganisha (▲/▼)
+    const prevFromTs = new Date(r.fromTs.getTime() - (r.toTs.getTime() - r.fromTs.getTime()));
     const one = async <T>(q: ReturnType<typeof sql>) => (await db.execute(q)).rows[0] as T;
 
     const amcos = await one<Record<string, number>>(sql`
@@ -27,7 +30,8 @@ dashboardRouter.get(
         count(*) filter (where status = 'SUSPENDED')::int as suspended,
         count(*) filter (where status = 'PENDING')::int as pending,
         count(*) filter (where status = 'REJECTED')::int as rejected,
-        count(*) filter (where created_at >= ${r.fromTs} and created_at < ${r.toTs})::int as new_in_range
+        count(*) filter (where created_at >= ${r.fromTs} and created_at < ${r.toTs})::int as new_in_range,
+        count(*) filter (where created_at >= ${prevFromTs} and created_at < ${r.fromTs})::int as new_prev
       from amcos`);
 
     const users = await one<Record<string, number>>(sql`
@@ -49,6 +53,8 @@ dashboardRouter.get(
     if (canFinance) {
       revenue = await one<Record<string, string>>(sql`
         select coalesce(sum(amount) filter (where paid_at >= ${r.fromTs} and paid_at < ${r.toTs}), 0) as in_range,
+          coalesce(sum(amount) filter (where paid_at >= ${prevFromTs} and paid_at < ${r.fromTs}), 0) as prev_range,
+          count(*) filter (where paid_at >= ${r.fromTs} and paid_at < ${r.toTs})::int as payments_in_range,
           coalesce(sum(amount) filter (where date_trunc('month', paid_at at time zone 'Africa/Dar_es_Salaam') = date_trunc('month', now() at time zone 'Africa/Dar_es_Salaam')), 0) as this_month,
           coalesce(sum(amount) filter (where date_trunc('year', paid_at at time zone 'Africa/Dar_es_Salaam') = date_trunc('year', now() at time zone 'Africa/Dar_es_Salaam')), 0) as this_year,
           coalesce(sum(amount), 0) as all_time,
@@ -76,10 +82,18 @@ dashboardRouter.get(
         (select started_at from job_runs order by started_at desc limit 1) as last_job_at`);
     const maintenance = await getSetting('maintenance');
 
+    // Shughuli za karibuni — kila mtu anaona tu anachoruhusiwa (pesa: finance.read, tiketi: support.read)
+    const parts = [sql`select 'AMCOS' as kind, a.id::text as ref, a.name as title, coalesce(a.region, '') as detail, a.status::text as status, null::numeric as amount, a.created_at as at from amcos a`];
+    if (canFinance) parts.push(sql`select 'PAYMENT', p.id::text, coalesce(a.name, p.invoice_no), p.invoice_no, p.status::text, p.amount, coalesce(p.verified_at, p.created_at)
+      from platform_payments p left join amcos a on a.id = p.amcos_id where p.status in ('VERIFIED','PENDING')`);
+    if (canSupport) parts.push(sql`select 'TICKET', t.id::text, t.subject, '#' || t.ticket_no || ' · ' || a.name, t.status::text, null, t.created_at
+      from support_tickets t join amcos a on a.id = t.amcos_id`);
+    const recent = (await db.execute(sql`select * from (${sql.join(parts, sql` union all `)}) x order by at desc limit 8`)).rows;
+
     res.json({
       range: { from: r.from, to: r.to },
       amcos, users, subscriptions: { ...subs, expiringWindowDays: cfg.expiringWindowDays },
-      revenue, series,
+      revenue, series, recent,
       health: { db: 'ok', dbMs, ...health, maintenance: maintenance.enabled },
     });
   }),
