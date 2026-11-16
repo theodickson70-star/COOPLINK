@@ -6,7 +6,7 @@ import { useAuth } from '../lib/auth';
 import { dateTime, MOVE_LABEL, num, STAFF_DUTY, tsh, UNIT_LABEL } from '../lib/format';
 import { Alert, Badge, Empty, Loading } from '../components/ui';
 import { Kpi, Section } from '../components/owner-ui';
-import { Dashboard, HomeHero, QuickLinks, TaskPanel, type Task } from './Dashboard';
+import { ComingSoon, Dashboard, HomeHero, QuickLinks, TaskPanel, type Task } from './Dashboard';
 import { Icon } from '../components/icons';
 import { useT } from '../lib/prefs';
 import { FinanceAlerts } from '../components/FinanceAlerts';
@@ -80,6 +80,7 @@ export function Workspace() {
       {data.role === 'AMCOS_ADMIN' && <Manager d={data} work={work} />}
       {data.role === 'ACCOUNTANT' && <div className="stack">{work}<AccountingHome embedded /><Pending d={data} title={t('Maombi yangu')} /></div>}
       {data.role === 'CLERK' && <Storekeeper d={data} work={work} />}
+      <div style={{ marginTop: 16 }}><ComingSoon /></div>
     </>
   );
 }

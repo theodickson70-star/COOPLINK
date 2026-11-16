@@ -9,6 +9,7 @@ import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useT } from '../lib/prefs';
 import { LogoMark } from './Logo';
+import { RotatingSlogan } from './Slogan';
 import { K_ACT, K_LOCK, lsGet, lsPut, markActive } from '../lib/session';
 
 export const IDLE_MIN = 5;
@@ -87,11 +88,11 @@ function LockScreen({ onUnlock }: { onUnlock: () => void }) {
       <div className="lock-side">
         <div className="lock-time">{time}</div>
         <div className="lock-day">{day}</div>
-        <h2>Connecting Cooperatives.<em>Empowering Farmers</em></h2>
+        <h2 className="slg-h"><RotatingSlogan /></h2>
       </div>
       <form className="lock-card" onSubmit={submit}>
         <div className="lock-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><rect x="5" y="10.5" width="14" height="10" rx="2" /><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" /></svg></div>
-        <span className="lock-av">{user.fullName.charAt(0)}</span>
+        <span className="lock-av lock-av-logo" aria-hidden="true"><LogoMark size={52} ring={false} /></span>
         <strong className="lock-name">{user.fullName}</strong>
         <p className="lock-msg">{t('Kwa usalama, mfumo umefungwa baada ya dakika {n} bila kutumika. Weka nenosiri lako kuendelea.', { n: IDLE_MIN })}</p>
         {err && <div className="lock-err">{err}</div>}

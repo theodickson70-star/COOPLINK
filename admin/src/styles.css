@@ -2502,3 +2502,35 @@ a.card:hover, button.card:hover, .card.clickable:hover { transform: translateY(-
 .dash2-tasks a b { color: var(--head); }
 /* Viashiria 6: safu 3 x 2 (bila kadi moja kubaki peke yake) */
 @media (min-width: 900px) { .grid-kpi:has(> :nth-child(6):last-child) { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+/* ---- Kauli mbiu inayozunguka (EN ⇄ SW kila sek 35) ---- */
+.slg { display: block; }
+.slg-line { position: relative; display: block; font-kerning: none; }
+.slg-b { color: var(--gold); }
+.slg-w { display: inline-block; white-space: nowrap; }
+.slg-ch { display: inline-block; opacity: 0; transform: translateY(.35em); filter: blur(6px); animation: slgIn .7s cubic-bezier(.2, .8, .2, 1) forwards; }
+@keyframes slgIn { to { opacity: 1; transform: none; filter: none; } }
+.slg-sheen {
+  position: absolute; inset: 0; pointer-events: none; color: transparent; white-space: normal;
+  background: linear-gradient(100deg, transparent 0 40%, rgba(255, 255, 255, .95) 50%, transparent 60% 100%) no-repeat;
+  background-size: 250% 100%; background-position: 160% 0;
+  -webkit-background-clip: text; background-clip: text;
+  animation: slgSheen 6s ease-in-out 1.6s infinite;
+}
+.slg-b .slg-sheen { background-image: linear-gradient(100deg, transparent 0 40%, rgba(255, 246, 214, 1) 50%, transparent 60% 100%); }
+@keyframes slgSheen { 0% { background-position: 160% 0; } 45%, 100% { background-position: -60% 0; } }
+@media (prefers-reduced-motion: reduce) { .slg-ch { animation: none; opacity: 1; transform: none; filter: none; } .slg-sheen { animation: none; display: none; } }
+
+/* Skrini ya kufunga: nembo ya CoopLink badala ya herufi */
+.lock-av.lock-av-logo { border-radius: 20px; background: #0B2F23; box-shadow: 0 0 0 5px rgba(227, 168, 58, .22), 0 10px 24px rgba(11, 47, 35, .25); }
+.lock-av-logo svg { display: block; }
+
+/* ---- Inakuja hivi karibuni (dashibodi) ---- */
+.soon-card { background: linear-gradient(135deg, var(--glass-strong), rgba(227, 168, 58, .08)); }
+.soon-tag { font: 600 12px var(--font-body); padding: 4px 10px; border-radius: 999px; background: rgba(227, 168, 58, .18); color: var(--gold-ink); white-space: nowrap; }
+:root[data-theme="dark"] .soon-tag { color: var(--gold); }
+.soon-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px; }
+.soon-it { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--paper); }
+.soon-it > span:last-child { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.soon-it b { font-size: 14px; color: var(--head); }
+.soon-it small { font-size: 12.5px; line-height: 1.45; color: var(--muted); }

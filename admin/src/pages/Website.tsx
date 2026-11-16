@@ -4,6 +4,8 @@
 //   Mawasiliano yanatoka kwenye wasifu wa kampuni (Owner → Business Center) — hakuna namba kwenye code.
 // =====================================================================
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { COMING_SOON } from '../lib/comingSoon';
+import { Icon } from '../components/icons';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { usePrefs } from '../lib/prefs';
@@ -95,7 +97,8 @@ const GROUPS: { t: T; d: T; items: Item[] }[] = [
 const TX = {
   nav: { home: S('Mwanzo', 'Home'), about: S('Kuhusu Sisi', 'About'), services: S('Huduma za Mfumo', 'Services'), who: S('Wanaonufaika', 'Who benefits'), how: S('Jinsi Inavyofanya Kazi', 'How it works'), contact: S('Wasiliana Nasi', 'Contact') },
   login: S('Ingia kwenye mfumo', 'Sign in'), cont: S('Endelea kwenye mfumo', 'Continue to the system'), demo: S('Omba maonyesho', 'Request a demo'), demoFor: S('Omba maonyesho kwa chama chako', 'Request a demo for your society'),
-  pill: S('Toleo la kwanza linafanya kazi sasa', 'Version 1 is live'),
+  pill: S('Toleo la 2 linafanya kazi sasa', 'Version 2 is live'),
+  soonK: S('Inakuja hivi karibuni', 'Coming soon'), soonH: S('CoopLink inaendelea kukua', 'CoopLink keeps growing'), soonP: S('Vipengele vipya tunavyovijenga sasa — vitawafikia wakulima wengi zaidi, hata wasio na intaneti.', 'New features we are building now — reaching more farmers, even those without internet.'), soonTag: S('Inakuja', 'Coming soon'),
   lead: S('COOPLINK ni mfumo wa kidijitali wa kusimamia Vyama vya Msingi vya Ushirika wa Masoko ya Mazao (AMCOS) — wakulima, pembejeo kwa mkopo, mauzo kwa madaraja, makato, malipo na hesabu za chama, kila hatua ikiidhinishwa na kurekodiwa.',
     'COOPLINK is a digital system for Agricultural Marketing Cooperative Societies (AMCOS) — farmers, inputs on credit, sales by grade, deductions, payments and society accounts, with every step approved and recorded.'),
   shotNote: S('Picha za mfumo halisi · taarifa za majaribio', 'Real system screens · demo data'),
@@ -332,6 +335,18 @@ export function Website({ signedIn = false, onEnter }: { signedIn?: boolean; onE
             </div>
           </div>
         ))}
+      </section>
+
+      <section className="ws-soon" id="inakuja">
+        <div className="ws-reveal"><div className="ws-k">{TX.soonK[lang]}</div><h2>{TX.soonH[lang]}</h2><p className="ws-sub">{TX.soonP[lang]}</p></div>
+        <div className="ws-soon-grid">
+          {COMING_SOON.map((f, i) => (
+            <div className="ws-soon-c ws-reveal" key={f.icon} style={{ transitionDelay: `${i * 70}ms` }}>
+              <div className="ws-soon-top"><span className="ws-soon-ic"><Icon name={f.icon} /></span><span className="ws-soon-tag">{TX.soonTag[lang]}</span></div>
+              <b>{lang === 'sw' ? f.t : f.tEn}</b><p>{lang === 'sw' ? f.d : f.dEn}</p>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="ws-sec" id="wanaonufaika">

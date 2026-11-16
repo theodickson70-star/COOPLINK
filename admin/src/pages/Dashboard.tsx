@@ -13,6 +13,7 @@ import { getSelectedAmcos, type Paged } from '../lib/api';
 import { Alert, Loading, Stat } from '../components/ui';
 import { BarChart } from '../components/charts';
 import { Icon, type IconName } from '../components/icons';
+import { COMING_SOON } from '../lib/comingSoon';
 
 interface Summary {
   season: { id: string; name: string; status: string };
@@ -136,6 +137,8 @@ export function Dashboard() {
         <QuickLinks />
       </div>
 
+      <ComingSoon />
+
       {acc.data && !!acc.data.recent.length && may('ledger.read') && (
         <section className="card">
           <div className="dash2-h card-pad" style={{ paddingBottom: 0 }}><h2><Icon name="scale" />{t('Wenye madeni makubwa')}</h2><Link to="/balances">{t('Ona wote')}</Link></div>
@@ -229,6 +232,25 @@ export function QuickLinks() {
       <h2>{t('Njia za mkato')}</h2>
       <div className="dash2-qgrid">
         {quick.map((q) => <Link key={q.to + q.label} to={q.to}><Icon name={q.icon} /><span>{t(q.label)}</span></Link>)}
+      </div>
+    </section>
+  );
+}
+
+// ------------------------------ INAKUJA HIVI KARIBUNI ------------------------------
+
+export function ComingSoon() {
+  const t = useT();
+  return (
+    <section className="card card-pad soon-card" aria-labelledby="soon-h">
+      <div className="dash2-h"><h2 id="soon-h"><Icon name="sparkle" />{t('Inakuja hivi karibuni')}</h2><span className="soon-tag">{t('Tunajenga sasa')}</span></div>
+      <div className="soon-grid">
+        {COMING_SOON.map((f) => (
+          <div className="soon-it" key={f.icon}>
+            <span className="stat-chip chip-gold"><Icon name={f.icon} /></span>
+            <span><b>{t(f.t)}</b><small>{t(f.d)}</small></span>
+          </div>
+        ))}
       </div>
     </section>
   );
