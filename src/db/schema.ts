@@ -1248,6 +1248,14 @@ export const announcements = pgTable('announcements', {
   createdAt: createdAt(),
 }, (t) => [index().on(t.createdAt)]);
 
+/** v2.2: nani amesoma tangazo lipi (kengele ya arifa) — kwa mtumiaji, si kwa kivinjari */
+export const announcementReads = pgTable('announcement_reads', {
+  id: id(),
+  announcementId: uuid().notNull().references(() => announcements.id, { onDelete: 'cascade' }),
+  userId: uuid().notNull().references(() => users.id, { onDelete: 'cascade' }),
+  readAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex('announcement_reads_unique').on(t.announcementId, t.userId), index().on(t.userId)]);
+
 export const announcementDeliveries = pgTable('announcement_deliveries', {
   id: id(),
   announcementId: uuid().notNull().references(() => announcements.id),

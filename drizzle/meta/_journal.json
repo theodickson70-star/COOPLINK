@@ -281,6 +281,13 @@
       "when": 1794830088302,
       "tag": "0039_coop_officer",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794845601760,
+      "tag": "0040_notifications",
+      "breakpoints": true
     }
   ]
 }

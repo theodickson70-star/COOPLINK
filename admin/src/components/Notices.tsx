@@ -3,11 +3,6 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
-interface Ann { id: string; kind: string; title: string; body: string; createdAt: string }
-const KEY = 'cl:dismissed-announcements';
-const readDismissed = (): string[] => { try { return JSON.parse(localStorage.getItem(KEY) ?? '[]'); } catch { return []; } };
-const writeDismissed = (ids: string[]) => { try { localStorage.setItem(KEY, JSON.stringify(ids.slice(-50))); } catch { /* hifadhi haipatikani */ } };
-
 /** Banner ya mfumo mzima (inawekwa na Owner kwenye System Control Center). */
 export function SystemBanner() {
   const [banner, setBanner] = useState<{ message: string; tone: 'info' | 'warn' } | null>(null);
@@ -21,25 +16,6 @@ export function SystemBanner() {
   }, []);
   if (!banner?.message) return null;
   return <div className={`sys-banner ${banner.tone}`} role="status">{banner.message}</div>;
-}
-
-/** Matangazo ya ndani ya mfumo kwa watumiaji wa vyama. */
-export function AnnouncementBar() {
-  const [list, setList] = useState<Ann[]>([]);
-  const [dismissed, setDismissed] = useState<string[]>(readDismissed);
-  useEffect(() => { api<{ data: Ann[] }>('/announcements').then((r) => setList(r.data)).catch(() => {}); }, []);
-  const visible = list.filter((a) => !dismissed.includes(a.id)).slice(0, 2);
-  if (!visible.length) return null;
-  return (
-    <div className="ann-stack">
-      {visible.map((a) => (
-        <div key={a.id} className={`ann ann-${a.kind.toLowerCase()}`}>
-          <div><strong>{a.title}</strong><p>{a.body}</p><small>Kutoka CoopLink · {new Date(a.createdAt).toLocaleDateString('sw-TZ')}</small></div>
-          <button type="button" aria-label="Funga tangazo" onClick={() => { const n = [...dismissed, a.id]; setDismissed(n); writeDismissed(n); }}>×</button>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 /** Skrini ya matengenezo: inaonekana API ikirudisha MAINTENANCE (503). */

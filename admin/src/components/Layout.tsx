@@ -7,7 +7,8 @@ import { api, getSelectedAmcos, setSelectedAmcos, type Paged } from '../lib/api'
 import { ROLE_LABEL } from '../lib/format';
 import { LogoMark, Wordmark } from './Logo';
 import { Button, Loading } from './ui';
-import { AnnouncementBar, MaintenanceOverlay, SystemBanner } from './Notices';
+import { MaintenanceOverlay, SystemBanner } from './Notices';
+import { NotificationBell } from './NotificationBell';
 import { PrefSwitches, useT } from '../lib/prefs';
 import { LegalLinks } from './LegalLinks';
 import { hasGuide, OPEN_GUIDE, PageGuide } from './PageGuide';
@@ -249,6 +250,7 @@ export function Layout() {
               <Icon d={I.help} /><span className="hide-sm">{t('Pata msaada')}</span>
             </Link>
           )}
+          <NotificationBell />
           <div className="tb-desk">
             {hasGuide(loc.pathname, user.role) && (
               <Button variant="ghost" size="sm" className="help-btn" title={t('Onyesha mwongozo wa ukurasa huu')} onClick={() => { window.dispatchEvent(new Event(OPEN_GUIDE)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
@@ -289,7 +291,6 @@ export function Layout() {
         <SystemBanner />
         {amcos?.training && user.amcosId && <div className="training-strip" role="status">🎓 {t('Hali ya mafunzo: data ya chama hiki ni ya mazoezi na itafutwa yote kabla ya kuanza matumizi halisi. Akaunti zenu zitabaki.')}</div>}
         <main className="content" ref={contentRef}>
-          {user.amcosId && <AnnouncementBar />}
           {officer && user.twoFactor?.required && !user.totpEnabled && !user.twoFactor.overdue && user.twoFactor.deadline && loc.pathname !== '/oversight/account' && (
             <div className="tfa-banner" role="status">🔐 <span>{t('Washa 2FA kabla ya')} <b>{date(user.twoFactor.deadline)}</b>. {t('Akaunti za Afisa Ushirika zina mamlaka ya kiserikali — 2FA ni lazima.')}</span>
               <Link className="btn btn-sm btn-primary" to="/oversight/account">{t('Washa sasa')}</Link></div>

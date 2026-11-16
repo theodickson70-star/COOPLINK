@@ -9,7 +9,7 @@ import { LABELS, Pill, Section } from '../components/owner-ui';
 
 interface Ann {
   id: string; kind: string; title: string; body: string; audience: string; amcosIds: string[] | null; channels: string[];
-  sentAt: string | null; createdAt: string; createdBy: string | null; deliveryStats: Record<string, number>;
+  sentAt: string | null; createdAt: string; createdBy: string | null; deliveryStats: Record<string, number>; reads?: number;
 }
 
 export function OwnerComms() {
@@ -50,7 +50,7 @@ export function OwnerComms() {
                 <td><strong>{a.title}</strong><div className="muted" style={{ fontSize: 13 }}>{a.body.slice(0, 80)}{a.body.length > 80 ? '…' : ''}</div></td>
                 <td>{a.audience === 'ALL' ? 'Vyama vyote' : `Vyama ${a.amcosIds?.length ?? 0}`}</td>
                 <td>{a.channels.map((c) => LABELS[c] ?? c).join(', ')}</td>
-                <td>{fmtStats(a.deliveryStats)}</td>
+                <td>{fmtStats(a.deliveryStats)}{a.channels.includes('IN_APP') && <div className="muted" style={{ fontSize: 12.5 }}>Imesomwa na watumishi {a.reads ?? 0}</div>}</td>
                 <td className="num"><Button size="sm" variant="ghost" onClick={() => setDetail(a.id)}>Maelezo</Button></td>
               </tr>
             ))}</tbody>

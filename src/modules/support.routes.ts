@@ -23,8 +23,9 @@ const amcosOf = (req: Request) => {
 };
 const isManager = (req: Request) => req.auth!.role === 'AMCOS_ADMIN';
 /** Meneja anaona tiketi zote za chama; wengine zao tu */
+export const visibleTickets = (req: Request) => visible(req);
 const visible = (req: Request) => (isManager(req) ? eq(T.amcosId, amcosOf(req)) : and(eq(T.amcosId, amcosOf(req)), eq(T.createdById, req.auth!.userId)));
-const unreadSql = sql<boolean>`(${T.lastPlatformAt} is not null and (${T.amcosSeenAt} is null or ${T.lastPlatformAt} > ${T.amcosSeenAt}))`;
+export const unreadSql = sql<boolean>`(${T.lastPlatformAt} is not null and (${T.amcosSeenAt} is null or ${T.lastPlatformAt} > ${T.amcosSeenAt}))`;
 
 async function findTicket(req: Request, id: string) {
   const [t] = await db.select().from(T).where(and(eq(T.id, id), visible(req)));

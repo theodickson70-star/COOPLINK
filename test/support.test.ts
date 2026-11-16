@@ -104,6 +104,12 @@ test('Tiketi za msaada: kufungua, kuonekana kwa wanaostahili, majibu, maelezo ya
   assert.equal(od.ticket.assignedToId, supportId, 'aliyejibu kwanza anapewa tiketi');
   assert.equal(od.messages.length, 3);
   assert.equal((await call('GET', '/api/v1/support/unread', clerk)).body.count, 1, 'Storekeeper anaona jibu jipya');
+  // Kengele ya arifa: jibu la CoopLink linaonekana (bila maelezo ya ndani)
+  const nf = (await call('GET', '/api/v1/notifications', clerk)).body;
+  const tn = nf.items.find((x: any) => x.type === 'SUPPORT' && x.id === id);
+  assert.ok(tn && tn.unread, 'jibu la tiketi kwenye arifa');
+  assert.equal(tn.body, 'Tumelirekebisha, jaribu tena.');
+  assert.ok(!JSON.stringify(nf).includes('Ndani: angalia logs'), 'maelezo ya ndani hayavuji kwenye arifa');
   d = (await call('GET', `/api/v1/support/tickets/${id}`, clerk)).body;
   assert.equal(d.messages.length, 2);
   assert.match(d.messages[1].author, /Timu ya CoopLink/);

@@ -12,7 +12,8 @@ import { env } from './config/env';
 import { db } from './db';
 import { authenticate, blockPlatformStaff, maintenanceGuard } from './middleware/auth';
 import { ownerRouter } from './modules/owner';
-import { publicRouter, announcementsRouter } from './modules/public.routes';
+import { publicRouter } from './modules/public.routes';
+import { notificationsRouter } from './modules/notifications.routes';
 import { errorHandler, notFoundHandler } from './middleware/error';
 import { authRouter } from './modules/auth.routes';
 import { usersRouter } from './modules/users.routes';
@@ -98,7 +99,7 @@ export function createApp() {
   api.use(authenticate);
   api.use(maintenanceGuard);
   api.use('/owner', ownerRouter);              // Owner Control Panel (wasimamizi wa jukwaa tu)
-  api.use('/announcements', announcementsRouter);
+  api.use('/notifications', notificationsRouter);     // kengele: matangazo ya CoopLink + majibu ya tiketi
   api.use('/lookup', lookupRouter);              // Jina la mwenye namba ya simu (Abliner) — kwa fomu zote
   api.use(blockPlatformStaff);                 // wafanyakazi wa jukwaa hawaingii data za vyama
   api.use(officerGuard);                       // Afisa Ushirika: kusoma tu + 2FA ya lazima

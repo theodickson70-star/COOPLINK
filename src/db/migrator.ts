@@ -101,6 +101,9 @@ const MARKERS: Record<string, string[]> = {
   '0017_rebrand_dukalangu': [
     "select not exists (select 1 from platform_settings where key = 'business.profile' and upper(trim(value->>'companyName')) in ('NAYA GROUP', 'NAYA'))",
   ],
+  '0040_notifications': [
+    "select to_regclass('public.announcement_reads') is not null",
+  ],
   '0039_coop_officer': [
     "select to_regclass('public.oversight_inspections') is not null",
   ],

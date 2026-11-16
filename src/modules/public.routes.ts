@@ -56,23 +56,6 @@ publicRouter.post('/demo-request', demoLimiter, ah(async (req, res) => {
   res.status(201).json({ ok: true, id: row.id });
 }));
 
-export const announcementsRouter = Router();
-
-// Matangazo ya ndani ya mfumo (IN_APP) ya siku 30 zilizopita kwa chama cha mtumiaji
-announcementsRouter.get('/', ah(async (req, res) => {
-  const amcosId = req.auth!.amcosId;
-  const AN = schema.announcements;
-  const rows = await db.select({ id: AN.id, kind: AN.kind, title: AN.title, body: AN.body, createdAt: AN.createdAt })
-    .from(AN)
-    .where(and(
-      gte(AN.createdAt, sql`now() - interval '30 days'`),
-      sql`'IN_APP' = any(${AN.channels})`,
-      amcosId ? sql`(${AN.audience} = 'ALL' or ${amcosId} = any(${AN.amcosIds}))` : eq(AN.audience, 'ALL'),
-    ))
-    .orderBy(desc(AN.createdAt)).limit(5);
-  res.json({ data: rows });
-}));
-
 // ---------------------------------------------------------------------
 //  WEBHOOK YA TEEPAY (malipo ya ada za CoopLink kwa mitandao ya simu)
 //  Saini inahakikiwa kwa raw body. Kisha malipo yanasomwa TENA kutoka TeePay (syncControlNumber),

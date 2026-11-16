@@ -29,10 +29,11 @@ commsRouter.get(
       stats: sql<Record<string, number>>`(select coalesce(json_object_agg(status, n), '{}'::json) from (
         select status, count(*)::int as n from announcement_deliveries d where d.announcement_id = "announcements"."id" group by status) x)`,
       by: schema.users.fullName,
+      reads: sql<number>`(select count(*)::int from announcement_reads r where r.announcement_id = "announcements"."id")`,
     }).from(AN).leftJoin(schema.users, eq(schema.users.id, AN.createdById))
       .where(where).orderBy(desc(AN.createdAt)).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
     const [{ total }] = await db.select({ total: count() }).from(AN).where(where);
-    res.json(paged(rows.map((r) => ({ ...r.a, deliveryStats: r.stats, createdBy: r.by })), total, q.page, q.pageSize));
+    res.json(paged(rows.map((r) => ({ ...r.a, deliveryStats: r.stats, createdBy: r.by, reads: r.reads })), total, q.page, q.pageSize));
   }),
 );
 

@@ -248,8 +248,12 @@ test('Usalama: historia ya kuingia, audit yenye role, matangazo, export bila sir
   assert.equal(an.status, 201, JSON.stringify(an.body));
   assert.ok(an.body.deliveries.SENT >= 1, 'IN_APP');
   assert.ok(an.body.deliveries.SKIPPED >= 1, 'SMS/Email hazijasanidiwa -> SKIPPED, si SENT');
-  const mine = await call('GET', '/api/v1/announcements', katibu);
-  assert.ok(mine.body.data.some((x: any) => x.title === 'Toleo jipya ' + RUN));
+  const mine = await call('GET', '/api/v1/notifications', katibu);
+  const it = mine.body.items.find((x: any) => x.type === 'ANNOUNCEMENT' && x.title === 'Toleo jipya ' + RUN);
+  assert.ok(it && it.unread, 'tangazo jipya ni arifa ambayo haijasomwa');
+  assert.equal((await call('POST', `/api/v1/notifications/announcements/${it.id}/read`, katibu)).status, 200);
+  const after = await call('GET', '/api/v1/notifications', katibu);
+  assert.equal(after.body.items.find((x: any) => x.id === it.id).unread, false);
 
   assert.equal((await call('POST', '/api/v1/owner/backup/export', owner, {})).status, 403);
   const ex = await call('POST', '/api/v1/owner/backup/export', owner, { confirmPassword: OWNER_PW });
