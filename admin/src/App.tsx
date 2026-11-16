@@ -41,7 +41,9 @@ const Ledger = lazyPage(load_Accounting_pages, 'Ledger');
 PAGE_LOADERS.push(load_Accounting_pages);
 const load_Bank_pages = () => import('./pages/Bank');
 const Bank = lazyPage(load_Bank_pages, 'Bank');
-const Voucher = lazyPage(load_Bank_pages, 'Voucher');
+const load_FinanceDoc_pages = () => import('./pages/FinanceDoc');
+const Voucher = lazyPage(load_FinanceDoc_pages, 'FinanceDocument');
+const VerifyDoc = lazyPage(load_FinanceDoc_pages, 'VerifyDoc');
 PAGE_LOADERS.push(load_Bank_pages);
 const load_Sales_pages = () => import('./pages/Sales');
 const BatchDetail = lazyPage(load_Sales_pages, 'BatchDetail');
@@ -256,6 +258,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
           <Route path="/terms" element={<TermsPage />} />
+          <Route path="/verify/:token" element={<VerifyDoc />} />
           <Route path="/mkulima" element={<FarmerPortal />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/change-password" element={<NeedsUser><ChangePassword /></NeedsUser>} />

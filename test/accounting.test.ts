@@ -1376,7 +1376,7 @@ test('Mkulima: OTP ya usajili, taslimu na ridhaa ya kikundi; SMS za ombi, hali, 
     // 3. Risiti ya marejesho ya deni
     const rc = await call('POST', '/api/v1/finance/income', accountant, { category: 'FARMER_REPAYMENT', memberId: M1.id, amount: '15000', accountId: cash.id, description: 'Marejesho' });
     assert.equal(rc.status, 201, JSON.stringify(rc.body));
-    assert.ok(await sms(p3, new RegExp(`tumepokea TSh 15,000 .*Risiti ${rc.body.transaction.txnNo}`)));
+    assert.ok(await sms(p3, new RegExp(`tumepokea TSh 15,000 .*Risiti ${rc.body.transaction.docNo}`)));
 
     // 4. Malipo ya taslimu: hayathibitishwi bila OTP ya mkulima
     const fp = await call('POST', '/api/v1/finance/farmer-payments', accountant, { memberId: M1.id, amount: '20000', accountId: cash.id, description: 'Malipo ya ziada' });
@@ -1423,6 +1423,64 @@ test('Mkulima: OTP ya usajili, taslimu na ridhaa ya kikundi; SMS za ombi, hali, 
     const off = Object.fromEntries(Object.keys(kinds).map((k) => [k, false]));
     await call('PUT', '/api/v1/owner/sms/events', owner, { events: off, confirmPassword: OWNER_PW });
   }
+});
+
+// v0.42 — hati rasmi: namba za mfululizo, mistari + MGAO, nakala, QR -------------------------------------------------
+test('Hati rasmi: Stakabadhi R-/Hati ya Malipo PV- (kuendelea kutoka kitabu), mistari na MGAO kwenye daftari kuu, ASILI/NAKALA, QR', async () => {
+  const nos = (await call('GET', '/api/v1/finance/doc-numbers', accountant)).body;
+  assert.ok(nos.RECEIPT.lastIssued >= 1, 'Stakabadhi zilizotangulia zimepata namba');
+  // Kuendelea kutoka kitabu cha karatasi: Mhasibu (anayetoa hati) hawezi; Meneja anaweza kusogeza mbele tu
+  const start = nos.RECEIPT.lastIssued + 579;
+  assert.equal((await call('PUT', '/api/v1/finance/doc-numbers', accountant, { type: 'RECEIPT', next: start, reason: 'Mhasibu anajaribu' })).status, 403);
+  assert.equal((await call('PUT', '/api/v1/finance/doc-numbers', manager, { type: 'RECEIPT', next: nos.RECEIPT.lastIssued, reason: 'Kurudi nyuma' })).status, 400);
+  assert.equal((await call('PUT', '/api/v1/finance/doc-numbers', manager, { type: 'RECEIPT', next: start, reason: 'Tunaendelea kutoka kitabu 578' })).status, 200);
+
+  // Stakabadhi yenye mistari 2 — jumla lazima ilingane
+  const inc = { category: 'OTHER_INCOME', amount: '30000', accountId: cash.id, description: 'Ada mbalimbali', payee: 'Juma Hamisi Ally', bookRef: '578',
+    lines: [{ description: 'Kiingilio', amount: '10000' }, { description: 'Ada ya msimu', amount: '15000' }] };
+  const bad = await call('POST', '/api/v1/finance/income', accountant, inc);
+  assert.equal(bad.status, 400); assert.match(bad.body.error.message, /hailingani/);
+  const r = await call('POST', '/api/v1/finance/income', accountant, { ...inc, lines: [...inc.lines, { description: 'Hisa', amount: '5000' }] });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.transaction.docNo, `R-${String(start).padStart(6, '0')}`);
+  assert.equal(r.body.transaction.bookRef, '578');
+
+  // Hati ya malipo yenye MGAO kwenye akaunti mbili za matumizi
+  const chart = (await call('GET', '/api/v1/accounting/chart', accountant)).body.data as any[];
+  const g = (code: string) => chart.find((a) => a.code === code);
+  const pv = await call('POST', '/api/v1/finance/expenses', accountant, { category: 'OFFICE', amount: '9999.99', accountId: cash.id, description: 'Gharama za ofisi na usafiri', payee: 'CRDB Bank PLC',
+    lines: [{ description: 'Vifaa vya ofisi', amount: '6000', glAccountId: g('5210').id, costCenter: 'Ofisi Kuu' }, { description: 'Nauli ya kwenda benki', amount: '3999.99', glAccountId: g('5200').id, costCenter: 'Ofisi Kuu' }] });
+  assert.equal(pv.status, 201, JSON.stringify(pv.body));
+  assert.match(pv.body.transaction.docNo, /^PV-\d{6}$/);
+  // MGAO kwenye akaunti ya fedha hairuhusiwi
+  const cashGl = chart.find((a) => a.subtype === 'CASH');
+  if (cashGl) assert.equal((await call('POST', '/api/v1/finance/expenses', accountant, { category: 'OFFICE', amount: '10', accountId: cash.id, description: 'Jaribio', lines: [{ description: 'x', amount: '10', glAccountId: cashGl.id }] })).status, 400);
+  const id = pv.body.transaction.id;
+  // Rasimu: haihesabiwi kama chapisho
+  assert.equal((await call('POST', `/api/v1/bank/voucher/${id}/print`, accountant)).body.draft, true);
+  await approve(id);
+  assert.equal((await call('POST', `/api/v1/finance/transactions/${id}/post`, accountant, {})).status, 200);
+  const before5200 = Number(g('5200').balance ?? 0), before5210 = Number(g('5210').balance ?? 0);
+  const after = (await call('GET', '/api/v1/accounting/chart', accountant)).body.data as any[];
+  const bal = (code: string) => Number(after.find((a) => a.code === code).balance ?? 0);
+  assert.equal(Math.round((bal('5210') - before5210) * 100), 600000, 'MGAO: 6,000 kwenye 5210');
+  assert.equal(Math.round((bal('5200') - before5200) * 100), 399999, 'MGAO: 3,999.99 kwenye 5200');
+
+  const doc = (await call('GET', `/api/v1/bank/voucher/${id}`, accountant)).body;
+  assert.equal(doc.kind, 'PAYMENT_VOUCHER'); assert.equal(doc.title, 'HATI YA MALIPO');
+  assert.equal(doc.lines.length, 2); assert.equal(doc.allocation.length, 2);
+  assert.equal(doc.approval.status, 'APPROVED');
+  assert.equal((await call('POST', `/api/v1/bank/voucher/${id}/print`, accountant)).body.copyNo, 0, 'Chapisho la kwanza ni ASILI');
+  assert.equal((await call('POST', `/api/v1/bank/voucher/${id}/print`, accountant)).body.copyNo, 1, 'La pili ni NAKALA 1');
+  assert.equal((await call('GET', `/api/v1/bank/voucher/${id}`, accountant)).body.prints.length, 2);
+
+  // QR: ukurasa wa umma unaonyesha hati bila kuingia; jina limefupishwa
+  const v = await call('GET', `/api/v1/public/verify/${doc.verifyToken}`);
+  assert.equal(v.status, 200);
+  assert.deepEqual([v.body.valid, v.body.docNo, v.body.status, v.body.amount, v.body.party], [true, doc.transaction.docNo, 'POSTED', '9999.99', 'CRDB B. P.']);
+  assert.equal((await call('GET', '/api/v1/public/verify/kitambulisho-bandia-1234567')).status, 404);
+  const rv = (await call('GET', `/api/v1/bank/voucher/${r.body.transaction.id}`, accountant)).body;
+  assert.equal(rv.kind, 'RECEIPT'); assert.equal(rv.lines.length, 3);
 });
 
 test('Chama cha mafunzo: Owner pekee anafuta data yote, watumishi wanabaki, namba zinaanza upya, kinga zinabaki', async () => {

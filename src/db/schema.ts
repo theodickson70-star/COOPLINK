@@ -822,6 +822,9 @@ export const financeTransactions = pgTable('finance_transactions', {
   marketId: uuid(),            // malipo ya mnunuzi wa tumbaku kwa soko husika
   amountUsd: numeric({ precision: 14, scale: 2 }), // malipo ya mzabuni kwa ombi la manunuzi la dola: dola zilizolipwa
   fxRate: numeric({ precision: 12, scale: 4 }),     // kiwango kilichotumika (amount = amountUsd x fxRate)
+  // v0.42 — hati rasmi: namba ya Stakabadhi (R-…) au Hati ya Malipo (PV-…) kwa mfululizo usio na pengo
+  docNo: text(),
+  bookRef: text(),               // namba ya kitabu cha karatasi (kipindi cha mpito)
   createdById: uuid().notNull(),
   postedById: uuid(),
   postedAt: timestamp({ withTimezone: true }),
@@ -829,10 +832,43 @@ export const financeTransactions = pgTable('finance_transactions', {
   updatedAt: updatedAt(),
 }, (t) => [
   uniqueIndex().on(t.amcosId, t.txnNo),
+  uniqueIndex('finance_transactions_doc_no_unique').on(t.amcosId, t.docNo).where(sql`doc_no is not null`),
   index().on(t.amcosId, t.status, t.txnDate),
   index().on(t.amcosId, t.accountId),
   index().on(t.purchaseRequestId),
 ]);
+
+/** v0.42: mistari ya hati (Maelezo + kiasi) na MGAO — akaunti ya daftari kuu na kituo cha gharama kwa kila mstari */
+export const financeTxnLines = pgTable('finance_txn_lines', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  txnId: uuid().notNull().references(() => financeTransactions.id),
+  lineNo: integer().notNull(),
+  description: text().notNull(),
+  amount: money().notNull(),
+  glAccountId: uuid(),            // MGAO: akaunti ya matumizi/mapato (hiari — vinginevyo ya kundi)
+  costCenter: text(),             // mf. "Ofisi Kuu", "Ghala la Usoke"
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex().on(t.txnId, t.lineNo), index().on(t.amcosId, t.glAccountId)]);
+
+/**
+ * v0.42: hati iliyochapishwa — kwa uhakiki wa QR na historia ya kuchapisha (ASILI kisha NAKALA 1, 2…).
+ * Ziko kwenye meza tofauti kwa sababu muamala uliokamilika haubadilishwi kamwe (trigger ya ulinzi).
+ */
+export const financeDocuments = pgTable('finance_documents', {
+  txnId: uuid().primaryKey().references(() => financeTransactions.id),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  verifyToken: text().notNull().unique(),
+  createdAt: createdAt(),
+});
+export const financeDocPrints = pgTable('finance_doc_prints', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  txnId: uuid().notNull().references(() => financeTransactions.id),
+  copyNo: integer().notNull(),    // 0 = ASILI (original), 1.. = NAKALA
+  printedById: uuid().notNull(),
+  printedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex().on(t.txnId, t.copyNo)]);
 
 export const financeBudgets = pgTable('finance_budgets', {
   id: id(),

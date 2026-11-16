@@ -2145,3 +2145,100 @@ a.dl-stat:hover { background: rgba(6, 30, 21, .35); }
 .sender-card .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sender-name { font-family: var(--font-head); font-weight: 700; letter-spacing: .06em; padding: 8px 12px; border-radius: 12px; background: var(--forest); color: #fff; font-size: 14px; flex: none; }
 @media (max-width: 760px) { .sender-card { flex-wrap: wrap; } }
+
+/* ===================== v0.42 — Hati rasmi: Stakabadhi / Hati ya Malipo ===================== */
+.doc-toolbar { justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; }
+.fdoc { position: relative; max-width: 820px; margin: 0 auto; overflow: hidden; color: #111; }
+.fdoc-no { font-family: var(--font-head); font-size: 20px; color: #A3261A; letter-spacing: .04em; }
+.fdoc-en { font-size: 11px; letter-spacing: .14em; color: var(--muted); }
+.fdoc-stamp { position: absolute; top: 46%; left: 50%; transform: translate(-50%, -50%) rotate(-18deg); font-family: var(--font-head); font-weight: 800; font-size: 34px; letter-spacing: .08em; padding: 8px 20px; border: 4px solid currentColor; border-radius: 10px; opacity: .16; white-space: nowrap; pointer-events: none; }
+.fdoc-stamp.tone-bad { color: #B42318; } .fdoc-stamp.tone-warn { color: #B26B00; } .fdoc-stamp.tone-info { color: #1F5FA8; }
+.fdoc-party { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 22px; margin: 6px 0 16px; }
+.fdoc-field { display: flex; flex-direction: column; gap: 2px; padding-bottom: 6px; border-bottom: 1px dotted #9aa39d; min-width: 0; }
+.fdoc-field.wide { grid-column: 1 / -1; }
+.fdoc-field span, .fdoc-amount span { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.fdoc-field b { font-weight: 600; overflow-wrap: anywhere; }
+.fdoc-words { font-style: italic; font-weight: 500 !important; }
+.fdoc-amount { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; padding: 8px 14px; border: 2px solid var(--forest); border-radius: 10px; }
+.fdoc-amount b { font-family: var(--font-head); font-size: 24px; color: var(--head); }
+.fdoc-amount em { font-style: normal; font-size: 12px; color: var(--muted); }
+.fdoc-table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-bottom: 14px; }
+.fdoc-table caption { text-align: left; font-family: var(--font-head); font-weight: 700; letter-spacing: .08em; font-size: 12.5px; padding-bottom: 6px; color: var(--head); }
+.fdoc-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; background: #EEF3EF; color: #233; padding: 7px 9px; border: 1px solid #C9D3CC; }
+.fdoc-table td { padding: 7px 9px; border: 1px solid #D5DDD7; vertical-align: top; }
+.fdoc-table tr.empty td { height: 26px; }
+.fdoc-table .sn { width: 46px; text-align: center; }
+.fdoc-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; width: 140px; }
+.fdoc-acc { font-size: 12px; color: #334; }
+.fdoc-cc { color: var(--muted); font-size: 12px; }
+.fdoc-total-l { text-align: right; font-weight: 700; letter-spacing: .08em; border: none !important; }
+.fdoc-total { font-weight: 800; border: 2px solid #233 !important; }
+.fdoc-sign { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 22px; margin: 26px 0 10px; }
+.fdoc-receipt .fdoc-sign { grid-template-columns: 1fr 1fr; }
+.fdoc-signbox { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.fdoc-signbox b { font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; }
+.fdoc-line { border-bottom: 1px solid #333; height: 34px; margin-bottom: 4px; }
+.fdoc-foot { display: flex; gap: 14px; align-items: center; margin-top: 16px; padding-top: 12px; border-top: 1px dashed #9aa39d; }
+.fdoc-foot .qr { flex: none; }
+.fdoc-foot-text { flex: 1; min-width: 0; font-size: 11px; color: #445; display: flex; flex-direction: column; gap: 2px; }
+.fdoc-url { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; overflow-wrap: anywhere; }
+.fdoc-copy { flex: none; font-family: var(--font-head); font-weight: 800; font-size: 12px; letter-spacing: .1em; padding: 6px 10px; border: 2px solid var(--forest); color: var(--forest); border-radius: 8px; text-align: center; }
+.fdoc-copy.is-copy { border-color: #A3261A; color: #A3261A; }
+.fdoc-prints { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.8; }
+/* A5: nusu ukurasa, kama kitabu cha stakabadhi */
+.fdoc-a5 { max-width: 560px; font-size: 12px; }
+.fdoc-a5 .doc-logo { width: 44px; height: 44px; }
+.fdoc-a5 .doc-org { font-size: 15px; }
+.fdoc-a5 .fdoc-no { font-size: 16px; }
+.fdoc-a5 .fdoc-amount b { font-size: 19px; }
+.fdoc-a5 .fdoc-table { font-size: 12px; } .fdoc-a5 .fdoc-table td, .fdoc-a5 .fdoc-table th { padding: 5px 7px; }
+.fdoc-a5 .fdoc-sign { margin-top: 16px; gap: 14px; } .fdoc-a5 .fdoc-line { height: 26px; }
+@media (max-width: 720px) {
+  .fdoc-party { grid-template-columns: 1fr; }
+  .fdoc-amount { align-items: flex-start; }
+  .fdoc-table .num { width: auto; }
+  .fdoc-foot { flex-wrap: wrap; }
+}
+@media print {
+  .fdoc { max-width: none; box-shadow: none; }
+  .fdoc-table th { background: #EEF3EF !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .fdoc-stamp { opacity: .22; }
+  .doc-toolbar { display: none !important; }
+}
+
+/* Mhariri wa mistari + MGAO */
+.doc-split-toggle { margin: 4px 0 8px; display: flex; gap: 8px; align-items: center; }
+.doc-lines { border: 1px solid var(--line); border-radius: 14px; padding: 10px; background: var(--field); display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.doc-lines-head, .doc-line { display: grid; grid-template-columns: 26px minmax(0, 2fr) minmax(0, 1.4fr) minmax(0, 1fr) 120px 30px; gap: 8px; align-items: center; }
+.doc-lines-head { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 0 2px; }
+.doc-lines:not(:has(select)) .doc-lines-head, .doc-line.no-gl { grid-template-columns: 26px minmax(0, 2fr) minmax(0, 1fr) 120px 30px; }
+.doc-line-no { text-align: center; font-weight: 600; color: var(--muted); }
+.doc-line .input, .doc-line select { min-width: 0; width: 100%; }
+.doc-line-x { border: none; background: none; font-size: 20px; color: var(--muted); cursor: pointer; }
+.doc-line-x:disabled { opacity: .3; cursor: default; }
+.doc-lines-foot { display: flex; justify-content: space-between; align-items: center; padding-top: 4px; }
+@media (max-width: 760px) {
+  .doc-lines-head { display: none; }
+  .doc-line, .doc-line.no-gl { grid-template-columns: 26px 1fr 30px; }
+  .doc-line > :nth-child(n+3):not(.doc-line-x) { grid-column: 2; }
+  .doc-line-x { grid-column: 3; grid-row: 1; }
+}
+
+/* Namba za hati (mipangilio) */
+.docno-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.docno-card { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; padding: 14px; border: 1px solid var(--line); border-radius: 14px; }
+.docno-card b { font-family: var(--font-head); font-size: 22px; color: #A3261A; letter-spacing: .04em; }
+.docno-edit { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+
+/* Ukurasa wa umma wa kuhakiki hati */
+.verify-page { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: var(--bg); }
+.verify-card { width: min(460px, 100%); background: var(--paper); border: 1px solid var(--line); border-radius: 22px; padding: 26px 24px; box-shadow: var(--shadow); text-align: center; }
+.verify-brand { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+.verify-icon { width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 10px; display: grid; place-items: center; font-size: 30px; font-weight: 800; color: #fff; }
+.verify-icon.ok { background: var(--green); } .verify-icon.bad { background: #C2483A; }
+.verify-card h1 { font-family: var(--font-head); font-size: 22px; margin: 0 0 14px; color: var(--head); }
+.verify-dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; text-align: left; margin: 0; font-size: 14.5px; }
+.verify-dl dt { color: var(--muted); } .verify-dl dd { margin: 0; overflow-wrap: anywhere; }
+.verify-note { font-size: 12.5px; color: var(--muted); margin: 16px 0 0; }
+.fdoc-table td.fdoc-blank { border: none; }
+@media print { body:has(.fdoc), body:has(.fdoc) .content, .fdoc { background: #fff !important; } }

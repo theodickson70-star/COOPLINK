@@ -7,13 +7,15 @@ import { Router, type Request } from 'express';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { and, asc, desc, eq, inArray, lte, sql } from 'drizzle-orm';
+import { DOC, docTypeOf, ensureDocToken, recordPrint } from '../lib/finance-docs';
+import { CATEGORY_GL, glMap } from '../lib/gl';
 import { db, schema } from '../db';
 import { ah, decimalSchema, uuidParam } from '../lib/http';
 import { badRequest, notFound } from '../lib/errors';
 import { requireAmcosPerm } from '../middleware/auth';
 import { amcosScope, readAmcosId, resolveWriteAmcosId } from '../middleware/tenant';
 import { audit } from '../lib/audit';
-import { D, fmt2, tshText } from '../lib/money';
+import { D, Decimal, fmt2, tshText } from '../lib/money';
 import { createApproval } from '../lib/approvals';
 import { EXPENSE_CATEGORIES, FARMER_PAYMENT_CATEGORIES, INCOME_CATEGORIES, nextTxnNo } from '../lib/finance';
 import { currentSeason } from './seasons.routes';
@@ -133,9 +135,8 @@ bankRouter.post('/reconciliation/:id', requireAmcosPerm('accounting.manage'), ah
   res.status(201).json({ reconciliation: rec });
 }));
 
-// ------------------------------ VOCHA / RISITI ------------------------------
-bankRouter.get('/voucher/:id', requireAmcosPerm('finance.read'), ah(async (req, res) => {
-  const { id } = uuidParam.parse(req.params);
+// ------------------------------ HATI RASMI: STAKABADHI / HATI YA MALIPO (v0.42) ------------------------------
+async function docData(req: Request, id: string) {
   const amcosId = await readAmcosId(req);
   const [t] = await db.select({
     txn: T, account: ACC.name, accountKind: ACC.kind, bankName: ACC.bankName, accountNumber: ACC.accountNumber,
@@ -143,18 +144,58 @@ bankRouter.get('/voucher/:id', requireAmcosPerm('finance.read'), ah(async (req, 
     postedBy: sql<string | null>`(select u.full_name from users u where u.id = "finance_transactions"."posted_by_id")`,
     member: sql<string | null>`(select m.first_name || ' ' || m.last_name || ' (' || m.member_no || ')' from members m where m.id = "finance_transactions"."member_id")`,
     contra: sql<string | null>`(select g.code || ' ' || g.name from gl_accounts g where g.id = "finance_transactions"."contra_gl_account_id")`,
+    reversedBy: sql<string | null>`(select coalesce(r.doc_no, r.txn_no) from finance_transactions r where r.reversal_of_id = "finance_transactions"."id")`,
   }).from(T).leftJoin(ACC, eq(ACC.id, T.accountId)).where(and(eq(T.id, id), eq(T.amcosId, amcosId)));
   if (!t) throw notFound('Muamala');
+  return { t, amcosId };
+}
+
+bankRouter.get('/voucher/:id', requireAmcosPerm('finance.read'), ah(async (req, res) => {
+  const { id } = uuidParam.parse(req.params);
+  const { t, amcosId } = await docData(req, id);
   const approval = t.txn.approvalId ? await db.select({
     a: schema.approvalRequests, by: sql<string | null>`(select u.full_name from users u where u.id = "approval_requests"."decided_by_id")`,
   }).from(schema.approvalRequests).where(eq(schema.approvalRequests.id, t.txn.approvalId)) : [];
   const amcos = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId) }))!;
   const labels: Record<string, string> = { ...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES, ...FARMER_PAYMENT_CATEGORIES, SUPPLIER: 'Malipo kwa mzabuni', TRANSFER: 'Uhamisho kati ya akaunti' };
+  // Akaunti ya kundi (ikiwa mstari hauna akaunti yake ya MGAO)
+  const m = await glMap(db, amcosId);
+  const fallback = t.txn.contraGlAccountId ? m.byId.get(t.txn.contraGlAccountId) : m.byCode.get(CATEGORY_GL[t.txn.category] ?? (t.txn.direction === 'IN' ? '4900' : '5990'));
+  const L = schema.financeTxnLines;
+  const rawLines = await db.select({ l: L, code: schema.glAccounts.code, name: schema.glAccounts.name }).from(L)
+    .leftJoin(schema.glAccounts, eq(schema.glAccounts.id, L.glAccountId)).where(eq(L.txnId, id)).orderBy(asc(L.lineNo));
+  const lines = rawLines.length
+    ? rawLines.map((r) => ({ no: r.l.lineNo, description: r.l.description, amount: r.l.amount, account: r.code ? `${r.code} ${r.name}` : fallback ? `${fallback.code} ${fallback.name}` : null, costCenter: r.l.costCenter }))
+    : [{ no: 1, description: t.txn.description, amount: t.txn.amount, account: fallback ? `${fallback.code} ${fallback.name}` : null, costCenter: null }];
+  // MGAO: jumla kwa kila akaunti + kituo cha gharama
+  const alloc = new Map<string, { account: string; costCenter: string | null; amount: Decimal }>();
+  for (const l of lines) {
+    const k = `${l.account}|${l.costCenter ?? ''}`;
+    alloc.set(k, { account: l.account ?? '—', costCenter: l.costCenter, amount: (alloc.get(k)?.amount ?? D(0)).plus(l.amount) });
+  }
+  const type = docTypeOf(t.txn.kind) ?? (t.txn.direction === 'IN' ? 'RECEIPT' : 'PAYMENT_VOUCHER');
+  const prints = await db.select({ copyNo: schema.financeDocPrints.copyNo, printedAt: schema.financeDocPrints.printedAt,
+    by: sql<string | null>`(select u.full_name from users u where u.id = "finance_doc_prints"."printed_by_id")` })
+    .from(schema.financeDocPrints).where(eq(schema.financeDocPrints.txnId, id)).orderBy(asc(schema.financeDocPrints.copyNo));
+  const token = await ensureDocToken(db, amcosId, id);
+  const d = t.txn;
   res.json({
-    kind: t.txn.direction === 'IN' ? 'RECEIPT' : 'PAYMENT_VOUCHER',
+    kind: type, title: DOC[type].title, titleEn: DOC[type].titleEn,
     amcos: { name: amcos.name, code: amcos.code, regNumber: amcos.regNumber, region: amcos.region, district: amcos.district, ward: amcos.ward, village: amcos.village, phone: amcos.phone, email: amcos.email },
-    transaction: { ...t.txn, categoryLabel: labels[t.txn.category] ?? t.txn.category, accountName: t.account, accountKind: t.accountKind, bankName: t.bankName, accountNumber: t.accountNumber,
-      createdBy: t.createdBy, postedBy: t.postedBy, memberName: t.member, contraAccount: t.contra },
-    approval: approval[0] ? { requestNo: approval[0].a.requestNo, decidedBy: approval[0].by, decidedAt: approval[0].a.decidedAt, note: approval[0].a.decisionNote } : null,
+    transaction: { ...d, docNo: d.docNo ?? d.txnNo, categoryLabel: labels[d.category] ?? d.category, accountName: t.account, accountKind: t.accountKind, bankName: t.bankName, accountNumber: t.accountNumber,
+      createdBy: t.createdBy, postedBy: t.postedBy, memberName: t.member, contraAccount: t.contra, reversedBy: t.reversedBy },
+    lines, allocation: [...alloc.values()].map((a) => ({ ...a, amount: fmt2(a.amount) })),
+    approval: approval[0] ? { requestNo: approval[0].a.requestNo, status: approval[0].a.status, decidedBy: approval[0].by, decidedAt: approval[0].a.decidedAt, note: approval[0].a.decisionNote } : null,
+    prints, verifyToken: token,
   });
+}));
+
+/** Kuchapisha hati: la kwanza ni ASILI, kisha NAKALA. Rasimu (haijaidhinishwa) haihesabiwi. */
+bankRouter.post('/voucher/:id/print', requireAmcosPerm('finance.read'), ah(async (req, res) => {
+  const { id } = uuidParam.parse(req.params);
+  const { t, amcosId } = await docData(req, id);
+  if (!['POSTED', 'APPROVED'].includes(t.txn.status)) return res.json({ copyNo: null, draft: true });
+  const copyNo = await recordPrint(amcosId, id, req.auth!.userId);
+  if (copyNo > 0) await audit(db, req, { action: 'FINANCE_DOC_REPRINT', entity: 'FinanceTransaction', entityId: id, amcosId, after: { docNo: t.txn.docNo ?? t.txn.txnNo, copyNo } });
+  res.json({ copyNo, draft: false });
 }));

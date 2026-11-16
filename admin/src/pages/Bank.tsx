@@ -1,17 +1,16 @@
 // =====================================================================
 //  BENKI NA VOCHA (Mhasibu): akaunti za fedha, uhamisho kwa idhini, usuluhishi wa benki,
-//  na vocha ya malipo / risiti ya kuchapisha
+//  (hati rasmi za kuchapisha ziko pages/FinanceDoc.tsx)
 // =====================================================================
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
 import { ACCOUNT_KIND_LABEL, date, dateTime, tsh } from '../lib/format';
-import { amountInWords } from '../lib/words';
 import { Alert, Button, Empty, Loading, Modal, PageHead, SelectField, TextField } from '../components/ui';
 import { Section } from '../components/owner-ui';
-import { DocHead, PrintButton, Signatures, today } from './acc-common';
+import { today } from './acc-common';
 
 interface Account { id: string; name: string; kind: string; bankName: string | null; accountNumber: string | null; openingBalance: string; balance: string; isActive: boolean }
 
@@ -145,48 +144,4 @@ function Reconciliation({ accountId, onDone }: { accountId: string; onDone: (m: 
   );
 }
 
-// ------------------------------ VOCHA / RISITI ------------------------------
-interface VoucherData {
-  kind: 'RECEIPT' | 'PAYMENT_VOUCHER';
-  amcos: { name: string; code: string; regNumber: string | null; region: string | null; district: string | null; ward: string | null; village: string | null; phone: string | null; email: string | null };
-  transaction: { id: string; txnNo: string; txnDate: string; amount: string; description: string; payee: string | null; reference: string | null; status: string; categoryLabel: string; accountName: string | null; accountKind: string | null; bankName: string | null; accountNumber: string | null; createdBy: string | null; postedBy: string | null; postedAt: string | null; memberName: string | null; contraAccount: string | null; kind: string };
-  approval: { requestNo: string; decidedBy: string | null; decidedAt: string | null; note: string | null } | null;
-}
-
-export function Voucher() {
-  const { id } = useParams();
-  const { data, error } = useFetch<VoucherData>(`/bank/voucher/${id}`);
-  if (!data) return error ? <Alert>{error}</Alert> : <Loading />;
-  const t = data.transaction;
-  const receipt = data.kind === 'RECEIPT';
-  const a = data.amcos;
-  return (
-    <>
-      <div className="actions no-print" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
-        <Link to={`/finance?txn=${t.id}`}>← Rudi kwenye muamala</Link>
-        <PrintButton />
-      </div>
-      {t.status !== 'POSTED' && <Alert kind="warn">Muamala huu bado haujakamilika ({t.status}). Vocha rasmi inachapishwa baada ya kukamilika.</Alert>}
-      <article className="card card-pad print-doc voucher">
-        <DocHead title={receipt ? 'RISITI YA MALIPO' : 'VOCHA YA MALIPO'} no={`Na. ${t.txnNo}`} sub={`Tarehe: ${date(t.txnDate)}`} org={a} />
-        <dl className="dl voucher-dl">
-          <dt>{receipt ? 'Tumepokea kutoka kwa' : 'Lipa kwa'}</dt><dd><strong>{t.payee ?? t.memberName ?? '—'}</strong></dd>
-          <dt>Kiasi</dt><dd><strong className="voucher-amt">{tsh(t.amount)}</strong></dd>
-          <dt>Kwa maneno</dt><dd><em>{amountInWords(t.amount)}</em></dd>
-          <dt>{receipt ? 'Malipo ya' : 'Madhumuni'}</dt><dd>{t.description}</dd>
-          <dt>Kundi</dt><dd>{t.categoryLabel}{t.contraAccount ? ` · ${t.contraAccount}` : ''}</dd>
-          <dt>{receipt ? 'Imepokelewa kwenye' : 'Imelipwa kutoka'}</dt><dd>{t.accountName ?? '—'}{t.accountNumber ? ` (${t.bankName ?? ''} ${t.accountNumber})` : ''}</dd>
-          {t.reference && <><dt>Kumbukumbu / cheki</dt><dd>{t.reference}</dd></>}
-        </dl>
-        <table className="table fin-table voucher-trail"><tbody>
-          <tr><td>Imeandaliwa na</td><td>{t.createdBy ?? '—'} (Mhasibu)</td></tr>
-          {data.approval && <tr><td>Imeidhinishwa na</td><td>{data.approval.decidedBy} (Meneja) · {dateTime(data.approval.decidedAt)} · {data.approval.requestNo}</td></tr>}
-          {t.postedAt && <tr><td>Imekamilishwa na</td><td>{t.postedBy} · {dateTime(t.postedAt)}</td></tr>}
-        </tbody></table>
-        <Signatures items={receipt ? ['Aliyepokea (Mhasibu)', 'Aliyelipa'] : ['Ameandaa (Mhasibu)', 'Ameidhinisha (Meneja)', 'Mpokeaji']} />
-        <p className="doc-foot">Imetolewa na mfumo wa CoopLink · {dateTime(new Date().toISOString())}</p>
-      </article>
-    </>
-  );
-}
-
+// Hati rasmi (Stakabadhi / Hati ya Malipo) zimehamia pages/FinanceDoc.tsx (v0.42)

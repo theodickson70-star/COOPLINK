@@ -1124,6 +1124,17 @@ export const EN: Record<string, string> = {
   'Haijaidhinishwa': "Not approved",
   'Sender ID': "Sender ID",
   'Ripoti za kufika hazijawekwa: weka ASTRACALL_WEBHOOK_SECRET kwenye Railway, na kwenye AstraCall weka webhook': "Delivery reports are not set up: set ASTRACALL_WEBHOOK_SECRET in Railway, and in AstraCall set the webhook to",
+  // v0.42 — hati rasmi
+  'MGAO: akaunti': 'Allocation: account',
+  'Kituo': 'Cost centre',
+  'Kiasi (TSh)': 'Amount (TSh)',
+  'mf. Gharama za benki Agosti': 'e.g. Bank charges for August',
+  'Kwa kundi': 'By category',
+  'mf. Ofisi Kuu': 'e.g. Head Office',
+  'Ondoa mstari': 'Remove line',
+  '+ Ongeza mstari': '+ Add line',
+  'Stakabadhi yenye mistari mingi (mf. kiingilio + ada ya msimu)': 'Receipt with several lines (e.g. entry fee + season fee)',
+  'Hati yenye mistari mingi na MGAO (kugawa kwenye akaunti / vituo)': 'Voucher with several lines and allocation (split across accounts / cost centres)',
   // v0.28 — chapa
   'Kwa usalama, mfumo umefungwa baada ya dakika {n} bila kutumika. Weka nenosiri lako kuendelea.': 'For security, the system locked after {n} minutes of inactivity. Enter your password to continue.',
   'Fungua mfumo': 'Unlock',

@@ -10,10 +10,12 @@ import { ACCOUNT_KIND_LABEL, APPROVAL_TYPE_LABEL, date, dateTime, num, TXN_KIND_
 import { Alert, Badge, Button, Empty, Loading, MemberPicker, Modal, PageHead, Pager, Select, SelectField, TextField, type MemberLite } from '../components/ui';
 import { Kpi, Section, Tabs } from '../components/owner-ui';
 import { GlSelect, useChart } from './acc-common';
+import { DocNumbers } from './FinanceDoc';
+import { DocLines, emptyLine, linesPayload, linesTotal, linesValid, type DocLineDraft } from '../components/DocLines';
 import { FxPanel } from '../components/FxPanel';
 
 interface Txn {
-  id: string; txnNo: string; kind: string; direction: 'IN' | 'OUT'; category: string; accountId: string | null; accountName: string | null;
+  id: string; txnNo: string; docNo?: string | null; bookRef?: string | null; kind: string; direction: 'IN' | 'OUT'; category: string; accountId: string | null; accountName: string | null;
   amount: string; txnDate: string; description: string; reference: string | null; payee: string | null; status: string;
   memberName: string | null; supplierName: string | null; createdBy: string | null; reversed: boolean; reversalPending: boolean;
   purchaseRequestId: string | null; postedAt: string | null;
@@ -84,7 +86,7 @@ function Transactions() {
             <thead><tr><th>{t('Namba / tarehe')}</th><th>{t('Aina')}</th><th>{t('Maelezo')}</th><th>{t('Akaunti')}</th><th className="num">{t('Kiasi')}</th><th>{t('Hali')}</th><th /></tr></thead>
             <tbody>{list.data?.data.map((t) => (
               <tr key={t.id}>
-                <td style={{ whiteSpace: 'nowrap' }}><strong>{t.txnNo}</strong><div className="muted" style={{ fontSize: 12 }}>{date(t.txnDate)}</div></td>
+                <td style={{ whiteSpace: 'nowrap' }}><strong>{t.docNo ?? t.txnNo}</strong><div className="muted" style={{ fontSize: 12 }}>{date(t.txnDate)}{t.docNo ? ` · ${t.txnNo}` : ''}</div></td>
                 <td>{TXN_KIND_LABEL[t.kind]}</td>
                 <td style={{ minWidth: 200 }}>{t.description}{t.payee && <div className="muted" style={{ fontSize: 12 }}>{t.payee}</div>}</td>
                 <td>{t.accountName ?? '—'}</td>
@@ -121,6 +123,10 @@ function TxnForm({ kind, onClose, onDone }: { kind: 'INCOME' | 'EXPENSE' | 'FARM
   const [supplierId, setSupplierId] = useState('');
   const [prId, setPrId] = useState('');
   const [contra, setContra] = useState('');
+  // v0.42: hati yenye mistari mingi + MGAO, na namba ya kitabu cha karatasi (mpito)
+  const [split, setSplit] = useState(false);
+  const [lines, setLines] = useState<DocLineDraft[]>([emptyLine(), emptyLine()]);
+  const [bookRef, setBookRef] = useState('');
   const { may } = useAuth();
   const chart = useChart((kind === 'EXPENSE' || kind === 'INCOME') && may('accounting.read'));
   const { busy, error, run } = useAction();
@@ -134,18 +140,22 @@ function TxnForm({ kind, onClose, onDone }: { kind: 'INCOME' | 'EXPENSE' | 'FARM
     kind === 'EXPENSE' && category ? '/finance/budgets/check' : null, { category, amount: Number(dAmount) || 0 });
   // Ombi la manunuzi la dola: kiasi kinaandikwa kwa USD; TSh = dola x kiwango cha leo
   const usdPr = kind === 'SUPPLIER_PAYMENT' ? purchases.data?.data.find((p) => p.id === prId && p.currency === 'USD') : undefined;
-  const valid = Number(amount) > 0 && description.trim().length >= 3 && (kind === 'SUPPLIER_PAYMENT' ? !!supplierId : !!category) && (!needsMember || !!member) && (kind !== 'INCOME' || !!accountId);
+  const glAllowed = kind === 'EXPENSE' || (kind === 'INCOME' && !['FARMER_REPAYMENT', 'MEMBER_FEES'].includes(category));
+  const effAmount = split ? (linesTotal(lines) ? linesTotal(lines).toFixed(2) : '') : amount;
+  const valid = Number(effAmount) > 0 && (!split || linesValid(lines)) && description.trim().length >= 3 && (kind === 'SUPPLIER_PAYMENT' ? !!supplierId : !!category) && (!needsMember || !!member) && (kind !== 'INCOME' || !!accountId);
 
   const save = async () => {
     const path = { INCOME: '/finance/income', EXPENSE: '/finance/expenses', FARMER_PAYMENT: '/finance/farmer-payments', SUPPLIER_PAYMENT: '/finance/supplier-payments' }[kind];
     const body = {
-      amount, txnDate, description, reference: reference || null, payee: payee || null, accountId: accountId || null,
+      amount: effAmount, txnDate, description, reference: reference || null, payee: payee || null, accountId: accountId || null, bookRef: bookRef.trim() || null,
+      ...(split ? { lines: linesPayload(glAllowed ? lines : lines.map((l) => ({ ...l, glAccountId: '' }))) } : {}),
       ...(kind === 'SUPPLIER_PAYMENT' ? { supplierId, purchaseRequestId: prId || null, ...(usdPr ? { amountUsd: amount, amount: fx.rate ? (Number(amount) * fx.rate).toFixed(2) : amount } : {}) } : { category }),
       ...(needsMember && member ? { memberId: member.id } : {}),
       ...(contra && (kind === 'EXPENSE' || (kind === 'INCOME' && !['FARMER_REPAYMENT', 'MEMBER_FEES'].includes(category))) ? { contraGlAccountId: contra } : {}),
     };
-    const r = await run(() => api<{ transaction: { txnNo: string; status: string } }>(path, { method: 'POST', body }));
-    if (r) onDone(r.transaction.status === 'POSTED' ? `${r.transaction.txnNo} imerekodiwa` : r.transaction.status === 'APPROVED' ? `${r.transaction.txnNo} iko tayari kukamilishwa (manunuzi yameshaidhinishwa)` : `${r.transaction.txnNo} imetumwa kwa Meneja kwa idhini`);
+    const r = await run(() => api<{ transaction: { txnNo: string; docNo: string | null; status: string } }>(path, { method: 'POST', body }));
+    const no = r?.transaction.docNo ?? r?.transaction.txnNo;
+    if (r) onDone(r.transaction.status === 'POSTED' ? `Stakabadhi ${no} imerekodiwa` : r.transaction.status === 'APPROVED' ? `Hati ya malipo ${no} iko tayari kukamilishwa (manunuzi yameshaidhinishwa)` : `Hati ya malipo ${no} imetumwa kwa Meneja kwa idhini`);
   };
   return (
     <Modal open title={title} onClose={onClose}
@@ -157,16 +167,21 @@ function TxnForm({ kind, onClose, onDone }: { kind: 'INCOME' | 'EXPENSE' | 'FARM
         {kind === 'SUPPLIER_PAYMENT' && <SelectField label="Mzabuni *" value={supplierId} onChange={(v) => { setSupplierId(v); setPrId(''); }} placeholder="Chagua…" options={suppliers.data?.data.map((s) => ({ value: s.id, label: s.name })) ?? []} />}
         {kind === 'SUPPLIER_PAYMENT' && <SelectField label="Ombi la manunuzi (hiari)" value={prId} onChange={setPrId} placeholder="Bila ombi"
           options={openPrs.map((p) => ({ value: p.id, label: p.currency === 'USD' && p.totalUsd ? `${p.prNo} · ${usd(p.totalUsd)} (limelipwa ${usd(p.paidUsd)})` : `${p.prNo} · ${tsh(p.totalAmount)} (limelipwa ${tsh(p.paid)})` }))} />}
-        <TextField label={usdPr ? 'Kiasi (USD) *' : 'Kiasi (TSh) *'} type="number" min={usdPr ? '0.01' : '1'} step={usdPr ? '0.01' : '1'} value={amount} onChange={setAmount}
-          help={usdPr ? (fx.rate ? `≈ ${tsh(Number(amount || 0) * fx.rate)} kwa kiwango cha leo (${num(fx.rate)}). Tofauti na kiwango cha ombi inaandikwa kama faida/hasara ya kiwango.` : 'Kiwango cha dola hakijawekwa') : undefined} />
+        {split && !usdPr ? <TextField label="Kiasi (TSh) — jumla ya mistari" value={effAmount} onChange={() => undefined} disabled /> : <TextField label={usdPr ? 'Kiasi (USD) *' : 'Kiasi (TSh) *'} type="number" min={usdPr ? '0.01' : '1'} step={usdPr ? '0.01' : '1'} value={amount} onChange={setAmount}
+          help={usdPr ? (fx.rate ? `≈ ${tsh(Number(amount || 0) * fx.rate)} kwa kiwango cha leo (${num(fx.rate)}). Tofauti na kiwango cha ombi inaandikwa kama faida/hasara ya kiwango.` : 'Kiwango cha dola hakijawekwa') : undefined} />}
         <TextField label="Tarehe" type="date" value={txnDate} onChange={setTxnDate} />
         <SelectField label={kind === 'INCOME' ? 'Akaunti iliyopokea *' : 'Akaunti ya kulipa (hiari sasa)'} value={accountId} onChange={setAccountId} placeholder="Chagua…"
           options={accounts.data?.data.filter((a) => a.isActive).map((a) => ({ value: a.id, label: `${a.name} · ${tsh(a.balance)}` })) ?? []} />
         {!needsMember && kind !== 'SUPPLIER_PAYMENT' && <TextField label={kind === 'INCOME' ? 'Aliyelipa' : 'Mlipwaji'} value={payee} onChange={setPayee} />}
-        <TextField label="Namba ya risiti / kumbukumbu" value={reference} onChange={setReference} />
+        <TextField label={kind === 'INCOME' ? 'Kumbukumbu (slip ya benki / M-Pesa)' : 'Kumbukumbu (cheki / namba ya muamala)'} value={reference} onChange={setReference} />
+        <TextField label="Namba ya kitabu cha karatasi (hiari)" value={bookRef} onChange={setBookRef} help="Kama hati iliandikwa pia kwenye kitabu cha zamani" />
       </div>
       {needsMember && <MemberPicker label="Mkulima *" value={member} onChange={setMember} />}
-      {chart.data && (kind === 'EXPENSE' || (kind === 'INCOME' && !['FARMER_REPAYMENT', 'MEMBER_FEES'].includes(category))) && (
+      {!usdPr && (
+        <label className="chk doc-split-toggle"><input type="checkbox" checked={split} onChange={(e) => setSplit(e.target.checked)} /> {t(kind === 'INCOME' ? 'Stakabadhi yenye mistari mingi (mf. kiingilio + ada ya msimu)' : 'Hati yenye mistari mingi na MGAO (kugawa kwenye akaunti / vituo)')}</label>
+      )}
+      {split && !usdPr && <DocLines lines={lines} onChange={setLines} direction={kind === 'INCOME' ? 'IN' : 'OUT'} accounts={glAllowed && chart.data ? chart.data.data : null} />}
+      {chart.data && !split && (kind === 'EXPENSE' || (kind === 'INCOME' && !['FARMER_REPAYMENT', 'MEMBER_FEES'].includes(category))) && (
         <GlSelect label="Akaunti ya daftari kuu (hiari)" value={contra} onChange={setContra} accounts={chart.data.data} placeholder="Kwa kundi (kiotomatiki)"
           help={kind === 'EXPENSE' ? 'mf. 1500 kununua mali, 2410 kulipa PAYE, 2420 NSSF, 2300 ushuru wa Chama Kikuu, 2150 deni la pembejeo' : 'mf. 2500 mkopo uliopokelewa, 1250 marejesho ya madeni mengine'} />
       )}
@@ -177,7 +192,7 @@ function TxnForm({ kind, onClose, onDone }: { kind: 'INCOME' | 'EXPENSE' | 'FARM
             ? <Alert kind="warn">Bajeti ya {budgetCheck.data.label} itafikia {num(budgetCheck.data.percentAfter ?? 0)}% ({tsh(budgetCheck.data.after ?? 0)} kati ya {tsh(budgetCheck.data.budget)}).</Alert>
             : <p className="name-note">Bajeti ya {budgetCheck.data.label}: baada ya haya {num(budgetCheck.data.percentAfter ?? 0)}% imetumika ({tsh(budgetCheck.data.after ?? 0)} kati ya {tsh(budgetCheck.data.budget)}).</p>
       )}
-      <TextField label="Maelezo *" value={description} onChange={setDescription} />
+      <TextField label={kind === 'INCOME' ? 'Ikiwa ni malipo kwa ajili ya *' : 'Madhumuni ya malipo *'} value={description} onChange={setDescription} />
     </Modal>
   );
 }
@@ -225,7 +240,7 @@ function TxnDetail({ id, onClose, onChanged }: { id: string; onClose: () => void
         {t.reference && <><dt>{tt('Kumbukumbu')}</dt><dd>{t.reference}</dd></>}
         <dt>{tt('Aliandaa')}</dt><dd>{t.createdBy}</dd>
         {t.postedAt && <><dt>{tt('Imekamilishwa')}</dt><dd>{dateTime(t.postedAt)}</dd></>}
-        <dt>{t.direction === 'IN' ? 'Risiti' : 'Vocha'}</dt><dd><Link to={`/vouchers/${t.id}`} onClick={onClose}>{t.direction === 'IN' ? 'Chapisha risiti →' : 'Chapisha vocha ya malipo →'}</Link></dd>
+        <dt>{t.direction === 'IN' ? 'Stakabadhi' : 'Hati ya malipo'}</dt><dd><Link to={`/vouchers/${t.id}`} onClick={onClose}>{t.docNo ?? t.txnNo} · {t.direction === 'IN' ? 'Chapisha stakabadhi →' : 'Chapisha hati ya malipo →'}</Link></dd>
       </dl>
       {t.kind === 'TRANSFER' && t.direction === 'IN' && t.status === 'APPROVED' && <Alert kind="warn">{tt('Huu ni upande wa kupokea wa uhamisho. Kamilisha upande wa kutoa fedha — pande zote mbili zitakamilika pamoja.')}</Alert>}
       {data.approvals.length > 0 && (
@@ -262,6 +277,7 @@ function Accounts() {
   const cb = useFetch<{ opening: string; closing: string; lines: { id: string; txnNo: string; txnDate: string; description: string; payee: string | null; moneyIn: string | null; moneyOut: string | null; balance: string }[] }>(book ? '/finance/reports/cashbook' : null, { accountId: book, from, to });
   return (
     <div className="stack">
+      <DocNumbers />
       <Section title="Akaunti za fedha" actions={may('finance.accounts') && <Button size="sm" onClick={() => setOpen(true)}>{t('+ Akaunti')}</Button>}>
         {loading && !data ? <Loading /> : data?.data.length === 0 ? <Empty>{t('Ongeza akaunti ya fedha taslimu, benki au simu.')}</Empty> : (
           <div className="grid grid-3">

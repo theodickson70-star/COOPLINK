@@ -6,6 +6,7 @@
 //   - syncLedger(): inaingiza kwenye daftari kuu matukio ya moduli nyingine (fedha, stoo, pembejeo)
 //     mara moja tu kila moja (unique: amcos + source + sourceId) — data ya zamani nayo inaingia.
 // =====================================================================
+import { linesByTxn } from './finance-docs';
 import { and, eq, sql } from 'drizzle-orm';
 import { db, schema, type DbOrTx, type Tx } from '../db';
 import { D, Decimal, fmt2 } from './money';
@@ -242,6 +243,8 @@ export async function syncLedger(amcosId: string) {
     const txns = await tx.select().from(T).where(and(eq(T.amcosId, amcosId), eq(T.status, 'POSTED'),
       sql`not exists (select 1 from journal_entries j where j.amcos_id = ${amcosId} and j.source = 'FINANCE_TXN' and j.source_id = "finance_transactions"."id")`))
       .orderBy(sql`posted_at asc nulls first`, T.createdAt);
+    // v0.42: MGAO — mistari ya hati yenye akaunti zake (marekebisho yanatumia mistari ya hati ya asili)
+    const docLines = await linesByTxn(tx, [...new Set(txns.map((t) => t.reversalOfId ?? t.id))]);
     for (const t of txns) {
       const cash = t.accountId ? m.byFinance.get(t.accountId) : undefined;
       if (!cash) continue;
@@ -272,6 +275,19 @@ export async function syncLedger(amcosId: string) {
                 L(null, cash.id, D(amt).neg()),
               ];
             }
+          }
+          const split = docLines.get(t.reversalOfId ?? t.id) ?? [];
+          if (split.some((l) => l.glAccountId && m.byId.has(l.glAccountId))) {
+            // Kila akaunti ya MGAO inapata sehemu yake; mistari bila akaunti inaenda kwenye akaunti ya kundi
+            const per = new Map<string, Decimal>();
+            for (const l of split) {
+              const gid = l.glAccountId && m.byId.has(l.glAccountId) ? l.glAccountId : contra.id;
+              per.set(gid, (per.get(gid) ?? D(0)).plus(l.amount));
+            }
+            const parts: JLine[] = [...per.entries()].map(([gid, v]) => (t.direction === 'IN'
+              ? { glAccountId: gid, credit: v, memberId, supplierId: t.supplierId }
+              : { glAccountId: gid, debit: v, memberId, supplierId: t.supplierId }));
+            return t.direction === 'IN' ? [{ glAccountId: cash.id, debit: amt }, ...parts] : [...parts, { glAccountId: cash.id, credit: amt }];
           }
           return t.direction === 'IN'
             ? [{ glAccountId: cash.id, debit: amt }, { glAccountId: contra.id, credit: amt, memberId, supplierId: t.supplierId }]

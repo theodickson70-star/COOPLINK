@@ -12,6 +12,7 @@ import { getSetting } from '../lib/settings';
 import { teepayConfig, verifyWebhookSignature } from '../lib/teepay';
 import { syncAblinerWebhook, syncMobilePayment } from '../lib/fees';
 import { ablinerConfig, verifyAblinerSignature } from '../lib/abliner';
+import { DOC, docTypeOf, maskName } from '../lib/finance-docs';
 
 export const publicRouter = Router();
 
@@ -137,4 +138,30 @@ publicRouter.post('/astracall/webhook', ah(async (req, res) => {
   const updated = await applyDeliveryEvent(type, req.body?.data ?? {});
   await db.insert(schema.teepayEvents).values({ id: eventId, type: type || 'unknown', payload: req.body ?? {} }).onConflictDoNothing();
   res.json({ ok: true, updated });
+}));
+
+// ---------------------------------------------------------------------
+//  KUHAKIKI HATI YA FEDHA KWA QR (v0.42) — bila kuingia kwenye mfumo
+//  Inaonyesha tu: chama, aina na namba ya hati, tarehe, kiasi, hali, na jina la mlipwaji kwa ufupi (faragha).
+// ---------------------------------------------------------------------
+const verifyLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false });
+publicRouter.get('/verify/:token', verifyLimiter, ah(async (req, res) => {
+  const token = z.string().regex(/^[A-Za-z0-9_-]{16,40}$/).safeParse(req.params.token);
+  if (!token.success) return res.status(404).json({ valid: false });
+  const doc = await db.query.financeDocuments.findFirst({ where: eq(schema.financeDocuments.verifyToken, token.data) });
+  if (!doc) return res.status(404).json({ valid: false });
+  const T = schema.financeTransactions;
+  const [t] = await db.select({
+    txn: T, amcos: schema.amcos.name, reg: schema.amcos.regNumber,
+    reversed: sql<string | null>`(select coalesce(r.doc_no, r.txn_no) from finance_transactions r where r.reversal_of_id = "finance_transactions"."id")`,
+    member: sql<string | null>`(select m.first_name || ' ' || m.last_name from members m where m.id = "finance_transactions"."member_id")`,
+  }).from(T).innerJoin(schema.amcos, eq(schema.amcos.id, T.amcosId)).where(eq(T.id, doc.txnId));
+  if (!t) return res.status(404).json({ valid: false });
+  const type = docTypeOf(t.txn.kind) ?? (t.txn.direction === 'IN' ? 'RECEIPT' : 'PAYMENT_VOUCHER');
+  const status = t.reversed ? 'REVERSED' : t.txn.status;
+  res.json({
+    valid: true, type, title: DOC[type].title, docNo: t.txn.docNo ?? t.txn.txnNo, date: t.txn.txnDate, amount: t.txn.amount, currency: 'TZS',
+    amountUsd: t.txn.amountUsd, status, reversedBy: t.reversed, amcos: t.amcos, regNumber: t.reg, party: maskName(t.txn.payee ?? t.member),
+    issuedAt: t.txn.postedAt ?? t.txn.createdAt,
+  });
 }));
