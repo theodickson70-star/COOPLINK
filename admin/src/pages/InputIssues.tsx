@@ -291,9 +291,15 @@ function Handover({ issue, otp, canAct, onDone }: { issue: Issue; otp: boolean; 
 
 /** Kikundi cha dhamana cha mkulima (pembejeo zinatolewa kwa wanakikundi; kikundi kinadhamini deni). */
 function MemberGroupNote({ memberId }: { memberId: string }) {
-  const { data } = useFetch<{ group: { groupId: string; name: string; groupNo: string } | null; balance: { amountOwed: string } | null }>(`/members/${memberId}`);
+  const { amcos } = useAuth();
+  const { data } = useFetch<{ member: { firstName: string; lastName: string }; group: { groupId: string; name: string; groupNo: string } | null; balance: { amountOwed: string } | null }>(`/members/${memberId}`);
   if (!data) return null;
+  const owed = data.balance && Number(data.balance.amountOwed) > 0 ? ` Deni la sasa: TSh ${Number(data.balance.amountOwed).toLocaleString('en-US')}.` : '';
+  // Chama cha deni la mkulima binafsi: hakuna dhamana ya kikundi
+  if (amcos?.creditMode === 'INDIVIDUAL') {
+    return <Alert kind="ok">Deni la pembejeo hizi ni la <strong>{data.member.firstName} {data.member.lastName}</strong> mwenyewe — chama kinatumia utaratibu wa deni la mkulima binafsi.{owed}</Alert>;
+  }
   return data.group
-    ? <Alert kind="ok">Kikundi: <strong>{data.group.name}</strong> ({data.group.groupNo}) — kikundi kinadhamini deni la pembejeo hizi.{data.balance && Number(data.balance.amountOwed) > 0 ? ` Deni la sasa: TSh ${Number(data.balance.amountOwed).toLocaleString('en-US')}.` : ''}</Alert>
-    : <Alert kind="warn">Mkulima huyu hayuko kwenye kikundi cha dhamana. Kwa utaratibu wa chama, mweke kwenye kikundi kwanza (Vikundi vya wakulima).</Alert>;
+    ? <Alert kind="ok">Kikundi: <strong>{data.group.name}</strong> ({data.group.groupNo}) — kikundi kinadhamini deni la pembejeo hizi.{owed}</Alert>
+    : <Alert kind="warn">Mkulima huyu hayuko kwenye kikundi cha dhamana, kwa hiyo deni la pembejeo hizi ni lake mwenyewe. Kama chama kinatumia dhamana ya kikundi, mweke kwenye kikundi kwanza (Vikundi). Chama kisichotumia vikundi kinaweza kubadilisha utaratibu kwenye Mipangilio → Wakulima.</Alert>;
 }

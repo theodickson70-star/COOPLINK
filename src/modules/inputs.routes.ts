@@ -498,7 +498,8 @@ inputIssuesRouter.post(
 
       const amcos = (await tx.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId) }))!;
       const n = await nextNumber(tx, amcosId, 'input_issue');
-      const grp = (await activeGroups(tx, [member.id])).get(member.id);
+      // Chama cha deni la mkulima binafsi: ugawaji hauhusishwi na kikundi chochote
+      const grp = amcos.creditMode === 'INDIVIDUAL' ? undefined : (await activeGroups(tx, [member.id])).get(member.id);
       const [issue] = await tx.insert(issues).values({
         groupId: grp?.groupId ?? null,
         amcosId, seasonId: season.id, memberId: member.id, issueNo: `${amcos.code}-P-${pad(n)}`,

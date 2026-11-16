@@ -113,6 +113,8 @@ export const amcos = pgTable('amcos', {
   farmerPortal: boolean().notNull().default(false), // Meneja anawasha portal ya wakulima (bure ndani ya ada ya chama)
   // Sarafu ya pembejeo: USD = bei, mikopo ya pembejeo na manunuzi kwa dola (vitabu bado ni TSh kwa kiwango cha siku husika)
   inputCurrency: currencyEnum().notNull().default('TZS'),
+  /** v2.3: utaratibu wa mikopo ya pembejeo — GROUP (dhamana ya kikundi) au INDIVIDUAL (deni la mkulima binafsi) */
+  creditMode: text().notNull().default('GROUP'),
   kgPerAcre: numeric({ precision: 10, scale: 2 }).notNull().default('560'), // makisio: kilo za tumbaku kwa ekari (mf. @560)
   postalAddress: text(),                                                      // mf. S.L.P 149 Urambo (kwa fomu zilizochapishwa)
   // Profaili ya chama (Mipangilio → Profaili; Meneja). Jina, code na namba ya usajili ni za Owner tu.

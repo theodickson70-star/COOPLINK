@@ -18,6 +18,7 @@ import { db, schema } from '../db';
 import { ah, phoneSchema } from '../lib/http';
 import { badRequest, forbidden, notFound } from '../lib/errors';
 import { readAmcosId, resolveWriteAmcosId } from '../middleware/tenant';
+import { requireReauth } from '../middleware/auth';
 import { audit } from '../lib/audit';
 import { canAmcos } from '../lib/amcos-permissions';
 import { getSetting } from '../lib/settings';
@@ -48,7 +49,7 @@ export function settingsAccess(a: Auth) {
 }
 
 export const LEADER_ROLES = ['CHAIR', 'VICE_CHAIR', 'SECRETARY', 'TREASURER'] as const;
-const SETTINGS_ACTIONS = ['AMCOS_PROFILE_UPDATE', 'AMCOS_DOCS_UPDATE', 'AMCOS_MAIN_ACCOUNT_SET', 'ESTIMATE_SETTINGS_UPDATE', 'INPUT_CURRENCY_SET', 'AMCOS_UPDATE', 'INPUT_ITEM_UPDATE'];
+const SETTINGS_ACTIONS = ['AMCOS_CREDIT_MODE_SET', 'AMCOS_PROFILE_UPDATE', 'AMCOS_DOCS_UPDATE', 'AMCOS_MAIN_ACCOUNT_SET', 'ESTIMATE_SETTINGS_UPDATE', 'INPUT_CURRENCY_SET', 'AMCOS_UPDATE', 'INPUT_ITEM_UPDATE'];
 
 /** Asilimia ya ukamilifu wa profaili (kwa orodha ya kukamilisha) */
 function completeness(a: typeof schema.amcos.$inferSelect) {
@@ -138,6 +139,7 @@ settingsRouter.get('/', ah(async (req, res) => {
     season: { current: season ? { name: season.name, status: season.status, startDate: season.startDate, endDate: season.endDate } : null, kgPerAcre: a.kgPerAcre },
     farmers: { portal: a.farmerPortal, members: members[0]?.n ?? 0, lastMemberNo: lastMember[0]?.no ?? null, code: a.code },
     finance, stock, sms,
+    creditMode: a.creditMode, canEditCreditMode: req.auth!.role === 'AMCOS_ADMIN',
     docs: { footer: a.docFooter, showBank: a.docShowBank, bank: main ? { name: main.name, bankName: main.bankName, accountNumber: main.accountNumber } : null },
     recent: acc.edit.profile || acc.edit.finance || acc.edit.docs ? recent : [],
   });
@@ -208,6 +210,33 @@ settingsRouter.put('/finance', ah(async (req, res) => {
     await audit(tx, req, { action: 'AMCOS_MAIN_ACCOUNT_SET', entity: 'Amcos', entityId: amcosId, amcosId, before, after: { mainAccountId } });
   });
   res.json({ mainAccountId });
+}));
+
+// ------------------------------ UTARATIBU WA MIKOPO YA PEMBEJEO (Meneja) ------------------------------
+/**
+ * GROUP: mkulima aliye kwenye kikundi — deni lake lisipolipwa kwa mauzo yake, wenzake wa kikundi wanadhamini (wanakatwa).
+ * INDIVIDUAL: kila mkulima anabeba deni lake mwenyewe; vikundi (kama vipo) havihusiki na madeni.
+ * Inabadilishwa na Meneja tu, kwa nenosiri; haibadilishwi kukiwa na hesabu za mauzo zinazosubiri idhini.
+ */
+settingsRouter.put('/credit-mode', ah(async (req, res) => {
+  if (req.auth!.role !== 'AMCOS_ADMIN') throw forbidden('Ni Meneja pekee anayeweza kubadilisha utaratibu wa mikopo ya pembejeo');
+  const { creditMode, reason } = z.object({
+    creditMode: z.enum(['GROUP', 'INDIVIDUAL']),
+    reason: z.string().trim().min(10, 'Eleza sababu (angalau herufi 10) — mf. uamuzi wa bodi wa tarehe fulani').max(300),
+    confirmPassword: z.string().optional(), confirmCode: z.string().optional(),
+  }).parse(req.body);
+  await requireReauth(req);
+  const amcosId = await resolveWriteAmcosId(req);
+  const before = await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId), columns: { creditMode: true } });
+  if (!before) throw notFound('Chama');
+  if (before.creditMode === creditMode) throw badRequest('Chama tayari kinatumia utaratibu huu');
+  const [pending] = (await db.execute<{ n: number }>(sql`select count(*)::int as n from settlements where amcos_id = ${amcosId} and status = 'DRAFT'`)).rows;
+  if (pending.n) throw badRequest(`Kuna hesabu ${pending.n} za mauzo zinazosubiri idhini — ziidhinishe au uzifute kwanza, kisha ubadilishe utaratibu`);
+  await db.transaction(async (tx) => {
+    await tx.update(schema.amcos).set({ creditMode }).where(eq(schema.amcos.id, amcosId));
+    await audit(tx, req, { action: 'AMCOS_CREDIT_MODE_SET', entity: 'Amcos', entityId: amcosId, amcosId, before, after: { creditMode, reason } });
+  });
+  res.json({ creditMode });
 }));
 
 // ------------------------------ NYARAKA (Meneja / Mhasibu) ------------------------------

@@ -288,6 +288,13 @@
       "when": 1794845601760,
       "tag": "0040_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1794848274802,
+      "tag": "0041_credit_mode",
+      "breakpoints": true
     }
   ]
 }

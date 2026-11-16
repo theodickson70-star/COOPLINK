@@ -54,6 +54,8 @@ export interface Amcos {
   regNumber?: string | null; region?: string | null; ward?: string | null; village?: string | null; phone?: string | null; email?: string | null;
   postalAddress?: string | null; tin?: string | null; logo?: string | null; docFooter?: string | null; docShowBank?: boolean;
   mainBank?: { name: string; bankName: string | null; accountNumber: string | null } | null;
+  /** Utaratibu wa mikopo ya pembejeo */
+  creditMode?: 'GROUP' | 'INDIVIDUAL';
 }
 
 export const PLATFORM_ROLES: Role[] = ['SUPER_ADMIN', 'FINANCE_MANAGER', 'TECH_SUPPORT', 'CUSTOMER_SUPPORT', 'MARKETING_MANAGER'];

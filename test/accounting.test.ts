@@ -576,7 +576,20 @@ test('Vikundi: kila mkulima deni lake, kikundi kinadhamini — salio la mwenzao 
   assert.ok(Math.abs(Number(gD.amount) - 1688.03) <= 0.02 && Math.abs(Number(gE.amount) - 811.97) <= 0.02, `${gD.amount} / ${gE.amount}`);
   assert.equal(pv.guarantees[0].uncovered, '0.00');
 
+  // Utaratibu wa deni la mkulima binafsi: vikundi havidhamini; deni la C linabaki kwake
+  const cm = (body: any, tok = manager) => call('PUT', '/api/v1/settings/credit-mode', tok, body);
+  assert.equal((await cm({ creditMode: 'INDIVIDUAL', reason: 'Uamuzi wa bodi wa majaribio', confirmPassword: 'Staff12345' }, accountant)).status, 403, 'Meneja pekee');
+  assert.equal((await cm({ creditMode: 'INDIVIDUAL', reason: 'Uamuzi wa bodi wa majaribio' })).status, 403, 'nenosiri linahitajika');
+  assert.equal((await cm({ creditMode: 'INDIVIDUAL', reason: 'Uamuzi wa bodi wa majaribio', confirmPassword: 'Staff12345' })).status, 200);
+  assert.equal((await call('GET', '/api/v1/settings', manager)).body.creditMode, 'INDIVIDUAL');
+  const pvI = (await call('GET', `/api/v1/sales/markets/${mk.id}/preview`, accountant)).body;
+  assert.equal(pvI.guarantees.length, 0, 'hakuna dhamana ya kikundi');
+  assert.ok(pvI.rows.every((x: any) => !x.deductions.some((d: any) => d.kind === 'GROUP_GUARANTEE')));
+  assert.equal(pvI.rows.find((x: any) => x.memberId === C.id).coveredByGroup, '0.00');
+  assert.equal((await cm({ creditMode: 'GROUP', reason: 'Kurudi kwenye vikundi (majaribio)', confirmPassword: 'Staff12345' })).status, 200);
+
   assert.equal((await call('POST', `/api/v1/sales/markets/${mk.id}/settlements`, accountant, {})).status, 201);
+  assert.equal((await cm({ creditMode: 'INDIVIDUAL', reason: 'Jaribio wakati kuna rasimu', confirmPassword: 'Staff12345' })).status, 400, 'hesabu zinasubiri idhini');
   await approve(mk.id);
   const bal = async (id: string) => (await call('GET', `/api/v1/members/${id}`, manager)).body.balance.balance;
   assert.equal(await bal(C.id), '0.00', 'Deni la C limemalizwa na kikundi');

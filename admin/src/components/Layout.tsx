@@ -212,7 +212,7 @@ export function Layout() {
         <nav className="nav nav-animated" ref={navRef}>
           <NavIndicator box={indicator} />
           {(() => { let n = 0; return NAV.map((g, i) => {
-            const items = g.items.filter((it) => !(officer && it.to === '/') && (!it.roles || can(...it.roles)) && (!it.perm || may(...it.perm)) && (!feeLocked || it.to === '/billing' || it.to === '/support'));
+            const items = g.items.filter((it) => !(officer && it.to === '/') && !(it.to === '/groups' && amcos?.creditMode === 'INDIVIDUAL') && (!it.roles || can(...it.roles)) && (!it.perm || may(...it.perm)) && (!feeLocked || it.to === '/billing' || it.to === '/support'));
             if (!items.length) return null;
             return (
               <div key={i} style={{ display: 'contents' }}>

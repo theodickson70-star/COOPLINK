@@ -2607,3 +2607,13 @@ a.card:hover, button.card:hover, .card.clickable:hover { transform: translateY(-
   .nb-mh .nb-kind { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .nb-btn.ring svg, .nb-count, .nb-panel, .nb-toast, .nb-modal { animation: none !important; } }
+
+/* ---- Utaratibu wa mikopo ya pembejeo (Mipangilio → Wakulima) ---- */
+.cm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 14px; }
+.cm-card { border: 1.5px solid var(--line); border-radius: 16px; padding: 16px; background: var(--paper); display: flex; flex-direction: column; gap: 10px; }
+.cm-card.on { border-color: var(--green); box-shadow: 0 0 0 4px rgba(31, 122, 82, .1); }
+.cm-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cm-top b { flex: 1; font: 700 16px var(--font-head); color: var(--head); }
+.cm-badge { font: 600 12px var(--font-body); padding: 4px 10px; border-radius: 999px; background: rgba(31, 122, 82, .12); color: var(--green); }
+.cm-card ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13.5px; line-height: 1.55; display: flex; flex-direction: column; gap: 4px; }
+.cm-confirm { margin-top: 14px; padding: 16px; border-radius: 14px; border: 1px dashed var(--gold); background: rgba(227, 168, 58, .06); display: flex; flex-direction: column; gap: 10px; }

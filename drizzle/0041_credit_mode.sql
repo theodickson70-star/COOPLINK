@@ -1,0 +1,1 @@
+ALTER TABLE "amcos" ADD COLUMN "credit_mode" text DEFAULT 'GROUP' NOT NULL;

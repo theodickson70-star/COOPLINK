@@ -16,6 +16,7 @@ import { PortalSummary } from '../components/FarmerPortalAccess';
 import { Password, Profile as MyProfile, Sessions, TwoFactor } from '../owner/Settings';
 import { DocFoot, DocHead } from './acc-common';
 import { IDLE_MIN } from '../components/IdleLock';
+import { Icon } from '../components/icons';
 
 type TabKey = 'account' | 'profile' | 'season' | 'farmers' | 'finance' | 'stock' | 'docs' | 'sms';
 type Leader = { role: LeaderRole; name: string; phone: string | null };
@@ -29,6 +30,7 @@ interface Data {
   };
   season: { current: { name: string; status: string; startDate: string; endDate: string } | null; kgPerAcre: string };
   farmers: { portal: boolean; members: number; lastMemberNo: string | null; code: string };
+  creditMode: 'GROUP' | 'INDIVIDUAL'; canEditCreditMode: boolean;
   finance: null | {
     inputCurrency: 'TZS' | 'USD'; hasFxRate: boolean; mainAccountId: string | null;
     accounts: { id: string; name: string; kind: string; bankName: string | null; accountNumber: string | null }[];
@@ -44,7 +46,7 @@ interface StockItem { id: string; name: string; unit: string; category: string; 
 const SEASON_LABEL: Record<string, string> = { PLANNING: 'Maandalizi', ACTIVE: 'Unaendelea', MARKETING: 'Masoko', CLOSED: 'Umefungwa' };
 const LEADERS: [LeaderRole, string][] = [['CHAIR', 'Mwenyekiti'], ['VICE_CHAIR', 'Makamu Mwenyekiti'], ['SECRETARY', 'Katibu'], ['TREASURER', 'Mweka Hazina']];
 const ACTION_LABEL: Record<string, string> = {
-  AMCOS_PROFILE_UPDATE: 'Profaili ya chama', AMCOS_DOCS_UPDATE: 'Nyaraka / nembo', AMCOS_MAIN_ACCOUNT_SET: 'Akaunti kuu ya benki',
+  AMCOS_CREDIT_MODE_SET: 'Utaratibu wa mikopo ya pembejeo', AMCOS_PROFILE_UPDATE: 'Profaili ya chama', AMCOS_DOCS_UPDATE: 'Nyaraka / nembo', AMCOS_MAIN_ACCOUNT_SET: 'Akaunti kuu ya benki',
   ESTIMATE_SETTINGS_UPDATE: 'Kilo kwa ekari', INPUT_CURRENCY_SET: 'Sarafu ya pembejeo', AMCOS_UPDATE: 'Taarifa za chama / portal', INPUT_ITEM_UPDATE: 'Bidhaa ya stoo',
 };
 /** Nani anabadilisha kila sehemu (kwa ujumbe wa "unasoma tu") */
@@ -105,7 +107,7 @@ export function Settings() {
               )}
               {tab === 'profile' && <ProfileTab d={data} onSaved={reload} go={go} />}
               {tab === 'season' && <SeasonTab d={data} onSaved={reload} />}
-              {tab === 'farmers' && <FarmersTab d={data} />}
+              {tab === 'farmers' && <FarmersTab d={data} onSaved={reload} />}
               {tab === 'finance' && data.finance && <FinanceTab d={data} onSaved={reload} />}
               {tab === 'stock' && data.stock && <StockTab d={data} onSaved={reload} />}
               {tab === 'docs' && <DocsTab d={data} onSaved={reload} />}
@@ -322,12 +324,13 @@ function SeasonTab({ d, onSaved }: { d: Data; onSaved: () => void }) {
 }
 
 // ------------------------------ WAKULIMA ------------------------------
-function FarmersTab({ d }: { d: Data }) {
+function FarmersTab({ d, onSaved }: { d: Data; onSaved: () => void }) {
   const t = useT();
   const f = d.farmers;
   const showPortal = d.access.edit.farmers || f.portal;
   return (
     <div className="stack">
+      <CreditModeSec d={d} onSaved={onSaved} />
       <Sec title="Portal ya wakulima" sub="Wakulima wanaona deni, mauzo na pembejeo zao kwenye simu kwa PIN.">
         {showPortal ? <PortalSummary /> : (
           <div className="st-row"><div className="grow"><b>{t('Portal imezimwa')}</b><span>{t('Meneja ndiye anayeiwasha.')}</span></div><Pill value="CANCELLED" label="Imezimwa" /></div>
@@ -343,6 +346,64 @@ function FarmersTab({ d }: { d: Data }) {
         <LinkRow to="/members" title="Wakulima (wanachama)" detail={t('Sajili, tafuta na simamia wakulima')} />
       </Sec>
     </div>
+  );
+}
+
+/** Utaratibu wa mikopo ya pembejeo: dhamana ya kikundi au deni la mkulima binafsi (Meneja, kwa nenosiri) */
+const CREDIT_MODES = [
+  { k: 'GROUP' as const, title: 'Dhamana ya kikundi', icon: 'groups' as const,
+    lines: ['Wakulima wanaunganishwa kwenye vikundi vya dhamana.', 'Mkulima asipomaliza deni kwa mauzo yake, salio linakatwa kwa wenzake wa kikundi.', 'Mkulima asiye kwenye kikundi anabeba deni lake mwenyewe.'] },
+  { k: 'INDIVIDUAL' as const, title: 'Deni la mkulima binafsi', icon: 'user' as const,
+    lines: ['Pembejeo zinatolewa kwa mkulima mmoja mmoja.', 'Kila mkulima anabeba deni lake mwenyewe — hakuna anayekatwa kwa deni la mwenzake.', 'Vikundi havitumiki kwenye madeni (menyu ya Vikundi inafichwa).'] },
+];
+function CreditModeSec({ d, onSaved }: { d: Data; onSaved: () => void }) {
+  const t = useT();
+  const { refresh, user } = useAuth();
+  const [pick, setPick] = useState<'GROUP' | 'INDIVIDUAL' | null>(null);
+  const [reason, setReason] = useState('');
+  const [pw, setPw] = useState('');
+  const [code, setCode] = useState('');
+  const act = useAction();
+  const save = async () => {
+    const r = await act.run(() => api('/settings/credit-mode', { method: 'PUT', body: { creditMode: pick, reason, confirmPassword: pw, confirmCode: code || undefined } }));
+    if (r) { setPick(null); setReason(''); setPw(''); setCode(''); onSaved(); await refresh(); }
+  };
+  return (
+    <Sec title="Utaratibu wa mikopo ya pembejeo" sub="Chagua jinsi deni la pembejeo linavyobebwa. Inabadilishwa na Meneja tu, kwa nenosiri, na kila badiliko linaandikwa kwenye kumbukumbu.">
+      <div className="cm-grid">
+        {CREDIT_MODES.map((m) => {
+          const on = d.creditMode === m.k;
+          return (
+            <div key={m.k} className={`cm-card ${on ? 'on' : ''}`}>
+              <div className="cm-top">
+                <span className={`stat-chip ${on ? 'chip-green' : 'chip-gold'}`}><Icon name={m.icon} /></span>
+                <b>{t(m.title)}</b>
+                {on ? <span className="cm-badge">{t('Inatumika')}</span> : d.canEditCreditMode && <Button size="sm" variant="secondary" onClick={() => setPick(m.k)}>{t('Tumia huu')}</Button>}
+              </div>
+              <ul>{m.lines.map((l) => <li key={l}>{t(l)}</li>)}</ul>
+            </div>
+          );
+        })}
+      </div>
+      {pick && (
+        <div className="cm-confirm">
+          <Alert kind="warn">{pick === 'INDIVIDUAL'
+            ? t('Kuanzia sasa, hesabu mpya za mauzo hazitakata deni la mkulima kwa wenzake wa kikundi. Madeni yaliyokwisha kukatwa hayabadiliki.')
+            : t('Kuanzia sasa, hesabu mpya za mauzo zitakata salio la deni la mkulima kwa wenzake wa kikundi chake.')}</Alert>
+          <Alert>{act.error}</Alert>
+          <label className="field"><span className="label">{t('Sababu (mf. uamuzi wa bodi wa tarehe…)')}</span>
+            <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} /></label>
+          <div className="form-grid">
+            <TextField label="Nenosiri lako" type="password" autoComplete="current-password" value={pw} onChange={setPw} />
+            {user?.totpEnabled && <TextField label="Msimbo wa 2FA" inputMode="numeric" maxLength={6} value={code} onChange={(v) => setCode(v.replace(/\D/g, ''))} />}
+          </div>
+          <div className="actions">
+            <Button busy={act.busy} disabled={reason.trim().length < 10 || !pw} onClick={save}>{t('Thibitisha mabadiliko')}</Button>
+            <Button variant="ghost" onClick={() => setPick(null)}>{t('Ghairi')}</Button>
+          </div>
+        </div>
+      )}
+    </Sec>
   );
 }
 

@@ -389,8 +389,9 @@ async function computeMarket(tx: Tx | typeof db, m: typeof MK.$inferSelect, opts
   if (bad.length) throw new AppError(400, 'BALE_UNREALISTIC', `Mabelo ${bad.length} yana bei au kilo zisizo halisi (${bad.slice(0, 5).map((b) => b.baleNo).join(', ')}${bad.length > 5 ? '…' : ''}). Yaondoe na uyaingize upya kwa usahihi kabla ya kuwasilisha.`);
   const rules = await tx.select().from(DR).where(and(eq(DR.amcosId, m.amcosId), eq(DR.seasonId, m.seasonId), eq(DR.isActive, true)));
   const sellers = [...new Set(bales.map((b) => b.memberId))];
-  // Vikundi vya wauzaji na wenzao (kwa dhamana ya pamoja)
-  const groupOf = await activeGroups(tx, sellers);
+  // Vikundi vya wauzaji na wenzao (kwa dhamana ya pamoja) — tu kama chama kinatumia utaratibu wa vikundi
+  const individual = (await tx.query.amcos.findFirst({ where: eq(schema.amcos.id, m.amcosId), columns: { creditMode: true } }))?.creditMode === 'INDIVIDUAL';
+  const groupOf = individual ? new Map<string, { groupId: string; name: string; groupNo: string }>() : await activeGroups(tx, sellers);
   const groupIds = [...new Set([...groupOf.values()].map((g) => g.groupId))];
   const gMembers = await groupMembers(tx, groupIds);
   const allIds = [...new Set([...sellers, ...[...gMembers.values()].flat()])];
