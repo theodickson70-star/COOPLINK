@@ -35,7 +35,7 @@ import { payrollRouter } from './modules/payroll.routes';
 import { assetsRouter } from './modules/assets.routes';
 import { groupsRouter } from './modules/groups.routes';
 import { kuniRouter } from './modules/kuni.routes';
-import { officerGuard } from './lib/staff-2fa';
+import { officerGuard, requireAmcos2fa } from './lib/staff-2fa';
 import { oversightRouter } from './modules/oversight.routes';
 import { cashOtpRouter } from './lib/cash-otp';
 import { billingRouter, feeGuard } from './modules/billing.routes';
@@ -106,6 +106,7 @@ export function createApp() {
   api.use('/oversight', oversightRouter);       // Usimamizi wa serikali: ukaguzi, maagizo, zuio la malipo
   api.use('/billing', billingRouter);           // Ada ya CoopLink (Meneja) — inapatikana hata chama kikiwa kimefungwa
   api.use('/support', supportRouter);           // Tiketi za msaada — hata chama kikiwa kimefungwa
+  api.use(requireAmcos2fa);                    // v2.4: Meneja na Mhasibu — 2FA ya lazima baada ya muda wa kujiandaa
   api.use(feeGuard);                            // ada iliyopita tarehe bila kulipwa -> chama kimefungwa
   api.use('/users', usersRouter);
   api.use('/unions', unionsRouter);

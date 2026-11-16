@@ -62,6 +62,7 @@ export const RESET_STEPS: Step[] = [
   { key: 'suppliers', label: 'Wazabuni', table: 'suppliers', where: own('suppliers') },
   { key: 'input_prices', label: 'Bei za pembejeo', table: 'input_prices', where: own('input_prices') },
   { key: 'input_items', label: 'Bidhaa za pembejeo', table: 'input_items', where: own('input_items') },
+  { key: 'farmer_statement_links', label: 'Viungo vya taarifa za wakulima (SMS)', table: 'farmer_statement_links', where: own('farmer_statement_links') },
   { key: 'member_group_members', label: 'Wanachama wa vikundi', table: 'member_group_members', where: via('group_id', 'member_groups') },
   { key: 'member_groups', label: 'Vikundi', table: 'member_groups', where: own('member_groups') },
   { key: 'member_ledger_entries', label: 'Ledger ya wakulima', table: 'member_ledger_entries', where: own('member_ledger_entries') },

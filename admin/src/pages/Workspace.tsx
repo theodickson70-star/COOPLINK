@@ -57,8 +57,7 @@ export function Workspace() {
   const work = (
     <div className="dash2-row">
       <TaskPanel tasks={tasks} allTo={may('approvals.read') ? '/approvals' : undefined} />
-      {/* Mhasibu ana vigae vyake vya fedha (AccountingHome) — hatuongezi njia za mkato za pili */}
-      {data.role !== 'ACCOUNTANT' && <QuickLinks />}
+      <QuickLinks />
     </div>
   );
   return (

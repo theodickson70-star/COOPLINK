@@ -1235,6 +1235,8 @@ export const EN: Record<string, string> = {
   'Stakabadhi / Hati ya malipo': 'Receipt / Payment voucher',
   'Bado hakuna mapato wala matumizi yaliyorekodiwa.': 'No income or expenses recorded yet.',
   'Hakuna mwanachama mwenye deni.': 'No member owes anything.',
+  'Meneja na Mhasibu wanaidhinisha fedha za wakulima — 2FA ni lazima.': 'Managers and Accountants approve farmers\' money — 2FA is mandatory.',
+  'Muda wa kuwasha 2FA umepita. Washa 2FA hapa chini ili kuendelea kutumia mfumo.': 'The deadline to enable 2FA has passed. Enable 2FA below to continue using the system.',
   // v0.28 — chapa
   'Kwa usalama, mfumo umefungwa baada ya dakika {n} bila kutumika. Weka nenosiri lako kuendelea.': 'For security, the system locked after {n} minutes of inactivity. Enter your password to continue.',
   'Fungua mfumo': 'Unlock',

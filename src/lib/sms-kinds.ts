@@ -20,6 +20,7 @@ export const SMS_KINDS = {
   INPUT_HANDED_OVER: { group: 'FARMER', label: 'Pembejeo alizopokea na deni', who: 'Mkulima', urgent: false, desc: 'Baada ya kukabidhiwa (bila OTP): pembejeo, thamani na deni lake la jumla.' },
   LOAN_SENT: { group: 'FARMER', label: 'Mkopo umetumwa', who: 'Mkulima', urgent: false, desc: 'Mkopo wa kuni / grading / miti umetumwa: kiasi, riba na deni.' },
   SALE_SETTLED: { group: 'FARMER', label: 'Hesabu ya mauzo ya tumbaku', who: 'Mkulima', urgent: false, desc: 'Baada ya Meneja kuidhinisha: kilo, mauzo, makato na atakacholipwa.' },
+  FARMER_STATEMENT: { group: 'FARMER', label: 'Kiungo salama cha taarifa ya mkulima', who: 'Mkulima', urgent: false, desc: 'Kiungo (siku 90) cha kuona mauzo, pembejeo na deni bila kuingia: kinaongezwa kwenye SMS ya hesabu ya mauzo, au mtumishi anakituma kutoka ukurasa wa mkulima.' },
   PAYMENT_SENT: { group: 'FARMER', label: 'Malipo yametumwa', who: 'Mkulima', urgent: false, desc: 'Mhasibu akithibitisha malipo (ya mauzo au mengine): kiasi na njia (M-Pesa / benki / taslimu).' },
   PAYMENT_FAILED: { group: 'FARMER', label: 'Malipo / mkopo umekwama', who: 'Mkulima', urgent: false, desc: 'Malipo au mkopo ukishindwa kufika (mf. namba si sahihi): mkulima anajua na kuambiwa awasiliane na chama.' },
   GROUP_GUARANTEE_USED: { group: 'FARMER', label: 'Dhamana ya kikundi imetumika', who: 'Mdhamini na mdaiwa', urgent: false, desc: 'Mauzo ya mwanakikundi yakilipa deni la mwenzake: mdhamini anaambiwa kiasi kilichokatwa, mdaiwa anaambiwa deni lake limepungua.' },

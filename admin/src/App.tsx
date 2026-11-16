@@ -44,6 +44,7 @@ const Bank = lazyPage(load_Bank_pages, 'Bank');
 const load_FinanceDoc_pages = () => import('./pages/FinanceDoc');
 const Voucher = lazyPage(load_FinanceDoc_pages, 'FinanceDocument');
 const VerifyDoc = lazyPage(load_FinanceDoc_pages, 'VerifyDoc');
+const PublicStatement = lazyPage(() => import('./pages/PublicStatement'), 'PublicStatement');
 PAGE_LOADERS.push(load_Bank_pages);
 const load_Sales_pages = () => import('./pages/Sales');
 const BatchDetail = lazyPage(load_Sales_pages, 'BatchDetail');
@@ -121,6 +122,8 @@ PAGE_LOADERS.push(load_Subscriptions_owner);
 const load_Finance_owner = () => import('./owner/Finance');
 const OwnerFinance = lazyPage(load_Finance_owner, 'OwnerFinance');
 PAGE_LOADERS.push(load_Finance_owner);
+const load_Annual = () => import('./pages/AnnualReport');
+const AnnualReport = lazyPage(load_Annual, 'AnnualReport');
 const load_Oversight_pages = () => import('./pages/Oversight');
 const OversightHome = lazyPage(load_Oversight_pages, 'OversightHome');
 const OversightInspections = lazyPage(load_Oversight_pages, 'OversightInspections');
@@ -269,6 +272,7 @@ export default function App() {
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/verify/:token" element={<VerifyDoc />} />
+          <Route path="/s/:token" element={<PublicStatement />} />
           <Route path="/mkulima" element={<FarmerPortal />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/change-password" element={<NeedsUser><ChangePassword /></NeedsUser>} />
@@ -310,6 +314,7 @@ export default function App() {
             <Route path="finance" element={<Need p={['finance.read']}><Finance /></Need>} />
             <Route path="accounting" element={<Need p={['accounting.read']}><AccountingHome /></Need>} />
             <Route path="accounting/reports" element={<Need p={['accounting.read']}><FinancialReports /></Need>} />
+            <Route path="accounting/reports/agm" element={<Need p={['accounting.read']}><AnnualReport /></Need>} />
             <Route path="ledger" element={<Need p={['accounting.read']}><Ledger /></Need>} />
             <Route path="bank" element={<Need p={['accounting.read']}><Bank /></Need>} />
             <Route path="vouchers/:id" element={<Need p={['finance.read']}><Voucher /></Need>} />

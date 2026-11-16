@@ -188,6 +188,10 @@ export function Layout() {
   // Afisa Ushirika: ukurasa wake wa kwanza ni dashibodi ya wilaya; 2FA ikipita muda -> Akaunti yangu tu
   if (officer && loc.pathname === '/') return <Navigate to="/oversight" replace />;
   if (officer && user.twoFactor?.overdue && !user.totpEnabled && loc.pathname !== '/oversight/account') return <Navigate to="/oversight/account" replace />;
+  // v2.4: Meneja na Mhasibu — 2FA ikipita muda: Mipangilio → Akaunti yangu (backend pia inazuia data za chama)
+  const tfaRole = user.role === 'AMCOS_ADMIN' || user.role === 'ACCOUNTANT';
+  const tfaOpen = (p: string) => p === '/settings' || p.startsWith('/billing') || p.startsWith('/support');
+  if (tfaRole && user.twoFactor?.overdue && !user.totpEnabled && !tfaOpen(loc.pathname)) return <Navigate to="/settings" replace />;
   const feeLocked = officer ? false : isPayer ? !!fees.data?.lock : !!lockMsg || (feeRole && !!fees.error && /imefungwa/i.test(fees.error));
   if (isPayer && feeLocked && !loc.pathname.startsWith('/billing') && !loc.pathname.startsWith('/support')) return <Navigate to="/billing" replace />;
   // Menyu ya chini (simu): vitu vikuu vya cheo hiki kwa mpangilio wa kipaumbele
@@ -294,6 +298,13 @@ export function Layout() {
           {officer && user.twoFactor?.required && !user.totpEnabled && !user.twoFactor.overdue && user.twoFactor.deadline && loc.pathname !== '/oversight/account' && (
             <div className="tfa-banner" role="status">🔐 <span>{t('Washa 2FA kabla ya')} <b>{date(user.twoFactor.deadline)}</b>. {t('Akaunti za Afisa Ushirika zina mamlaka ya kiserikali — 2FA ni lazima.')}</span>
               <Link className="btn btn-sm btn-primary" to="/oversight/account">{t('Washa sasa')}</Link></div>
+          )}
+          {tfaRole && user.twoFactor?.required && !user.totpEnabled && user.twoFactor.deadline && (
+            <div className={`tfa-banner ${user.twoFactor.overdue ? 'tfa-overdue' : ''}`} role={user.twoFactor.overdue ? 'alert' : 'status'}>🔐 <span>
+              {user.twoFactor.overdue
+                ? t('Muda wa kuwasha 2FA umepita. Washa 2FA hapa chini ili kuendelea kutumia mfumo.')
+                : <>{t('Washa 2FA kabla ya')} <b>{date(user.twoFactor.deadline)}</b>. {t('Meneja na Mhasibu wanaidhinisha fedha za wakulima — 2FA ni lazima.')}</>}</span>
+              {loc.pathname !== '/settings' && <Link className="btn btn-sm btn-primary" to="/settings">{t('Washa sasa')}</Link>}</div>
           )}
           {!loc.pathname.startsWith('/oversight') && oversight.data?.holds.map((h) => (
             <div key={h.id} className="ov-hold ov-hold-strip" role="alert">

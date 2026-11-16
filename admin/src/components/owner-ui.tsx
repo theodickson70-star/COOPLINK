@@ -110,7 +110,7 @@ export const LABELS: Record<string, string> = {
   MONTHLY: 'Kila mwezi', ANNUAL: 'Kila mwaka', SUBSCRIPTION: 'Subscription', SETUP: 'Usanidi', TRAINING: 'Mafunzo', OTHER: 'Nyingine',
   MOBILE_MONEY: 'Simu', BANK: 'Benki', CASH: 'Taslimu', SERVER: 'Server', SMS: 'SMS', SALARY: 'Mishahara', MARKETING: 'Masoko',
   OFFICE: 'Ofisi', TRANSPORT: 'Usafiri', ANNOUNCEMENT: 'Tangazo', SYSTEM_UPDATE: 'Taarifa ya mfumo', EXPIRY_REMINDER: 'Kikumbusho',
-  IN_APP: 'Ndani ya mfumo', EMAIL: 'Email', RAILWAY: 'Railway', EXPORT: 'Export ya data',
+  IN_APP: 'Ndani ya mfumo', EMAIL: 'Email', RAILWAY: 'Railway', EXPORT: 'Export ya data', VERIFY: 'Jaribio la restore',
 };
 export function Pill({ value, label }: { value: string; label?: string }) {
   const t = useT();

@@ -216,6 +216,8 @@ export const QUICK: Quick[] = [
   { to: '/input-issues/new', label: 'Toa pembejeo', icon: 'inputs', perm: 'issues.request' },
   { to: '/sales', label: 'Mauzo ya tumbaku', icon: 'leaf', perm: 'sales.manage' },
   { to: '/purchases', label: 'Ombi la manunuzi', icon: 'cart', perm: 'purchases.request' },
+  { to: '/bank', label: 'Benki na usuluhishi', icon: 'bank', perm: 'accounting.manage' },
+  { to: '/payroll', label: 'Mishahara', icon: 'payroll', perm: 'payroll.manage' },
   { to: '/sms', label: 'Tuma SMS', icon: 'sms', perm: 'members.approve' },
   { to: '/accounting/reports', label: 'Ripoti za fedha', icon: 'chart', perm: 'accounting.read' },
   { to: '/approvals', label: 'Idhini', icon: 'tasks', perm: 'approvals.decide' },

@@ -2617,3 +2617,56 @@ a.card:hover, button.card:hover, .card.clickable:hover { transform: translateY(-
 .cm-badge { font: 600 12px var(--font-body); padding: 4px 10px; border-radius: 999px; background: rgba(31, 122, 82, .12); color: var(--green); }
 .cm-card ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13.5px; line-height: 1.55; display: flex; flex-direction: column; gap: 4px; }
 .cm-confirm { margin-top: 14px; padding: 16px; border-radius: 14px; border: 1px dashed var(--gold); background: rgba(227, 168, 58, .06); display: flex; flex-direction: column; gap: 10px; }
+
+/* ---- Taarifa ya Mkutano Mkuu (AGM) ---- */
+.agm-ctl { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; justify-content: space-between; margin-bottom: 16px; }
+.agm-ctl .seg-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip-btn { border: 1px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 999px; padding: 8px 14px; font: 600 13px var(--font-head); cursor: pointer; }
+.chip-btn:hover { border-color: var(--gold); }
+.agm-dates { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.agm-dates .field { margin: 0; }
+.agm { max-width: 980px; margin: 0 auto; }
+.agm-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 18px 0 8px; }
+.agm-kpis > div { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; break-inside: avoid; }
+.agm-kpis span { font-size: 12px; color: var(--muted); }
+.agm-kpis b { font: 700 20px var(--font-head); color: var(--head); }
+.agm-kpis small { font-size: 11.5px; color: var(--muted); }
+.agm-kpis .neg b { color: var(--danger); }
+.agm-h { display: flex; align-items: center; gap: 10px; font: 700 17px var(--font-head); color: var(--head); margin: 26px 0 8px; padding-bottom: 6px; border-bottom: 2px solid var(--line); break-after: avoid; }
+.agm-h em { font-style: normal; width: 28px; height: 28px; border-radius: 8px; background: var(--forest); color: var(--gold); display: grid; place-items: center; font-size: 14px; flex: none; }
+.agm-t { width: 100%; break-inside: auto; }
+.agm-t td, .agm-t th { padding: 7px 10px; }
+.agm-t tr { break-inside: avoid; }
+.agm-sum td { font-weight: 600; border-top: 1px solid var(--line); }
+.agm-total td { font-weight: 800; background: var(--line-2); border-top: 2px solid var(--head); }
+.agm-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.agm-check { font-size: 13px; font-weight: 600; margin: 8px 0 0; }
+.agm-check.ok { color: var(--green); } .agm-check.bad { color: var(--danger); }
+.agm-note { font-size: 12.5px; color: var(--muted); margin: 18px 0 0; }
+@media (max-width: 760px) { .agm-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .agm-two { grid-template-columns: 1fr; } }
+@media print { .agm { max-width: none; } .agm-kpis { grid-template-columns: repeat(3, 1fr); } .agm-two { grid-template-columns: 1fr 1fr; } }
+
+/* ---------- v2.4: taarifa ya mkulima kwa kiungo cha SMS (/s/:token) ---------- */
+.ps-page { min-height: 100vh; background: var(--bg); padding: 20px 14px 40px; display: flex; justify-content: center; }
+.ps-card { width: min(560px, 100%); background: var(--paper); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow); overflow: hidden; }
+.ps-head { display: flex; align-items: center; gap: 12px; padding: 16px 18px; background: linear-gradient(135deg, var(--green, #1F6B3A), #14502a); color: #fff; }
+.ps-head b { display: block; font-size: 15px; } .ps-head small { opacity: .85; font-size: 12.5px; }
+.ps-who { padding: 18px 18px 6px; } .ps-who h1 { margin: 0; font-family: var(--font-head); font-size: 22px; color: var(--head); } .ps-who p { margin: 4px 0 0; color: var(--muted); font-size: 13.5px; }
+.ps-bal { margin: 12px 18px; padding: 16px; border-radius: 16px; display: grid; gap: 2px; }
+.ps-bal.owe { background: #FBEDEA; color: #8A2E22; } .ps-bal.ok { background: #E8F3EC; color: #1F5A33; }
+.ps-bal small { font-size: 12.5px; font-weight: 600; } .ps-bal b { font-size: 28px; font-family: var(--font-head); } .ps-bal span { font-size: 13px; }
+.ps-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0 18px; }
+.ps-kpis div { border: 1px solid var(--line); border-radius: 12px; padding: 10px; } .ps-kpis small { display: block; color: var(--muted); font-size: 11.5px; } .ps-kpis b { font-size: 14px; }
+.ps-sec { padding: 16px 18px 0; } .ps-sec h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; }
+.ps-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 14px; }
+.ps-list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-top: 1px solid var(--line); }
+.ps-list li:first-child { border-top: 0; }
+.ps-list span { display: grid; min-width: 0; } .ps-list small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; } .ps-list b { font-size: 14px; }
+.ps-amt { text-align: right; flex-shrink: 0; } .ps-tx .in { color: #1F6B3A; } .ps-tx .out { color: #A23A2C; }
+.ps-foot { margin: 18px; padding-top: 12px; border-top: 1px dashed var(--line); font-size: 12.5px; color: var(--muted); display: grid; gap: 6px; }
+.ps-foot span { font-weight: 600; color: var(--head); }
+@media (max-width: 420px) { .ps-kpis { grid-template-columns: 1fr 1fr; } .ps-bal b { font-size: 24px; } }
+.tfa-banner.tfa-overdue { background: #FBEDEA; color: #8A2E22; border-color: #C2483A; }
+.ps-list li > span:first-child { flex: 1 1 auto; }
+.ps-amt { max-width: 58%; } .ps-amt small { white-space: normal; }
+@media (max-width: 420px) { .ps-kpis div:nth-child(3):last-child { grid-column: span 2; } }

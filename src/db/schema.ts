@@ -1258,6 +1258,25 @@ export const announcementReads = pgTable('announcement_reads', {
   readAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
 }, (t) => [uniqueIndex('announcement_reads_unique').on(t.announcementId, t.userId), index().on(t.userId)]);
 
+/**
+ * v2.4: kiungo salama cha taarifa ya mkulima kwa SMS (bila kuingia). Token haihifadhiwi — hash yake tu (sha256).
+ * Kinaisha muda (siku 90) na kinaweza kusitishwa. Kinaonyesha rekodi zilizoidhinishwa tu.
+ */
+export const farmerStatementLinks = pgTable('farmer_statement_links', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  memberId: uuid().notNull().references(() => members.id),
+  seasonId: uuid().references(() => seasons.id),
+  tokenHash: text().notNull().unique(),
+  source: text().notNull(),       // SALE_SETTLED | STAFF
+  createdById: uuid(),
+  expiresAt: timestamp({ withTimezone: true }).notNull(),
+  revokedAt: timestamp({ withTimezone: true }),
+  views: integer().notNull().default(0),
+  lastViewedAt: timestamp({ withTimezone: true }),
+  createdAt: createdAt(),
+}, (t) => [index().on(t.memberId), index().on(t.amcosId)]);
+
 export const announcementDeliveries = pgTable('announcement_deliveries', {
   id: id(),
   announcementId: uuid().notNull().references(() => announcements.id),

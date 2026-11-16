@@ -188,7 +188,7 @@ export async function onTobaccoSale(tx: Tx, req: Request, a: Approval, o: Outcom
   // SMS: hesabu ya kila mkulima (kilo, mauzo, makato, atakacholipwa)
   const mems = await tx.select().from(schema.members).where(inArray(schema.members.id, drafts.map((d) => d.memberId)));
   const byId = new Map(mems.map((x) => [x.id, x]));
-  await smsSaleSettled(tx, drafts.filter((d) => byId.has(d.memberId)).map((d) => ({ member: byId.get(d.memberId)!, settlementId: d.id, kg: d.totalKg, grossTzs: d.grossTzs, deductions: d.totalDeductions, netTzs: d.netTzs, marketDate: market.marketDate })));
+  await smsSaleSettled(tx, drafts.filter((d) => byId.has(d.memberId)).map((d) => ({ member: byId.get(d.memberId)!, settlementId: d.id, seasonId: d.seasonId, kg: d.totalKg, grossTzs: d.grossTzs, deductions: d.totalDeductions, netTzs: d.netTzs, marketDate: market.marketDate })));
   // Dhamana ya kikundi: mdhamini na mdaiwa wanaambiwa (baada ya madeni kusasishwa)
   if (guaranteeSms.length) {
     const gm = await tx.select().from(schema.members).where(inArray(schema.members.id, [...new Set(guaranteeSms.flatMap((g) => [g.guarantorId, g.debtorId]))]));

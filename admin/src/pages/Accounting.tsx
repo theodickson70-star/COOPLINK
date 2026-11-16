@@ -3,6 +3,7 @@
 //  Meneja: anaona ripoti tu na anaidhinisha journal kupitia Idhini.
 // =====================================================================
 import { useState } from 'react';
+import { Icon } from '../components/icons';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, apiDownload, type Paged } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
@@ -41,7 +42,7 @@ export function AccountingHome({ embedded }: { embedded?: boolean }) {
     <div className="stack">
       {!embedded && <PageHead title="Dashibodi ya fedha" sub="Hali ya fedha za chama kutoka daftari kuu (double-entry) — kila shilingi ina pande mbili." />}
       <FinanceAlerts />
-      {manage && (
+      {manage && !embedded && (
         <div className="quick-actions no-print">
           <Link className="qa" to="/finance"><strong>Vocha na miamala</strong><span>Mapato, matumizi, malipo</span></Link>
           <Link className="qa" to="/sales"><strong>Mauzo ya tumbaku</strong><span>Soko, mabelo, makato</span></Link>
@@ -54,12 +55,12 @@ export function AccountingHome({ embedded }: { embedded?: boolean }) {
         </div>
       )}
       <div className="grid grid-kpi">
-        <Kpi tone="dark" label="Fedha zilizopo (taslimu, benki, simu)" value={tsh(data.cash.total)} />
-        <Kpi label={data.ytd.season ? `Mapato — msimu ${data.ytd.season}` : `Mapato tangu ${date(data.ytd.from)}`} value={tsh(data.ytd.income)} />
-        <Kpi label={data.ytd.season ? 'Matumizi — msimu huu' : 'Matumizi (mwaka huu)'} value={tsh(data.ytd.expense)} />
-        <Kpi tone={Number(data.ytd.surplus) < 0 ? 'bad' : undefined} label="Ziada / (upungufu)" value={<Amt v={data.ytd.surplus} zero="0" />} />
-        <Kpi tone={data.unpaidFarmers.count ? 'gold' : undefined} label="Wakulima wanaosubiri malipo" value={num(data.unpaidFarmers.count)} hint={tsh(data.unpaidFarmers.amount)} />
-        <Kpi tone={pendingTotal ? 'warn' : undefined} label="Yanasubiri idhini ya Meneja" value={num(pendingTotal)} hint={data.toPost.count ? `${data.toPost.count} yameidhinishwa — kamilisha` : undefined} />
+        <Kpi tone="dark" icon={<Icon name="bank" />} label="Fedha zilizopo (taslimu, benki, simu)" value={tsh(data.cash.total)} />
+        <Kpi icon={<Icon name="arrowIn" />} label={data.ytd.season ? `Mapato — msimu ${data.ytd.season}` : `Mapato tangu ${date(data.ytd.from)}`} value={tsh(data.ytd.income)} />
+        <Kpi icon={<Icon name="arrowOut" />} label={data.ytd.season ? 'Matumizi — msimu huu' : 'Matumizi (mwaka huu)'} value={tsh(data.ytd.expense)} />
+        <Kpi tone={Number(data.ytd.surplus) < 0 ? 'bad' : undefined} icon={<Icon name="scale" />} label="Ziada / (upungufu)" value={<Amt v={data.ytd.surplus} zero="0" />} />
+        <Kpi tone={data.unpaidFarmers.count ? 'gold' : undefined} icon={<Icon name="leaf" />} label="Wakulima wanaosubiri malipo" value={num(data.unpaidFarmers.count)} hint={tsh(data.unpaidFarmers.amount)} />
+        <Kpi tone={pendingTotal ? 'warn' : undefined} icon={<Icon name="tasks" />} label="Yanasubiri idhini ya Meneja" value={num(pendingTotal)} hint={data.toPost.count ? `${data.toPost.count} yameidhinishwa — kamilisha` : undefined} />
       </div>
       {data.lockedThrough && <p className="muted" style={{ margin: 0 }}>🔒 Vitabu vimefungwa hadi {date(data.lockedThrough)}</p>}
       <Alert kind={data.farmerLedgerCheck.matches ? 'ok' : 'warn'}>
@@ -393,6 +394,7 @@ export function FinancialReports() {
   return (
     <>
       <PageHead title="Ripoti kuu za fedha" sub="Zinatoka moja kwa moja kwenye daftari kuu. Chapisha au hifadhi kama PDF kwa ajili ya bodi, mkutano mkuu na mkaguzi.">
+        <Link className="btn btn-gold" to="/accounting/reports/agm"><Icon name="chart" />Taarifa ya Mkutano Mkuu</Link>
         <PrintButton />
       </PageHead>
       <div className="no-print"><Tabs value={tab} onChange={setTab} items={[['is', 'Mapato na Matumizi'], ['bs', 'Mizania (Balance Sheet)'], ['cf', 'Mtiririko wa Fedha'], ['tb', 'Trial Balance']]} /></div>

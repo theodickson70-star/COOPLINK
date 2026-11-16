@@ -325,6 +325,61 @@ accountingRouter.get('/reports/cash-flow', requireAmcosPerm('accounting.read'), 
   res.json({ from, to, opening: fmt2(opening), net: fmt2(net), closing: fmt2(closing), sections, balanced: opening.plus(net).eq(closing) });
 }));
 
+// ------------------------------ TAARIFA YA MWAKA (MKUTANO MKUU) ------------------------------
+/**
+ * Takwimu zisizo za daftari kuu kwa taarifa ya Mkutano Mkuu: wanachama, mauzo, pembejeo, madeni ya wakulima,
+ * ukaguzi wa Afisa Ushirika na viongozi. Hesabu za fedha (mapato/matumizi, mizania, mtiririko) zinatoka kwenye
+ * ripoti zilizopo — ukurasa unaziunganisha, hakuna hesabu ya pili.
+ */
+accountingRouter.get('/reports/annual', requireAmcosPerm('accounting.read'), ah(async (req, res) => {
+  const q = z.object({ from: dateStr.optional(), to: dateStr.optional() }).parse(req.query);
+  const amcosId = await ready(req);
+  const to = q.to ?? todayStr();
+  const from = q.from ?? `${to.slice(0, 4)}-01-01`;
+  if (from > to) throw badRequest('Tarehe ya mwanzo iwe kabla ya tarehe ya mwisho');
+  const a = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId) }))!;
+  const one = async <T extends Record<string, unknown>>(q: ReturnType<typeof sql>) => (await db.execute<T>(q)).rows[0];
+  const members = await one<{ total: number; active: number; female: number; male: number; joined: number }>(sql`
+    select count(*)::int as total, count(*) filter (where status = 'ACTIVE')::int as active,
+      count(*) filter (where status = 'ACTIVE' and gender = 'FEMALE')::int as female,
+      count(*) filter (where status = 'ACTIVE' and gender = 'MALE')::int as male,
+      count(*) filter (where joined_at between ${from} and ${to})::int as joined
+    from members where amcos_id = ${amcosId}`);
+  const sales = await one<{ farmers: number; kg: string; gross: string; ded: string; net: string; markets: number }>(sql`
+    select count(distinct s.member_id)::int as farmers, coalesce(sum(s.total_kg), 0) as kg, coalesce(sum(s.gross_tzs), 0) as gross,
+      coalesce(sum(s.total_deductions), 0) as ded, coalesce(sum(s.net_tzs), 0) as net, count(distinct s.market_id)::int as markets
+    from settlements s join markets m on m.id = s.market_id
+    where s.amcos_id = ${amcosId} and s.status in ('APPROVED', 'PAID') and m.market_date between ${from} and ${to}`);
+  const paid = await one<{ v: string }>(sql`
+    select coalesce(sum(p.amount), 0) as v from payments p join settlements s on s.id = p.settlement_id
+    where s.amcos_id = ${amcosId} and p.status = 'SUCCESS' and coalesce(p.paid_at, p.updated_at)::date between ${from} and ${to}`);
+  const inputs = await one<{ issues: number; farmers: number; value: string }>(sql`
+    select count(*)::int as issues, count(distinct member_id)::int as farmers, coalesce(sum(total_amount), 0) as value
+    from input_issues where amcos_id = ${amcosId} and status = 'ISSUED' and issued_at::date between ${from} and ${to}`);
+  const debts = await one<{ owing: number; amount: string }>(sql`
+    select count(*)::int as owing, coalesce(sum(-b), 0) as amount from (
+      select member_id, sum(credit) - sum(debit) as b from member_ledger_entries
+      where amcos_id = ${amcosId} and created_at::date <= ${to} group by member_id) x where b < 0`);
+  const oversight = await one<{ inspections: number; findings: number; resolved: number; open: number; directives: number; complied: number }>(sql`
+    select (select count(*)::int from oversight_inspections where amcos_id = ${amcosId} and status <> 'DRAFT' and issued_at::date between ${from} and ${to}) as inspections,
+      (select count(*)::int from oversight_findings f join oversight_inspections i on i.id = f.inspection_id where f.amcos_id = ${amcosId} and i.status <> 'DRAFT' and i.issued_at::date between ${from} and ${to}) as findings,
+      (select count(*)::int from oversight_findings f join oversight_inspections i on i.id = f.inspection_id where f.amcos_id = ${amcosId} and i.status <> 'DRAFT' and i.issued_at::date between ${from} and ${to} and f.status = 'RESOLVED') as resolved,
+      (select count(*)::int from oversight_findings f join oversight_inspections i on i.id = f.inspection_id where f.amcos_id = ${amcosId} and i.status <> 'DRAFT' and f.status <> 'RESOLVED') as open,
+      (select count(*)::int from oversight_directives where amcos_id = ${amcosId} and created_at::date between ${from} and ${to}) as directives,
+      (select count(*)::int from oversight_directives where amcos_id = ${amcosId} and created_at::date between ${from} and ${to} and status in ('COMPLIED', 'CLOSED')) as complied`);
+  const staff = await one<{ n: number }>(sql`select count(*)::int as n from users where amcos_id = ${amcosId} and is_active`);
+  res.json({
+    from, to,
+    amcos: { name: a.name, code: a.code, regNumber: a.regNumber, region: a.region, district: a.district, ward: a.ward, village: a.village, leaders: a.leaders ?? [] },
+    members, staff: staff.n,
+    sales: { ...sales, kg: fmt2(sales.kg), gross: fmt2(sales.gross), ded: fmt2(sales.ded), net: fmt2(sales.net), paid: fmt2(paid.v) },
+    inputs: { ...inputs, value: fmt2(inputs.value) },
+    debts: { owing: debts.owing, amount: fmt2(debts.amount) },
+    oversight,
+    lockedThrough: await lockedThrough(db, amcosId),
+  });
+}));
+
 // ------------------------------ DASHIBODI YA FEDHA ------------------------------
 accountingRouter.get('/dashboard', requireAmcosPerm('accounting.read'), ah(async (req, res) => {
   const amcosId = await ready(req);

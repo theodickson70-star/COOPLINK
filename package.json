@@ -1,6 +1,6 @@
 {
   "name": "cooplink",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "CoopLink - mfumo wa kisasa wa kusimamia vyama vya msingi (AMCOS): backend + admin web",
   "main": "dist/server.js",
   "scripts": {
@@ -20,6 +20,8 @@
     "db:seed:prod": "node dist/db/seed.js",
     "admin:check": "node dist/scripts/admin-check.js",
     "admin:check:dev": "tsx src/scripts/admin-check.ts",
+    "smoke": "node dist/scripts/smoke.js",
+    "smoke:dev": "tsx src/scripts/smoke.ts",
     "db:studio": "drizzle-kit studio",
     "test": "tsx --test test/*.test.ts"
   },

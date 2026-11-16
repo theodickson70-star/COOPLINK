@@ -19,6 +19,9 @@ const schema = z.object({
   // Abliner — njia ya PILI ya malipo kwa simu (inatumika TeePay ikishindwa, au kwanza ukichagua hivyo)
   ABLINER_API_KEY: blankAsUndefined(z.string().startsWith('tsl_', 'ABLINER_API_KEY ianze na tsl_').optional()),
   ABLINER_WEBHOOK_SECRET: blankAsUndefined(z.string().startsWith('whsec_', 'ABLINER_WEBHOOK_SECRET ianze na whsec_').optional()),
+  // Anwani ya mfumo kwa viungo vinavyotumwa kwa SMS (mf. https://app.cooplink.co.tz). Bila hii: RAILWAY_PUBLIC_DOMAIN.
+  PUBLIC_APP_URL: blankAsUndefined(z.string().url().optional()),
+  RAILWAY_PUBLIC_DOMAIN: blankAsUndefined(z.string().optional()),
   ABLINER_BASE_URL: z.string().url().default('https://abliner.net/api/v1'),
 });
 

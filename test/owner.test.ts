@@ -261,6 +261,22 @@ test('Usalama: historia ya kuingia, audit yenye role, matangazo, export bila sir
   const raw = JSON.stringify(ex.body);
   assert.ok(!raw.includes('password_hash') && !raw.includes('$2b$') && !raw.includes('totp_secret'), 'hakuna siri kwenye export');
   assert.ok(ex.body.tables.members.length >= 1);
+  assert.ok(ex.body.tables.finance_transactions && ex.body.tables.journal_entries, 'v2.4: export ina meza zote za data (fedha na daftari kuu pia)');
+  assert.ok(!ex.body.tables.otp_codes && !ex.body.tables.trusted_devices && !ex.body.tables.user_sessions, 'siri za kuingia haziingii');
+  assert.ok(!raw.includes('portal_pin_hash'), 'PIN za wakulima haziingii');
+  // v2.4: jaribio la restore — linarudisha kila meza kwenye meza za muda na kulinganisha, bila kugusa data halisi
+  assert.equal((await call('POST', '/api/v1/owner/backup/verify-restore', owner, {})).status, 403, 'Nenosiri linahitajika');
+  const before = (await db.execute<{ n: number }>(sql`select count(*)::int as n from members`)).rows[0].n;
+  const vr = await call('POST', '/api/v1/owner/backup/verify-restore', owner, { confirmPassword: OWNER_PW });
+  assert.equal(vr.status, 200, JSON.stringify(vr.body).slice(0, 400));
+  assert.equal(vr.body.ok, true, JSON.stringify({ bad: vr.body.tables?.filter((t: any) => !t.ok), orphans: vr.body.foreignKeys?.orphans }));
+  assert.ok(vr.body.totals.tables >= 60 && vr.body.foreignKeys.checked > 50);
+  assert.ok(vr.body.tables.find((t: any) => t.table === 'members').restored >= 1);
+  assert.equal((await db.execute<{ n: number }>(sql`select count(*)::int as n from members`)).rows[0].n, before, 'data halisi haijaguswa');
+  assert.equal((await db.execute<{ n: number }>(sql`select count(*)::int as n from pg_tables where tablename like 'rv\_%'`)).rows[0].n, 0, 'meza za muda zimefutwa');
+  const st = await call('GET', '/api/v1/owner/backup/status', owner);
+  assert.equal(st.body.lastRestoreVerify.kind, 'VERIFY'); assert.equal(st.body.lastRestoreVerify.status, 'SUCCESS');
+  assert.notEqual(st.body.lastSuccessfulBackup?.kind, 'VERIFY', 'jaribio si backup');
   // Login events haziwezi kubadilishwa
   await assert.rejects(db.execute(sql`delete from login_events`), (e: any) => /IMMUTABLE_RECORD/.test(e?.cause?.message ?? e?.message));
 });

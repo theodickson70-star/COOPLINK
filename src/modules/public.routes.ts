@@ -12,6 +12,8 @@ import { getSetting } from '../lib/settings';
 import { teepayConfig, verifyWebhookSignature } from '../lib/teepay';
 import { syncAblinerWebhook, syncMobilePayment } from '../lib/fees';
 import { ablinerConfig, verifyAblinerSignature } from '../lib/abliner';
+import { hashStatementToken, STATEMENT_TOKEN_RE } from '../lib/statement-links';
+import { farmerStatement } from './finance.routes';
 import { DOC, docTypeOf, maskName } from '../lib/finance-docs';
 
 export const publicRouter = Router();
@@ -127,6 +129,36 @@ publicRouter.post('/astracall/webhook', ah(async (req, res) => {
 //  KUHAKIKI HATI YA FEDHA KWA QR (v0.42) — bila kuingia kwenye mfumo
 //  Inaonyesha tu: chama, aina na namba ya hati, tarehe, kiasi, hali, na jina la mlipwaji kwa ufupi (faragha).
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+//  TAARIFA YA MKULIMA KWA KIUNGO CHA SMS (v2.4) — rekodi zilizoidhinishwa tu, bila namba za simu wala vitambulisho
+// ---------------------------------------------------------------------
+const statementLimiter = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false });
+publicRouter.get('/statement/:token', statementLimiter, ah(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Robots-Tag', 'noindex');
+  const token = String(req.params.token ?? '');
+  if (!STATEMENT_TOKEN_RE.test(token)) return res.status(404).json({ valid: false });
+  const L = schema.farmerStatementLinks;
+  const link = await db.query.farmerStatementLinks.findFirst({ where: eq(L.tokenHash, hashStatementToken(token)) });
+  if (!link || link.revokedAt) return res.status(404).json({ valid: false });
+  if (link.expiresAt < new Date()) return res.status(410).json({ valid: false, expired: true });
+  const m = await db.query.members.findFirst({ where: eq(schema.members.id, link.memberId) });
+  if (!m || m.amcosId !== link.amcosId) return res.status(404).json({ valid: false });
+  await db.update(L).set({ views: sql`${L.views} + 1`, lastViewedAt: new Date() }).where(eq(L.id, link.id));
+  const s = await farmerStatement(m, link.seasonId ?? undefined, { approvedOnly: true });
+  res.json({
+    valid: true, expiresAt: link.expiresAt,
+    amcos: s.amcos.name,
+    member: { memberNo: s.member.memberNo, name: `${s.member.firstName} ${s.member.lastName}`, village: s.member.village, group: s.member.group },
+    season: s.season ? { name: s.season.name, startDate: s.season.startDate, endDate: s.season.endDate } : null,
+    opening: s.opening, balance: s.balance, amountOwed: s.amountOwed, usd: s.usd,
+    sales: s.sales.map((x) => ({ settlementNo: x.settlementNo, marketNo: x.marketNo, marketDate: x.marketDate, buyer: x.buyer, kg: x.kg, grossTzs: x.grossTzs, deductions: x.deductions, netTzs: x.netTzs, status: x.status })),
+    inputs: s.inputsSummary,
+    entries: s.statement.slice(-60).map((e) => ({ date: e.date, description: e.description, debit: e.debit, credit: e.credit, balance: e.balance })),
+    entriesTotal: s.statement.length,
+  });
+}));
+
 const verifyLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false });
 publicRouter.get('/verify/:token', verifyLimiter, ah(async (req, res) => {
   const token = z.string().regex(/^[A-Za-z0-9_-]{16,40}$/).safeParse(req.params.token);

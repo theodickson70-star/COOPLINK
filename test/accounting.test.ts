@@ -603,6 +603,81 @@ test('Vikundi: kila mkulima deni lake, kikundi kinadhamini — salio la mwenzao 
   await assertBooksBalance();
 });
 
+test('Taarifa ya mwaka (Mkutano Mkuu): takwimu za wanachama, mauzo, pembejeo na madeni zinatoka database', async () => {
+  const y = today.slice(0, 4);
+  const r = await call('GET', `/api/v1/accounting/reports/annual?from=${y}-01-01&to=${today}`, manager);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.ok(r.body.members.active >= 1 && r.body.members.total >= r.body.members.active);
+  assert.ok(r.body.sales.farmers >= 1 && Number(r.body.sales.gross) > 0, 'mauzo ya mwaka yameingia');
+  assert.ok(Number(r.body.inputs.value) > 0 && r.body.inputs.farmers >= 1);
+  assert.ok(Number(r.body.debts.amount) >= 0);
+  assert.equal((await call('GET', `/api/v1/accounting/reports/annual?from=${today}&to=${y}-01-01`, manager)).status, 400);
+  assert.equal((await call('GET', '/api/v1/accounting/reports/annual', storekeeper)).status, 403);
+});
+
+test('2FA ya lazima kwa Meneja na Mhasibu (v2.4): muda wa kujiandaa, kisha kuzuiwa', async () => {
+  const { staff2fa } = await import('../src/lib/staff-2fa');
+  const me = (await call('GET', '/api/v1/auth/me', accountant)).body;
+  const u = me.user ?? me;
+  assert.equal(u.twoFactor.required, true, 'Mhasibu anatakiwa kuwasha 2FA');
+  assert.ok(u.twoFactor.deadline && !u.twoFactor.overdue, 'Bado yuko ndani ya muda');
+  const fresh = { totpEnabled: false, createdAt: new Date() };
+  const later = Date.now() + 30 * 86400_000;
+  assert.equal((await staff2fa({ ...fresh, role: 'AMCOS_ADMIN' }, later)).overdue, true);
+  assert.equal((await staff2fa({ ...fresh, role: 'ACCOUNTANT' }, later)).overdue, true);
+  assert.equal((await staff2fa({ ...fresh, role: 'ACCOUNTANT', totpEnabled: true }, later)).required, false, '2FA ikiwashwa hakuna kizuizi');
+  assert.equal((await staff2fa({ ...fresh, role: 'CLERK' }, later)).required, false, 'Karani hahusiki');
+  assert.equal((await staff2fa({ ...fresh, role: 'STOREKEEPER' }, later)).required, false);
+  // Bado anafanya kazi ndani ya muda
+  assert.equal((await call('GET', '/api/v1/finance/farmers', accountant)).status, 200);
+});
+
+test('Taarifa ya mkulima kwa kiungo salama cha SMS: hash tu, siku 90, kikomo, faragha', async () => {
+  const { env } = await import('../src/config/env');
+  const prevUrl = env.PUBLIC_APP_URL;
+  const M = await newMember('Kiungo');
+  const url = `/api/v1/finance/farmers/${M.id}/statement-link`;
+  assert.equal((await call('PUT', '/api/v1/owner/sms/events', owner, { events: { FARMER_STATEMENT: false }, confirmPassword: OWNER_PW })).status, 200);
+  assert.equal((await call('POST', url, accountant, {})).status, 400, 'Imezimwa na Owner');
+  assert.equal((await call('PUT', '/api/v1/owner/sms/events', owner, { events: { FARMER_STATEMENT: true }, confirmPassword: OWNER_PW })).status, 200);
+  env.PUBLIC_APP_URL = undefined;
+  const noUrl = await call('POST', url, accountant, {});
+  if (!process.env.RAILWAY_PUBLIC_DOMAIN) assert.equal(noUrl.status, 400, 'Bila anwani ya mfumo hakuna kiungo');
+  env.PUBLIC_APP_URL = 'https://app.cooplink.test';
+  try {
+    assert.equal((await call('POST', url, storekeeper, {})).status, 403, 'Bila finance.read');
+    const r = await call('POST', url, accountant, {});
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.ok(r.body.phoneMasked && !r.body.phoneMasked.includes(M.mobileMoneyNumber ?? 'x'));
+    const log = (await db.execute<{ message: string }>(sql`select message from sms_logs where kind = 'FARMER_STATEMENT' and member_id = ${M.id} order by created_at desc limit 1`)).rows[0];
+    const token = log.message.match(/https:\/\/app\.cooplink\.test\/s\/([A-Za-z0-9_-]{24})/)![1];
+    const row = (await db.execute<{ token_hash: string; expires_at: Date }>(sql`select token_hash, expires_at from farmer_statement_links where member_id = ${M.id}`)).rows[0];
+    assert.notEqual(row.token_hash, token, 'Database inahifadhi hash tu');
+    const days = (new Date(row.expires_at).getTime() - Date.now()) / 86400_000;
+    assert.ok(days > 89 && days <= 90, 'Siku 90');
+    const pub = await call('GET', `/api/v1/public/statement/${token}`);
+    assert.equal(pub.status, 200, JSON.stringify(pub.body));
+    assert.equal(pub.body.valid, true); assert.equal(pub.body.member.memberNo, M.memberNo);
+    const js = JSON.stringify(pub.body);
+    assert.ok(!js.includes(M.id) && !js.includes(String(M.mobileMoneyNumber).slice(-9)), 'Hakuna id wala namba ya simu');
+    assert.equal((await call('GET', `/api/v1/public/statement/${token.slice(0, -1)}A`)).status, 404);
+    assert.equal((await call('GET', '/api/v1/public/statement/short')).status, 404);
+    assert.equal((await db.execute<{ views: number }>(sql`select views from farmer_statement_links where member_id = ${M.id}`)).rows[0].views, 1);
+    // Kikomo: viungo 3 kwa siku kwa mkulima mmoja
+    assert.equal((await call('POST', url, accountant, {})).status, 201);
+    assert.equal((await call('POST', url, manager, {})).status, 201);
+    assert.equal((await call('POST', url, accountant, {})).status, 400, 'Kikomo cha siku');
+    // Kiungo kilichoisha muda
+    await db.execute(sql`update farmer_statement_links set expires_at = now() - interval '1 minute' where member_id = ${M.id}`);
+    assert.equal((await call('GET', `/api/v1/public/statement/${token}`)).status, 410);
+    const aud = (await db.execute<{ n: number }>(sql`select count(*)::int as n from audit_logs where action = 'FARMER_STATEMENT_LINK_SENT' and entity_id = ${M.id}`)).rows[0];
+    assert.equal(aud.n, 3);
+  } finally {
+    env.PUBLIC_APP_URL = prevUrl;
+    await call('PUT', '/api/v1/owner/sms/events', owner, { events: { FARMER_STATEMENT: false }, confirmPassword: OWNER_PW });
+  }
+});
+
 // 14 -----------------------------------------------------------------
 test('Ingiza pembejeo: bidhaa mpya inasajiliwa pamoja na mzigo, baada ya idhini ya Meneja', async () => {
   const name = 'Urea ' + RUN;

@@ -1,4 +1,6 @@
-import { smsMemberReceipt, smsPaymentSent } from '../lib/sms-events';
+import { farmerPhone, smsMemberReceipt, smsPaymentSent, smsStatementLink } from '../lib/sms-events';
+import { createStatementLink, publicBaseUrl } from '../lib/statement-links';
+import { maskPhone, normPhone, smsEnabled } from '../lib/sms';
 import { assertNoHold } from '../lib/holds';
 import { DOC, insertLines, lastIssued, linesSchema, nextDocNo, setNextDocNo, validateLines, type DocType } from '../lib/finance-docs';
 import { assertCashConfirmed } from '../lib/cash-otp';
@@ -669,6 +671,32 @@ financeRouter.get('/farmers/:id', requireAmcosPerm('finance.read'), ah(async (re
   const { seasonId } = z.object({ seasonId: z.string().uuid().optional() }).parse(req.query);
   const m = await findMemberScoped(req, id);
   res.json(await farmerStatement(m, seasonId));
+}));
+
+/**
+ * v2.4: tuma kwa SMS kiungo salama cha taarifa ya mkulima (siku 90, rekodi zilizoidhinishwa tu).
+ * Kikomo: viungo 3 kwa mkulima kwa siku (kuzuia matumizi mabaya ya SMS).
+ */
+financeRouter.post('/farmers/:id/statement-link', requireAmcosPerm('finance.read'), ah(async (req, res) => {
+  const { id } = uuidParam.parse(req.params);
+  const { seasonId } = z.object({ seasonId: z.string().uuid().nullish() }).parse(req.body ?? {});
+  const m = await findMemberScoped(req, id);
+  if (!(await smsEnabled('FARMER_STATEMENT'))) throw badRequest('SMS ya kiungo cha taarifa haijawashwa na CoopLink');
+  if (!publicBaseUrl()) throw badRequest('Anwani ya mfumo (PUBLIC_APP_URL) haijawekwa — kiungo hakiwezi kutengenezwa');
+  const phone = normPhone(farmerPhone(m));
+  if (!phone) throw badRequest('Mkulima hana namba ya simu');
+  const season = seasonId ? await db.query.seasons.findFirst({ where: eq(schema.seasons.id, seasonId) }) : null;
+  if (seasonId && !season) throw notFound('Msimu');
+  const L = schema.farmerStatementLinks;
+  const [{ n }] = await db.select({ n: count() }).from(L).where(and(eq(L.memberId, m.id), eq(L.source, 'STAFF'), sql`${L.createdAt} > now() - interval '1 day'`));
+  if (n >= 3) throw badRequest('Viungo 3 vimeshatumwa kwa mkulima huyu leo. Jaribu kesho.');
+  const out = await db.transaction(async (tx) => {
+    const link = (await createStatementLink(tx, { amcosId: m.amcosId, memberId: m.id, seasonId: season?.id ?? null, source: 'STAFF', createdById: req.auth!.userId }))!;
+    await smsStatementLink(tx, m, link.url, season?.name ?? null);
+    await audit(tx, req, { action: 'FARMER_STATEMENT_LINK_SENT', entity: 'Member', entityId: m.id, amcosId: m.amcosId, after: { memberNo: m.memberNo, seasonId: season?.id ?? null } });
+    return link;
+  });
+  res.status(201).json({ sent: true, phoneMasked: maskPhone(phone), expiresAt: out.expiresAt });
 }));
 
 /**

@@ -11,6 +11,14 @@ interface Status {
   tables: { table: string; rows: string; size: string }[];
   migrations: { applied: number; total: number; latest: string | null; upToDate: boolean };
   lastSuccessfulBackup: { takenAt: string; kind: string } | null;
+  lastRestoreVerify: { takenAt: string; status: string; notes: string | null } | null;
+}
+interface Verify {
+  ok: boolean; ms: number; bytes: number;
+  tables: { table: string; rows: number; restored: number; missing: number; ok: boolean; note?: string }[];
+  totals: { tables: number; rows: number; failed: number };
+  foreignKeys: { checked: number; orphans: { child: string; column: string; parent: string; count: number }[] };
+  excluded: { table: string; reason: string }[];
 }
 interface Rec { id: string; kind: string; status: string; sizeBytes: number | null; location: string | null; notes: string | null; takenAt: string; createdBy: string | null }
 interface Req { id: string; reason: string; status: string; createdAt: string; requestedBy: string | null; decisionNotes: string | null; decidedAt: string | null }
@@ -24,7 +32,8 @@ export function OwnerBackup() {
   const [page, setPage] = useState(1);
   const recs = useFetch<Paged<Rec>>('/owner/backup/records', { page, pageSize: 20 });
   const reqs = useFetch<{ data: Req[] }>('/owner/backup/restore-requests');
-  const [modal, setModal] = useState<null | 'export' | 'record' | 'restore' | { decide: Req }>(null);
+  const [modal, setModal] = useState<null | 'export' | 'record' | 'restore' | 'verify' | { decide: Req }>(null);
+  const [vr, setVr] = useState<Verify | null>(null);
   const [rec, setRec] = useState({ kind: 'RAILWAY', status: 'SUCCESS', location: '', notes: '' });
   const [reason, setReason] = useState('');
   const [decision, setDecision] = useState('APPROVED');
@@ -38,6 +47,7 @@ export function OwnerBackup() {
     <>
       <PageHead title="Backup & Database" sub="Hali ya database, historia ya backup na maombi ya kurejesha (restore)">
         {has('backup.manage') && <>
+          <Button variant="secondary" onClick={() => setModal('verify')}>Jaribu restore</Button>
           <Button variant="secondary" onClick={() => setModal('record')}>Rekodi backup ya Railway</Button>
           <Button onClick={() => setModal('export')}>Pakua export ya data</Button>
         </>}
@@ -52,7 +62,29 @@ export function OwnerBackup() {
             <Kpi tone={!s.lastSuccessfulBackup || ageDays(s.lastSuccessfulBackup.takenAt) > 7 ? 'warn' : undefined} label="Backup ya mwisho"
               value={s.lastSuccessfulBackup ? `Siku ${ageDays(s.lastSuccessfulBackup.takenAt)} zilizopita` : 'Hakuna'}
               hint={s.lastSuccessfulBackup ? `${LABELS[s.lastSuccessfulBackup.kind] ?? s.lastSuccessfulBackup.kind} · ${dateTime(s.lastSuccessfulBackup.takenAt)}` : 'Rekodi au pakua backup'} />
+            <Kpi tone={!s.lastRestoreVerify || s.lastRestoreVerify.status !== 'SUCCESS' || ageDays(s.lastRestoreVerify.takenAt) > 30 ? 'warn' : undefined} label="Jaribio la restore"
+              value={s.lastRestoreVerify ? (s.lastRestoreVerify.status === 'SUCCESS' ? `Limefaulu · siku ${ageDays(s.lastRestoreVerify.takenAt)}` : 'Limeshindwa') : 'Halijafanyika'}
+              hint={s.lastRestoreVerify ? dateTime(s.lastRestoreVerify.takenAt) : 'Fanya angalau mara moja kwa mwezi'} />
           </div>
+          {vr && (
+            <Section title={vr.ok ? '✅ Jaribio la restore limefaulu' : '❌ Jaribio la restore limeshindwa'}
+              actions={<Button size="sm" variant="ghost" onClick={() => setVr(null)}>Funga</Button>}>
+              <p className="muted" style={{ marginTop: 0 }}>
+                Meza {vr.totals.tables} · rekodi {vr.totals.rows.toLocaleString()} · foreign keys {vr.foreignKeys.checked} · {size(vr.bytes)} · sekunde {Math.max(1, Math.round(vr.ms / 1000))}.
+                Data ilirudishwa kwenye meza za muda na kulinganishwa na database halisi — data halisi haikuguswa.
+              </p>
+              {vr.foreignKeys.orphans.length > 0 && <Alert>{`Rekodi yatima: ${vr.foreignKeys.orphans.map((o) => `${o.child}.${o.column} → ${o.parent} (${o.count})`).join('; ')}`}</Alert>}
+              <div className="table-wrap" style={{ maxHeight: 320, overflow: 'auto' }}><table className="table">
+                <thead><tr><th>Meza</th><th className="num">Database</th><th className="num">Imerudishwa</th><th>Hali</th></tr></thead>
+                <tbody>{[...vr.tables].sort((a, b) => Number(a.ok) - Number(b.ok) || b.rows - a.rows).map((t) => (
+                  <tr key={t.table}><td><code>{t.table}</code>{t.note && <div className="muted" style={{ fontSize: 12 }}>{t.note}</div>}</td>
+                    <td className="num">{t.rows.toLocaleString()}</td><td className="num">{t.restored.toLocaleString()}</td>
+                    <td><Pill value={t.ok ? 'SUCCESS' : 'FAILED'} label={t.ok ? 'Sawa' : t.missing ? `Zinakosekana ${t.missing}` : 'Hazilingani'} /></td></tr>
+                ))}</tbody>
+              </table></div>
+              <p className="muted small">Haziingii kwenye export (kwa makusudi): {vr.excluded.map((e) => `${e.table} — ${e.reason}`).join('; ')}.</p>
+            </Section>
+          )}
           <Alert kind="warn">
             Backup halisi za database zinachukuliwa na <strong>Railway</strong> (Postgres service → Backups). Hapa unarekodi backup hizo, unapakua export ya data (JSON),
             na unaomba/kuidhinisha restore. Kwa usalama, mfumo <strong>haufanyi restore wala kufuta database</strong> wenyewe; restore inafanywa kwenye Railway baada ya idhini.
@@ -92,6 +124,9 @@ export function OwnerBackup() {
       <ConfirmDialog open={modal === 'export'} title="Pakua export ya data" confirmLabel="Pakua" onClose={close}
         message="Faili la JSON lenye data zote za mfumo litapakuliwa. Nenosiri, hash na siri za 2FA HAZIMO. Hifadhi faili hili mahali salama."
         onConfirm={async (c) => { await apiDownload('/owner/backup/export', { method: 'POST', body: c, filename: 'cooplink-export.json' }); close(); refresh(); }} />
+      <ConfirmDialog open={modal === 'verify'} title="Jaribu restore (bila kugusa data)" confirmLabel="Anza jaribio" onClose={close}
+        message="Mfumo utachukua picha ya data yote kama export, kuirudisha kwenye meza za MUDA ndani ya database, kulinganisha kila meza na kukagua foreign keys. Data halisi haibadilishwi; meza za muda zinafutwa zenyewe. Inaweza kuchukua dakika moja au mbili."
+        onConfirm={async (c) => { const r = await api<Verify>('/owner/backup/verify-restore', { method: 'POST', body: c }); setVr(r); close(); refresh(); }} />
       {modal === 'record' && (
         <Modal open title="Rekodi backup" onClose={close}
           footer={<><Button variant="secondary" onClick={close}>Ghairi</Button><Button busy={act.busy} onClick={async () => { if (await act.run(() => api('/owner/backup/records', { method: 'POST', body: { ...rec, location: rec.location || null, notes: rec.notes || null } }))) { close(); refresh(); } }}>Hifadhi</Button></>}>

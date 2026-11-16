@@ -5,9 +5,10 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { Paged } from '../lib/api';
-import { useFetch, useDebounced } from '../lib/hooks';
+import { useAction, useFetch, useDebounced } from '../lib/hooks';
+import { api } from '../lib/api';
 import { date, LEDGER_LABEL, num, tsh } from '../lib/format';
-import { Badge, Empty, Loading, PageHead, Pager } from '../components/ui';
+import { Alert, Badge, Button, Empty, Loading, PageHead, Pager } from '../components/ui';
 import { Kpi, Section, Tabs } from '../components/owner-ui';
 import { Amt, DocHead, PrintButton, Signatures } from './acc-common';
 import { usd } from '../lib/fx';
@@ -104,15 +105,25 @@ export function FarmerDebtDetail() {
   const { data } = useFetch<StatementData>(`/finance/farmers/${id}`, { seasonId: seasonId || undefined });
   const [tab, setTab] = useState<'statement' | 'inputs'>('statement');
   const { may } = useAuth();
+  const sms = useAction();
+  const [smsOk, setSmsOk] = useState<string | null>(null);
   if (!data) return <Loading />;
   const m = data.member;
+  const sendSms = async () => {
+    setSmsOk(null);
+    const r = await sms.run(() => api<{ phoneMasked: string; expiresAt: string }>(`/finance/farmers/${m.id}/statement-link`, { method: 'POST', body: { seasonId: seasonId || null } }));
+    if (r) setSmsOk(`Kiungo cha taarifa kimetumwa kwa ${r.phoneMasked}. Kinaisha ${date(r.expiresAt)}.`);
+  };
   const { owes, inputs, loans, salesTzs, deductions, paid, repaid, kg, fullName } = statementSums(data);
   return (
     <>
       <PageHead title={fullName} sub={<>{m.memberNo}{m.village ? ` · ${m.village}` : ''}{m.group ? ` · Kikundi ${m.group}` : ''}</>}>
         <Link className="btn btn-secondary no-print" to="/farmer-debts">← Madeni ya wakulima</Link>
+        {/* v2.4: kiungo salama cha taarifa kwa SMS ya mkulima (siku 90, rekodi zilizoidhinishwa tu) */}
+        <Button className="no-print" variant="secondary" disabled={sms.busy} onClick={sendSms}>{sms.busy ? 'Inatuma…' : 'Tuma taarifa kwa SMS'}</Button>
         <PrintButton label="Chapisha / Hifadhi PDF" />
       </PageHead>
+      {(smsOk || sms.error) && <div className="no-print" style={{ marginBottom: 12 }}>{smsOk ? <Alert kind="ok">{smsOk}</Alert> : <Alert>{sms.error}</Alert>}</div>}
       <div className="no-print stmt-toolbar">
         <label htmlFor="stmt-season">Kipindi cha taarifa</label>
         <select id="stmt-season" className="select" value={seasonId} onChange={(e) => { if (e.target.value) sp.set('season', e.target.value); else sp.delete('season'); setSp(sp, { replace: true }); }}>

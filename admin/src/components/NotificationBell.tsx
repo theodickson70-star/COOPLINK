@@ -123,7 +123,7 @@ export function NotificationBell() {
                     <span className="nb-t">
                       <span className="nb-meta">{t(k.label)} · {ago(n.at)}</span>
                       <b>{n.title}</b>
-                      {n.body && <span className="nb-snip">{n.type === 'SUPPORT' && n.author ? `${n.author}: ` : ''}{n.body}</span>}
+                      {n.body && <span className="nb-snip">{n.type === 'SUPPORT' ? `${n.author ? `${n.author} · ` : ''}Timu ya CoopLink: ` : ''}{n.body}</span>}
                     </span>
                     {n.unread && <span className="nb-dot" aria-label={t('Mpya')} />}
                   </button>

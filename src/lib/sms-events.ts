@@ -6,6 +6,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { schema, type DbOrTx } from '../db';
 import { D, Decimal } from './money';
 import { enqueue, smsEnabled, type SmsMessage } from './sms';
+import { createStatementLink } from './statement-links';
 
 type Member = typeof schema.members.$inferSelect;
 const tsh = (v: Decimal.Value) => `TSh ${D(v).toDecimalPlaces(0).toNumber().toLocaleString('en-US')}`;
@@ -90,13 +91,28 @@ export async function smsLoanSent(tx: DbOrTx, m: Member, o: { loanId: string; la
     text: `${chama}: ${first(m)}, ${o.label.toLowerCase()} ${o.amountUsd ? `${usd(o.amountUsd)} (${tsh(o.amount)})` : tsh(o.amount)} umetumwa. Riba ${o.interestUsd ? usd(o.interestUsd) : tsh(o.interest)}. Deni lako sasa: ${debtText(d)}.` });
 }
 
-export async function smsSaleSettled(tx: DbOrTx, rows: { member: Member; settlementId: string; kg: string; grossTzs: string; deductions: string; netTzs: string; marketDate: string }[]) {
+export async function smsSaleSettled(tx: DbOrTx, rows: { member: Member; settlementId: string; seasonId?: string | null; kg: string; grossTzs: string; deductions: string; netTzs: string; marketDate: string }[]) {
   if (!rows.length || !(await smsEnabled('SALE_SETTLED'))) return;
   const chama = await amcosName(tx, rows[0].member.amcosId);
-  await enqueue(tx, rows.map((r): SmsMessage => ({
-    kind: 'SALE_SETTLED', phone: farmerPhone(r.member), amcosId: r.member.amcosId, memberId: r.member.id, referenceType: 'Settlement', referenceId: r.settlementId,
-    text: `${chama}: ${first(r.member)}, soko ${r.marketDate.split('-').reverse().join('/')}: kilo ${D(r.kg).toNumber().toLocaleString('en-US')}, mauzo ${tsh(r.grossTzs)}, makato ${tsh(r.deductions)}. Utalipwa ${tsh(r.netTzs)}.`,
-  })));
+  // v2.4: kiungo salama cha taarifa kamili (Owner akiwasha FARMER_STATEMENT na anwani ya mfumo ikijulikana)
+  const withLink = await smsEnabled('FARMER_STATEMENT');
+  const msgs: SmsMessage[] = [];
+  for (const r of rows) {
+    const link = withLink && farmerPhone(r.member)
+      ? await createStatementLink(tx, { amcosId: r.member.amcosId, memberId: r.member.id, seasonId: r.seasonId ?? null, source: 'SALE_SETTLED' }) : null;
+    msgs.push({
+      kind: 'SALE_SETTLED', phone: farmerPhone(r.member), amcosId: r.member.amcosId, memberId: r.member.id, referenceType: 'Settlement', referenceId: r.settlementId,
+      text: `${chama}: ${first(r.member)}, soko ${r.marketDate.split('-').reverse().join('/')}: kilo ${D(r.kg).toNumber().toLocaleString('en-US')}, mauzo ${tsh(r.grossTzs)}, makato ${tsh(r.deductions)}. Utalipwa ${tsh(r.netTzs)}.${link ? ` Taarifa yako: ${link.url}` : ''}`,
+    });
+  }
+  await enqueue(tx, msgs);
+}
+
+/** v2.4: mtumishi anamtumia mkulima kiungo cha taarifa yake (mauzo, pembejeo, deni) */
+export async function smsStatementLink(tx: DbOrTx, m: Member, url: string, seasonName: string | null) {
+  const chama = await amcosName(tx, m.amcosId);
+  await enqueue(tx, { kind: 'FARMER_STATEMENT', phone: farmerPhone(m), amcosId: m.amcosId, memberId: m.id, referenceType: 'Member', referenceId: m.id,
+    text: `${chama}: ${first(m)}, taarifa yako${seasonName ? ` ya msimu ${seasonName}` : ''} (mauzo, pembejeo na deni): ${url} . Kiungo ni chako tu, kinaisha baada ya siku 90.` });
 }
 
 export async function smsPaymentSent(tx: DbOrTx, m: Member, o: { paymentId: string; amount: string; method: string; destination: string | null; label?: string; refType?: string }) {
