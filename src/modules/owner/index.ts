@@ -9,6 +9,7 @@ import { subscriptionsRouter } from './subscriptions.routes';
 import { financeRouter } from './finance.routes';
 import { financeDeskRouter } from './finance-desk.routes';
 import { staffRouter } from './staff.routes';
+import { officersRouter } from './officers.routes';
 import { systemRouter } from './system.routes';
 import { commsRouter } from './comms.routes';
 import { securityRouter } from './security.routes';
@@ -31,6 +32,7 @@ ownerRouter.use('/subscriptions', subscriptionsRouter);
 ownerRouter.use('/finance', financeDeskRouter);   // dashibodi ya kazi, madeni, bajeti, taarifa ya mteja
 ownerRouter.use('/finance', financeRouter);
 ownerRouter.use('/staff', staffRouter);
+ownerRouter.use('/officers', officersRouter);   // Maafisa Ushirika wa Wilaya (Owner pekee)
 ownerRouter.use('/system', systemRouter);
 ownerRouter.use('/comms', commsRouter);
 ownerRouter.use('/security', securityRouter);

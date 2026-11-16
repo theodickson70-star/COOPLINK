@@ -19,8 +19,8 @@ interface Staff {
   tempPasswordExpiresAt: string | null; createdAt: string;
 }
 interface Catalog { permissions: Record<Permission, string>; roleDefaults: Record<string, Permission[]>; roles: Role[] }
-interface Delivery { status: string; phone: string; error: string | null }
-type Sent = { name: string; delivery: Delivery; password: string | null; again?: () => Promise<void> };
+export interface Delivery { status: string; phone: string; error: string | null }
+export type Sent = { name: string; delivery: Delivery; password: string | null; again?: () => Promise<void> };
 
 const ROLE_INFO: Record<string, { icon: string; blurb: string; does: string[] }> = {
   FINANCE_MANAGER: { icon: '💼', blurb: 'Anasimamia mapato na matumizi ya kampuni.', does: ['Kurekodi malipo na kufuatilia madeni ya ada', 'Matumizi, bajeti na ripoti za kampuni', 'Kukumbusha vyama kulipa ada', 'Hathibitishi malipo aliyorekodi mwenyewe'] },
@@ -124,7 +124,7 @@ export function OwnerStaff() {
 }
 
 /** Matokeo ya kutuma nenosiri: SMS imetumwa (Owner haoni nenosiri) au imeshindwa (nenosiri linaonyeshwa mara moja). */
-function SentModal({ sent, onClose }: { sent: Sent; onClose: () => void }) {
+export function SentModal({ sent, onClose }: { sent: Sent; onClose: () => void }) {
   const ok = sent.delivery.status === 'SENT';
   return (
     <Modal open title={ok ? 'Nenosiri limetumwa kwa SMS' : 'SMS haikutumwa'} onClose={onClose} footer={<Button onClick={onClose}>{ok ? 'Sawa' : 'Nimelinakili'}</Button>}>

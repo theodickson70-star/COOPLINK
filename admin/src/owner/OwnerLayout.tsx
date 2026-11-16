@@ -45,6 +45,7 @@ export const OWNER_NAV: { to: string; label: string; sub: string; icon: ReactNod
   { to: '/owner/finance', label: 'Finance & Revenue', sub: 'Fedha za kampuni', icon: I.finance, perm: 'finance.read', group: 'Fedha na Biashara' },
   { to: '/owner/business', label: 'Business Center', sub: 'Malengo na ukuaji', icon: I.business, perm: 'business.read', group: 'Fedha na Biashara' },
   { to: '/owner/requests', label: 'Maombi ya timu', sub: 'Huduma zinazohitaji Owner', icon: I.requests, group: 'Timu na Mawasiliano' },
+  { to: '/owner/officers', label: 'Maafisa Ushirika', sub: 'Wakaguzi wa serikali (wilaya)', icon: I.security, perm: 'staff.manage', group: 'Timu na Mawasiliano' },
   { to: '/owner/staff', label: 'Staff Management', sub: 'Wafanyakazi wa DUKALANGU', icon: I.staff, perm: 'staff.manage', group: 'Timu na Mawasiliano' },
   { to: '/owner/comms', label: 'Marketing & Communication', sub: 'Matangazo na SMS', icon: I.comms, perm: 'comms.read', group: 'Timu na Mawasiliano' },
   { to: '/owner/sms', label: 'SMS Center', sub: 'OTP, taarifa na gharama', icon: I.sms, perm: 'system.read', group: 'Timu na Mawasiliano' },
@@ -87,7 +88,7 @@ export function OwnerLayout() {
   if (!user) return null;
   const isOwner = user.role === 'SUPER_ADMIN';
   // Dashibodi ya Owner ni ya Owner; wafanyakazi wanaanzia kwenye dawati lao la kazi
-  const items = OWNER_NAV.filter((n) => (!n.perm || has(n.perm)) && (n.to !== '/owner' || user?.role === 'SUPER_ADMIN'));
+  const items = OWNER_NAV.filter((n) => (!n.perm || has(n.perm)) && ((n.to !== '/owner' && n.to !== '/owner/officers') || user?.role === 'SUPER_ADMIN'));
   const groups = items.reduce<{ name: string; items: typeof items }[]>((acc, it) => {
     const g = acc.find((x) => x.name === it.group);
     if (g) g.items.push(it); else acc.push({ name: it.group, items: [it] });

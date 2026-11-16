@@ -47,7 +47,11 @@ export const AMCOS_PERMISSIONS = {
   'approvals.decide': 'Kuidhinisha au kukataa maombi',
   // Usimamizi
   'staff.read': 'Kuona watumishi wa chama',
-  'audit.read': 'Kuona kumbukumbu (audit log) — Super Admin pekee',
+  'audit.read': 'Kuona kumbukumbu (audit log) — Super Admin na Afisa Ushirika',
+  // Usimamizi wa serikali (v0.43)
+  'oversight.read': 'Kuona ukaguzi, hoja na maagizo ya Afisa Ushirika kwa chama',
+  'oversight.respond': 'Kujibu hoja za ukaguzi na maagizo ya Afisa Ushirika',
+  'oversight.manage': 'Afisa Ushirika: kukagua, kuandika hoja, kutoa maagizo na zuio la malipo',
   'reports.finance': 'Ripoti za fedha',
   'reports.stock': 'Ripoti za stoo',
 } as const;
@@ -67,14 +71,14 @@ export const AMCOS_ROLE_PERMISSIONS: Partial<Record<Role, AmcosPermission[]>> = 
     'stock.read', 'prices.manage', 'issues.cancel',
     'finance.read', 'approvals.read', 'approvals.decide', 'staff.read', 'reports.finance', 'reports.stock',
     // Meneja: ripoti na idhini tu — haandiki journal, vocha wala mishahara
-    'accounting.read', 'sales.read', 'payroll.read',
+    'accounting.read', 'sales.read', 'payroll.read', 'oversight.read', 'oversight.respond',
   ],
   // Mhasibu: fedha na uhasibu TU (hana wakulima, stoo wala kumbukumbu). Anatafuta mkulima kwa malipo kupitia members.lookup.
   ACCOUNTANT: [
     'members.lookup', 'members.portal',
     'finance.read', 'finance.record', 'finance.post', 'finance.accounts',
     'accounting.read', 'accounting.manage', 'sales.read', 'sales.manage', 'payroll.read', 'payroll.manage',
-    'approvals.read', 'reports.finance',
+    'approvals.read', 'reports.finance', 'oversight.read', 'oversight.respond',
   ],
   CLERK: [
     'members.read', 'members.lookup', 'members.write', 'members.portal', 'estimates.write',
@@ -86,7 +90,9 @@ export const AMCOS_ROLE_PERMISSIONS: Partial<Record<Role, AmcosPermission[]>> = 
   SUPER_ADMIN: [...READ, 'audit.read'], // kumbukumbu (audit) ni ya Super Admin pekee
   UNION_ADMIN: READ,
   UNION_VIEWER: READ,
-  AMCOS_VIEWER: READ,
+  AMCOS_VIEWER: [...READ, 'oversight.read'],
+  // Afisa Ushirika wa Wilaya: anaona kila kitu cha vyama vya wilaya yake (kusoma tu) + kazi za usimamizi
+  COOP_OFFICER: [...READ, 'audit.read', 'oversight.read', 'oversight.manage'],
 };
 
 export function amcosPermissions(role: Role): AmcosPermission[] {

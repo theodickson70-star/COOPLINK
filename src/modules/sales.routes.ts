@@ -5,6 +5,7 @@
 //   3. Hesabu ya malipo ya kila mkulima (settlement) -> idhini ya Meneja -> ledger + daftari kuu
 //   4. Orodha ya malipo (payment sheet) -> idhini -> Mhasibu anathibitisha kila malipo yaliyofanyika kweli
 // =====================================================================
+import { assertNoHold } from '../lib/holds';
 import { Router, type Request } from 'express';
 import { smsPaymentFailed, smsPaymentSent } from '../lib/sms-events';
 import { assertCashConfirmed } from '../lib/cash-otp';
@@ -599,6 +600,7 @@ salesRouter.post('/batches/:id/confirm', requireAmcosPerm('sales.manage'), ah(as
     cashOverride: z.string().trim().max(300).optional(),
   }).parse(req.body);
   const b = await findBatch(req, id);
+  await assertNoHold(db, b.amcosId); // zuio la Afisa Ushirika
   // Taslimu: kila mkulima amethibitisha kwa OTP kwamba amepokea (au Meneja ameandika sababu)
   const cashRows = await db.select({ id: PY.id, memberNo: M.memberNo }).from(PY).innerJoin(M, eq(M.id, PY.memberId))
     .where(and(eq(PY.batchId, id), inArray(PY.id, body.paymentIds), eq(PY.method, 'CASH')));

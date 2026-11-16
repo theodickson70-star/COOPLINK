@@ -13,7 +13,7 @@ export const TEMP_PASSWORD_HOURS = 72;
 export const ROLE_TITLE_SW: Record<string, string> = {
   FINANCE_MANAGER: 'Finance Manager', CUSTOMER_SUPPORT: 'Huduma kwa Wateja na Masoko', MARKETING_MANAGER: 'Huduma kwa Wateja na Masoko', TECH_SUPPORT: 'Msaada wa Kiufundi',
   AMCOS_ADMIN: 'Meneja', ACCOUNTANT: 'Mhasibu', CLERK: 'Storekeeper', AMCOS_VIEWER: 'Mtazamaji',
-  UNION_ADMIN: 'Msimamizi wa Chama Kikuu', UNION_VIEWER: 'Mtazamaji wa Chama Kikuu',
+  UNION_ADMIN: 'Msimamizi wa Chama Kikuu', UNION_VIEWER: 'Mtazamaji wa Chama Kikuu', COOP_OFFICER: 'Afisa Ushirika',
 };
 export const tempExpiry = () => new Date(Date.now() + TEMP_PASSWORD_HOURS * 3600_000);
 

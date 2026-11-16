@@ -10,7 +10,7 @@ import type { Role } from '../middleware/auth';
 
 export async function staff2fa(u: { role: string; totpEnabled: boolean; createdAt: Date }) {
   const cfg = await getSetting('security');
-  if (!cfg.staff2fa || !isStaffRole(u.role as Role) || u.totpEnabled) return { required: false, deadline: null as string | null, overdue: false };
+  if (!cfg.staff2fa || !(isStaffRole(u.role as Role) || u.role === 'COOP_OFFICER') || u.totpEnabled) return { required: false, deadline: null as string | null, overdue: false };
   const since = Math.max(new Date(cfg.staff2faSince).getTime(), u.createdAt.getTime());
   const deadline = new Date(since + cfg.graceDays * 86_400_000);
   return { required: true, deadline: deadline.toISOString(), overdue: deadline.getTime() < Date.now() };
@@ -24,6 +24,24 @@ export async function requireStaff2fa(req: Request, _res: Response, next: NextFu
     const u = await db.query.users.findFirst({ where: eq(schema.users.id, a.userId), columns: { role: true, totpEnabled: true, createdAt: true } });
     if (u && (await staff2fa(u)).overdue) {
       return next(new AppError(403, 'TWO_FACTOR_SETUP_REQUIRED', 'Washa 2FA (Akaunti yangu) ili kuendelea kutumia Owner Panel.'));
+    }
+    next();
+  } catch (e) { next(e); }
+}
+
+/**
+ * v0.43 — Afisa Ushirika: (1) ANASOMA TU data za vyama — hawezi kubadilisha chochote cha chama (backend, si kuficha menyu);
+ * kazi zake za kuandika ziko /oversight pekee. (2) 2FA ni lazima kama kwa wafanyakazi wa CoopLink.
+ */
+const OFFICER_WRITE_OK = [/^\/oversight(\/|$)/, /^\/bank\/voucher\/[0-9a-f-]{36}\/print$/];
+export async function officerGuard(req: Request, _res: Response, next: NextFunction) {
+  try {
+    const a = req.auth;
+    if (!a || a.role !== 'COOP_OFFICER') return next();
+    const u = await db.query.users.findFirst({ where: eq(schema.users.id, a.userId), columns: { role: true, totpEnabled: true, createdAt: true } });
+    if (u && (await staff2fa(u)).overdue) return next(new AppError(403, 'TWO_FACTOR_SETUP_REQUIRED', 'Washa 2FA (Akaunti yangu) ili kuendelea kutumia mfumo.'));
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !OFFICER_WRITE_OK.some((r) => r.test(req.path))) {
+      return next(new AppError(403, 'OFFICER_READ_ONLY', 'Afisa Ushirika anaona tu data za chama. Tumia Ukaguzi au Maagizo kuelekeza chama kurekebisha.'));
     }
     next();
   } catch (e) { next(e); }

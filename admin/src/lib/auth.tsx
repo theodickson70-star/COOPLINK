@@ -3,7 +3,7 @@ import { markActive, markSiteSeen } from './session';
 import { api, getToken, setSelectedAmcos, setToken } from './api';
 
 export type Role =
-  | 'SUPER_ADMIN' | 'UNION_ADMIN' | 'UNION_VIEWER' | 'AMCOS_ADMIN' | 'ACCOUNTANT' | 'CLERK' | 'AMCOS_VIEWER'
+  | 'SUPER_ADMIN' | 'UNION_ADMIN' | 'UNION_VIEWER' | 'AMCOS_ADMIN' | 'ACCOUNTANT' | 'CLERK' | 'AMCOS_VIEWER' | 'COOP_OFFICER'
   | 'FINANCE_MANAGER' | 'TECH_SUPPORT' | 'CUSTOMER_SUPPORT' | 'MARKETING_MANAGER';
 
 export type Permission =
@@ -20,7 +20,8 @@ export type AmcosPermission =
   | 'suppliers.manage' | 'purchases.request' | 'purchases.receive'
   | 'finance.read' | 'finance.record' | 'finance.post' | 'finance.accounts'
   | 'approvals.read' | 'approvals.decide' | 'staff.read' | 'audit.read' | 'reports.finance' | 'reports.stock'
-  | 'accounting.read' | 'accounting.manage' | 'sales.read' | 'sales.manage' | 'payroll.read' | 'payroll.manage';
+  | 'accounting.read' | 'accounting.manage' | 'sales.read' | 'sales.manage' | 'payroll.read' | 'payroll.manage'
+  | 'oversight.read' | 'oversight.respond' | 'oversight.manage';
 
 export interface User {
   id: string;
@@ -31,6 +32,9 @@ export interface User {
   unionId: string | null;
   amcosId: string | null;
   jobTitle: string | null;
+  /** v0.43: Afisa Ushirika — eneo la mamlaka yake */
+  jurisdictionRegion?: string | null;
+  jurisdictionDistrict?: string | null;
   mustChangePassword: boolean;
   /** Masharti/Faragha: toleo alilokubali, na kama anatakiwa kukubali toleo la sasa */
   termsVersion?: string | null;

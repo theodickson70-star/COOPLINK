@@ -121,6 +121,16 @@ PAGE_LOADERS.push(load_Subscriptions_owner);
 const load_Finance_owner = () => import('./owner/Finance');
 const OwnerFinance = lazyPage(load_Finance_owner, 'OwnerFinance');
 PAGE_LOADERS.push(load_Finance_owner);
+const load_Oversight_pages = () => import('./pages/Oversight');
+const OversightHome = lazyPage(load_Oversight_pages, 'OversightHome');
+const OversightInspections = lazyPage(load_Oversight_pages, 'OversightInspections');
+const OversightInspectionDetail = lazyPage(load_Oversight_pages, 'OversightInspectionDetail');
+const OversightDirectives = lazyPage(load_Oversight_pages, 'OversightDirectives');
+const OversightHolds = lazyPage(load_Oversight_pages, 'OversightHolds');
+const OfficerAccount = lazyPage(load_Oversight_pages, 'OfficerAccount');
+PAGE_LOADERS.push(load_Oversight_pages);
+const load_Officers_owner = () => import('./owner/Officers');
+const OwnerOfficers = lazyPage(load_Officers_owner, 'OwnerOfficers');
 const load_Staff_owner = () => import('./owner/Staff');
 const OwnerStaff = lazyPage(load_Staff_owner, 'OwnerStaff');
 PAGE_LOADERS.push(load_Staff_owner);
@@ -270,6 +280,7 @@ export default function App() {
             <Route path="fees/receipts/:id" element={<Perm p="subscriptions.read"><BillingReceipt base="/owner/fees" /></Perm>} />
             <Route path="finance" element={<Perm p="finance.read"><OwnerFinance /></Perm>} />
             <Route path="staff" element={<Perm p="staff.manage"><OwnerStaff /></Perm>} />
+            <Route path="officers" element={<Perm p="staff.manage"><OwnerOfficers /></Perm>} />
             <Route path="system" element={<Perm p="system.read"><OwnerSystem /></Perm>} />
             <Route path="sms" element={<Perm p="system.read"><OwnerSmsCenter /></Perm>} />
             <Route path="comms" element={<Perm p="comms.read"><OwnerComms /></Perm>} />
@@ -287,6 +298,12 @@ export default function App() {
           <Route element={<Protected><Layout /></Protected>}>
             <Route index element={<Workspace />} />
             <Route path="approvals" element={<Need p={['approvals.read']}><Approvals /></Need>} />
+            <Route path="oversight" element={<Need p={['oversight.read']}><OversightHome /></Need>} />
+            <Route path="oversight/inspections" element={<Need p={['oversight.read']}><OversightInspections /></Need>} />
+            <Route path="oversight/inspections/:id" element={<Need p={['oversight.read']}><OversightInspectionDetail /></Need>} />
+            <Route path="oversight/directives" element={<Need p={['oversight.read']}><OversightDirectives /></Need>} />
+            <Route path="oversight/holds" element={<Need p={['oversight.read']}><OversightHolds /></Need>} />
+            <Route path="oversight/account" element={<OfficerAccount />} />
             <Route path="support" element={<Support />} />
             <Route path="support/new" element={<SupportNew />} />
             <Route path="support/:id" element={<SupportDetail />} />

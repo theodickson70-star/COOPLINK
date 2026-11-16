@@ -34,6 +34,8 @@ import { payrollRouter } from './modules/payroll.routes';
 import { assetsRouter } from './modules/assets.routes';
 import { groupsRouter } from './modules/groups.routes';
 import { kuniRouter } from './modules/kuni.routes';
+import { officerGuard } from './lib/staff-2fa';
+import { oversightRouter } from './modules/oversight.routes';
 import { cashOtpRouter } from './lib/cash-otp';
 import { billingRouter, feeGuard } from './modules/billing.routes';
 import { lookupRouter } from './modules/lookup.routes';
@@ -99,6 +101,8 @@ export function createApp() {
   api.use('/announcements', announcementsRouter);
   api.use('/lookup', lookupRouter);              // Jina la mwenye namba ya simu (Abliner) — kwa fomu zote
   api.use(blockPlatformStaff);                 // wafanyakazi wa jukwaa hawaingii data za vyama
+  api.use(officerGuard);                       // Afisa Ushirika: kusoma tu + 2FA ya lazima
+  api.use('/oversight', oversightRouter);       // Usimamizi wa serikali: ukaguzi, maagizo, zuio la malipo
   api.use('/billing', billingRouter);           // Ada ya CoopLink (Meneja) — inapatikana hata chama kikiwa kimefungwa
   api.use('/support', supportRouter);           // Tiketi za msaada — hata chama kikiwa kimefungwa
   api.use(feeGuard);                            // ada iliyopita tarehe bila kulipwa -> chama kimefungwa

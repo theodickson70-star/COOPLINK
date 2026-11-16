@@ -2,6 +2,7 @@
 //  MISHAHARA (Mhasibu anaandaa · Meneja anaidhinisha · Mhasibu analipa)
 //   Wafanyakazi wa chama · hesabu ya PAYE/NSSF/WCF/SDL · hati za mishahara (payslips)
 // =====================================================================
+import { assertNoHold } from '../lib/holds';
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
@@ -160,6 +161,7 @@ payrollRouter.post('/runs/:id/pay', requireAmcosPerm('payroll.manage'), ah(async
   const run = await findRun(req, id);
   if (run.status !== 'APPROVED') throw badRequest(run.status === 'PENDING_APPROVAL' ? 'Mishahara hii bado inasubiri idhini ya Meneja' : 'Mishahara hii haiwezi kulipwa');
   await assertOpen(db, run.amcosId, body.txnDate ?? todayStr());
+  await assertNoHold(db, run.amcosId); // zuio la Afisa Ushirika
   const [acc] = await db.select().from(schema.financeAccounts).where(and(eq(schema.financeAccounts.id, body.accountId), eq(schema.financeAccounts.amcosId, run.amcosId)));
   if (!acc || !acc.isActive) throw badRequest('Akaunti ya fedha si sahihi');
   const amcos = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, run.amcosId) }))!;

@@ -1,4 +1,5 @@
 import { smsMemberReceipt, smsPaymentSent } from '../lib/sms-events';
+import { assertNoHold } from '../lib/holds';
 import { DOC, insertLines, lastIssued, linesSchema, nextDocNo, setNextDocNo, validateLines, type DocType } from '../lib/finance-docs';
 import { assertCashConfirmed } from '../lib/cash-otp';
 // =====================================================================
@@ -362,6 +363,7 @@ financeRouter.post('/transactions/:id/post', requireAmcosPerm('finance.post'), a
   const body = z.object({ accountId: z.string().uuid().optional(), txnDate: dateStr.optional(), reference: z.string().trim().optional(), cashOverride: z.string().trim().max(300).optional() }).parse(req.body);
   const t = await scopedTxn(req, id);
   if (t.status !== 'APPROVED') throw badRequest(t.status === 'PENDING_APPROVAL' ? 'Muamala huu bado unasubiri idhini ya Meneja' : 'Muamala huu hauwezi kukamilishwa');
+  if (t.direction === 'OUT' || t.kind === 'TRANSFER') await assertNoHold(db, t.amcosId); // zuio la Afisa Ushirika
   if (t.kind === 'TRANSFER') {
     // Uhamisho: pande zote mbili zinakamilishwa pamoja, kuanzia upande wa kutoa fedha
     const pair = await db.select().from(T).where(and(eq(T.transferGroupId, t.transferGroupId!), eq(T.status, 'APPROVED')));

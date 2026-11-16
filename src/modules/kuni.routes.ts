@@ -6,6 +6,7 @@
 //   -> Mhasibu anathibitisha waliolipwa: mkopo + riba vinaingia kwenye deni la dola la mkulima (pamoja na pembejeo)
 //   Deni la dola linakatwa sokoni kwa kiwango cha siku ya soko. Orodha za zamani za TSh zinaendelea kama zilivyo.
 // =====================================================================
+import { assertNoHold } from '../lib/holds';
 import { Router, type Request } from 'express';
 import { smsLoanSent, smsPaymentFailed } from '../lib/sms-events';
 import { assertCashConfirmed } from '../lib/cash-otp';
@@ -319,6 +320,7 @@ kuniRouter.post('/batches/:id/confirm', requireAmcosPerm('finance.record'), ah(a
     cashOverride: z.string().trim().max(300).optional(),
   }).parse(req.body);
   const b = await findBatch(req, id);
+  await assertNoHold(db, b.amcosId); // zuio la Afisa Ushirika
   const cashRows = await db.select({ id: KL.id, memberNo: M.memberNo }).from(KL).innerJoin(M, eq(M.id, KL.memberId))
     .where(and(eq(KL.batchId, id), inArray(KL.id, body.loanIds), eq(KL.method, 'CASH')));
   const cashHow = await assertCashConfirmed(req, cashRows, body.cashOverride);

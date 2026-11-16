@@ -22,6 +22,7 @@ export const ROLE_LABEL: Record<string, string> = {
   ACCOUNTANT: 'Mhasibu',
   CLERK: 'Storekeeper',
   AMCOS_VIEWER: 'Mtazamaji (amezimwa)',
+  COOP_OFFICER: 'Afisa Ushirika',
   FINANCE_MANAGER: 'Meneja wa Fedha',
   TECH_SUPPORT: 'Msaada wa Kiufundi',
   CUSTOMER_SUPPORT: 'Huduma kwa Wateja na Masoko',

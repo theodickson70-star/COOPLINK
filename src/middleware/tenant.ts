@@ -6,7 +6,7 @@
 //  KILA query ya data ya chama LAZIMA ipite hapa.
 // =====================================================================
 import type { Request } from 'express';
-import { and, eq, inArray, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import { db, schema } from '../db';
 import { badRequest, forbidden, notFound, unauthorized } from '../lib/errors';
@@ -22,6 +22,12 @@ function requestedAmcosId(req: Request, explicit?: string | null): string | unde
 const unionAmcosIds = (unionId: string) =>
   db.select({ id: schema.amcos.id }).from(schema.amcos).where(eq(schema.amcos.unionId, unionId));
 
+/** v0.43: vyama vya wilaya ya Afisa Ushirika (jina la wilaya/mkoa linalinganishwa bila kujali herufi kubwa/nafasi) */
+export const districtAmcosIds = (j: { region: string | null; district: string | null } | undefined) =>
+  db.select({ id: schema.amcos.id }).from(schema.amcos).where(j?.district
+    ? and(sql`lower(trim(${schema.amcos.district})) = lower(trim(${j.district}))`, j.region ? sql`lower(trim(${schema.amcos.region})) = lower(trim(${j.region}))` : undefined)
+    : sql`false`);
+
 /** Sharti la WHERE kwa ajili ya kusoma data ya chama. */
 export function amcosScope(req: Request, column: PgColumn): SQL | undefined {
   const auth = req.auth;
@@ -36,6 +42,10 @@ export function amcosScope(req: Request, column: PgColumn): SQL | undefined {
       const inUnion = inArray(column, unionAmcosIds(auth.unionId!));
       return requested ? and(inUnion, eq(column, requested)) : inUnion;
     }
+    case 'COOP_OFFICER': {
+      const inDistrict = inArray(column, districtAmcosIds(auth.jurisdiction));
+      return requested ? and(inDistrict, eq(column, requested)) : inDistrict;
+    }
     default:
       return eq(column, auth.amcosId!);
   }
@@ -48,6 +58,10 @@ export async function canAccessAmcos(req: Request, amcosId: string): Promise<boo
   if (auth.role === 'UNION_ADMIN' || auth.role === 'UNION_VIEWER') {
     const a = await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId), columns: { unionId: true } });
     return !!a && a.unionId === auth.unionId;
+  }
+  if (auth.role === 'COOP_OFFICER') {
+    const [a] = await db.select({ id: schema.amcos.id }).from(schema.amcos).where(and(eq(schema.amcos.id, amcosId), inArray(schema.amcos.id, districtAmcosIds(auth.jurisdiction))));
+    return !!a;
   }
   return auth.amcosId === amcosId;
 }

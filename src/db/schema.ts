@@ -30,6 +30,7 @@ export const roleEnum = pgEnum('role', [
   'ACCOUNTANT',   // Mhasibu
   'CLERK',        // Karani
   'AMCOS_VIEWER', // Mjumbe wa bodi / mkaguzi (kusoma tu)
+  'COOP_OFFICER', // v0.43: Afisa Ushirika wa Wilaya / mkaguzi wa serikali — vyama vyote vya wilaya yake
   // Wafanyakazi wa DUKALANGU SOLUTION / CoopLink (jukwaa) — HAWANA access ya data za vyama
   'FINANCE_MANAGER',
   'TECH_SUPPORT',
@@ -162,7 +163,9 @@ export const users = pgTable('users', {
   /** Toleo la Masharti ya Huduma na Sera ya Faragha alilokubali mtumiaji, na lini */
   termsVersion: text(),
   termsAcceptedAt: timestamp({ withTimezone: true }),
-  jobTitle: text(),                 // wafanyakazi wa jukwaa
+  jobTitle: text(),                 // wafanyakazi wa jukwaa; Afisa Ushirika (cheo chake)
+  jurisdictionRegion: text(),       // v0.43: Afisa Ushirika — mkoa
+  jurisdictionDistrict: text(),     // v0.43: Afisa Ushirika — wilaya anayosimamia
   permissions: text().array(),      // null = ruhusa za kawaida za role
   totpSecret: text(),               // 2FA (imesimbwa kwa AES-256-GCM)
   totpEnabled: boolean().notNull().default(false),
@@ -869,6 +872,85 @@ export const financeDocPrints = pgTable('finance_doc_prints', {
   printedById: uuid().notNull(),
   printedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
 }, (t) => [uniqueIndex().on(t.txnId, t.copyNo)]);
+
+// ---------------------------------------------------------------------
+//  USIMAMIZI WA SERIKALI (v0.43): Afisa Ushirika wa Wilaya — ukaguzi, hoja, maagizo, zuio la malipo
+// ---------------------------------------------------------------------
+export const oversightInspections = pgTable('oversight_inspections', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  inspNo: text().notNull(),
+  title: text().notNull(),
+  kind: text().notNull(),               // ROUTINE | SPECIAL | INVESTIGATION | FOLLOW_UP
+  periodFrom: date(),
+  periodTo: date(),
+  status: text().notNull().default('DRAFT'), // DRAFT | ISSUED | CLOSED
+  summary: text(),
+  conclusion: text(),
+  createdById: uuid().notNull(),
+  issuedAt: timestamp({ withTimezone: true }),
+  issuedById: uuid(),
+  closedAt: timestamp({ withTimezone: true }),
+  closedById: uuid(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex().on(t.amcosId, t.inspNo), index().on(t.status)]);
+
+export const oversightFindings = pgTable('oversight_findings', {
+  id: id(),
+  inspectionId: uuid().notNull().references(() => oversightInspections.id),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  findingNo: integer().notNull(),
+  area: text().notNull(),               // FINANCE | MEMBERS | SALES | INPUTS | GOVERNANCE | STORE | OTHER
+  title: text().notNull(),
+  detail: text().notNull(),
+  severity: text().notNull(),           // LOW | MEDIUM | HIGH | CRITICAL
+  recommendation: text(),
+  dueDate: date(),
+  status: text().notNull().default('OPEN'), // OPEN | RESPONDED | RESOLVED | REOPENED
+  response: text(),
+  respondedById: uuid(),
+  respondedAt: timestamp({ withTimezone: true }),
+  resolutionNote: text(),
+  resolvedById: uuid(),
+  resolvedAt: timestamp({ withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex().on(t.inspectionId, t.findingNo), index().on(t.amcosId, t.status)]);
+
+export const oversightDirectives = pgTable('oversight_directives', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  dirNo: text().notNull(),
+  subject: text().notNull(),
+  body: text().notNull(),
+  priority: text().notNull().default('NORMAL'), // NORMAL | URGENT
+  dueDate: date(),
+  status: text().notNull().default('SENT'),    // SENT | ACKNOWLEDGED | COMPLIED | CLOSED | WITHDRAWN
+  issuedById: uuid().notNull(),
+  ackById: uuid(),
+  ackAt: timestamp({ withTimezone: true }),
+  complianceNote: text(),
+  compliedById: uuid(),
+  compliedAt: timestamp({ withTimezone: true }),
+  closedById: uuid(),
+  closedAt: timestamp({ withTimezone: true }),
+  closeNote: text(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex().on(t.amcosId, t.dirNo), index().on(t.status)]);
+
+/** Zuio la malipo: likiwa hai, hakuna fedha inayotoka kwenye chama (malipo, mikopo, mishahara, uhamisho). */
+export const paymentHolds = pgTable('payment_holds', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  reason: text().notNull(),
+  placedById: uuid().notNull(),
+  placedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  liftedById: uuid(),
+  liftedAt: timestamp({ withTimezone: true }),
+  liftReason: text(),
+}, (t) => [uniqueIndex('payment_holds_active_unique').on(t.amcosId).where(sql`lifted_at is null`)]);
 
 export const financeBudgets = pgTable('finance_budgets', {
   id: id(),

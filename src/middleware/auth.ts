@@ -16,6 +16,8 @@ export interface AuthContext {
   fullName: string;
   unionId: string | null;
   amcosId: string | null;
+  /** v0.43: Afisa Ushirika — wilaya (na mkoa) anayosimamia */
+  jurisdiction?: { region: string | null; district: string | null };
   permissions: Permission[];
   sessionId: string | null;
   /** Meneja wa chama kisicho na Mhasibu/Storekeeper: kazi za vyeo hivyo (tazama coverPermissions) */
@@ -25,7 +27,7 @@ export interface AuthContext {
 
 // Makundi ya roles yanayotumika mara kwa mara
 export const ROLES = {
-  ALL: ['SUPER_ADMIN', 'UNION_ADMIN', 'UNION_VIEWER', 'AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK', 'AMCOS_VIEWER'] as Role[],
+  ALL: ['SUPER_ADMIN', 'UNION_ADMIN', 'UNION_VIEWER', 'AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK', 'AMCOS_VIEWER', 'COOP_OFFICER'] as Role[],
   AMCOS_STAFF: ['SUPER_ADMIN', 'AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK'] as Role[],      // kuandika kazi za kila siku
   AMCOS_MANAGERS: ['SUPER_ADMIN', 'AMCOS_ADMIN', 'ACCOUNTANT'] as Role[],           // kuidhinisha, bei, kufuta
   ADMINS: ['SUPER_ADMIN', 'UNION_ADMIN', 'AMCOS_ADMIN'] as Role[],                  // watumiaji
@@ -84,6 +86,7 @@ async function authenticateImpl(req: Request, _res: Response, next: NextFunction
       amcosId: user.amcosId,
       permissions: effectivePermissions(user.role, user.permissions),
       sessionId: payload.sid ?? null,
+      ...(user.role === 'COOP_OFFICER' ? { jurisdiction: { region: user.jurisdictionRegion, district: user.jurisdictionDistrict } } : {}),
     };
     if (user.role === 'AMCOS_ADMIN' && user.amcosId) {
       const c = await coverPermissions(user.role, user.amcosId);

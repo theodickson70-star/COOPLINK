@@ -39,6 +39,9 @@ const I = {
   building: <><rect x="4" y="3" width="16" height="18" rx="1" /><path d="M8 7h2M14 7h2M8 11h2M14 11h2M8 15h2M14 15h2M10 21v-3h4v3" /></>,
   report: <><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z" /><path d="M14 3v5h5" /><path d="M9 17v-3M12 17v-6M15 17v-4" /></>,
   sms: <><path d="M4 5h16v11H8l-4 4z" /><path d="M8 9h8M8 12h5" /></>,
+  shield: <><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z" /><path d="M9 12l2 2 4-4" /></>,
+  flag: <><path d="M5 21V4M5 4h11l-2 4 2 4H5" /></>,
+  stop: <><circle cx="12" cy="12" r="9" /><path d="M5.6 5.6l12.8 12.8" /></>,
   help: <><circle cx="12" cy="12" r="9" /><path d="M9.5 9.3a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.3-2.5 3.8" /><path d="M12 17v.01" /></>,
 };
 
@@ -52,7 +55,17 @@ const NAV: { section?: string; items: NavItem[] }[] = [
   { items: [
     { to: '/', label: 'Dashibodi', icon: I.home },
     { to: '/approvals', label: 'Idhini', icon: I.check, perm: ['approvals.read'] },
+    { to: '/oversight', label: 'Ukaguzi na Maagizo', icon: I.shield, perm: ['oversight.respond'] },
   ] },
+  {
+    section: 'Usimamizi wa Serikali',
+    items: [
+      { to: '/oversight', label: 'Dashibodi ya wilaya', icon: I.shield, perm: ['oversight.manage'] },
+      { to: '/oversight/inspections', label: 'Ukaguzi na hoja', icon: I.audit, perm: ['oversight.manage'] },
+      { to: '/oversight/directives', label: 'Maagizo rasmi', icon: I.flag, perm: ['oversight.manage'] },
+      { to: '/oversight/holds', label: 'Zuio la malipo', icon: I.stop, perm: ['oversight.manage'] },
+    ],
+  },
   {
     section: 'Wakulima',
     items: [
@@ -73,23 +86,23 @@ const NAV: { section?: string; items: NavItem[] }[] = [
   {
     section: 'Mauzo na Mikopo',
     items: [
-      { to: '/sales', label: 'Mauzo ya tumbaku', icon: I.leaf, perm: ['sales.manage'] },
-      { to: '/kuni', label: 'Mikopo', icon: I.money, perm: ['finance.record'] },
-      { to: '/farmer-debts', label: 'Madeni ya wakulima', icon: I.members, perm: ['accounting.manage'] },
+      { to: '/sales', label: 'Mauzo ya tumbaku', icon: I.leaf, perm: ['sales.manage', 'oversight.manage'] },
+      { to: '/kuni', label: 'Mikopo', icon: I.money, perm: ['finance.record', 'oversight.manage'] },
+      { to: '/farmer-debts', label: 'Madeni ya wakulima', icon: I.members, perm: ['accounting.manage', 'oversight.manage'] },
     ],
   },
   {
     // Mhasibu: uhasibu kamili · Meneja: ripoti tu (anaidhinisha kupitia Idhini)
     section: 'Fedha na Uhasibu',
     items: [
-      { to: '/accounting', label: 'Dashibodi ya fedha', icon: I.gauge, perm: ['accounting.manage'] },
-      { to: '/finance', label: 'Miamala na vocha', icon: I.wallet, perm: ['finance.record'] },
-      { to: '/ledger', label: 'Daftari kuu', icon: I.book, perm: ['accounting.manage'] },
-      { to: '/bank', label: 'Benki na usuluhishi', icon: I.bank, perm: ['accounting.manage'] },
-      { to: '/payables', label: 'Madeni ya chama', icon: I.money, perm: ['accounting.manage'] },
-      { to: '/payroll', label: 'Mishahara', icon: I.payroll, perm: ['payroll.manage'] },
-      { to: '/fixed-assets', label: 'Mali za chama', icon: I.building, perm: ['accounting.manage'] },
-      { to: '/accounting/periods', label: 'Salio la kuanzia na kufunga', icon: I.check, perm: ['accounting.manage'] },
+      { to: '/accounting', label: 'Dashibodi ya fedha', icon: I.gauge, perm: ['accounting.manage', 'oversight.manage'] },
+      { to: '/finance', label: 'Miamala na vocha', icon: I.wallet, perm: ['finance.record', 'oversight.manage'] },
+      { to: '/ledger', label: 'Daftari kuu', icon: I.book, perm: ['accounting.manage', 'oversight.manage'] },
+      { to: '/bank', label: 'Benki na usuluhishi', icon: I.bank, perm: ['accounting.manage', 'oversight.manage'] },
+      { to: '/payables', label: 'Madeni ya chama', icon: I.money, perm: ['accounting.manage', 'oversight.manage'] },
+      { to: '/payroll', label: 'Mishahara', icon: I.payroll, perm: ['payroll.manage', 'oversight.manage'] },
+      { to: '/fixed-assets', label: 'Mali za chama', icon: I.building, perm: ['accounting.manage', 'oversight.manage'] },
+      { to: '/accounting/periods', label: 'Salio la kuanzia na kufunga', icon: I.check, perm: ['accounting.manage', 'oversight.manage'] },
       { to: '/accounting/reports', label: 'Ripoti za fedha', icon: I.report, perm: ['accounting.read'] },
     ],
   },
@@ -160,6 +173,10 @@ export function Layout() {
   // Ada ya CoopLink: Mhasibu analipa (Meneja kama hakuna Mhasibu); Meneja anaona hali yake.
   // Chama kikifungwa, mlipaji anabaki kwenye ukurasa wa malipo tu; wengine wote wanaona skrini ya kufungwa.
   const feeRole = user?.role === 'AMCOS_ADMIN' || user?.role === 'ACCOUNTANT';
+  const officer = user?.role === 'COOP_OFFICER';
+  // Zuio la malipo kutoka kwa Afisa Ushirika: bango kwa watumishi wa chama
+  const oversight = useFetch<{ holds: { id: string; reason: string; placedAt: string; by: string | null }[]; directives: { open: number } }>(
+    user?.amcosId && may('oversight.read') ? '/oversight/summary' : null, { p: loc.pathname.startsWith('/oversight') ? loc.pathname : 'x' });
   const fees = useFetch<BillingData>(feeRole ? '/billing' : null);
   const isPayer = feeRole && !!fees.data?.payer?.isMe;
   const [lockMsg, setLockMsg] = useState<string | null>(null);
@@ -172,11 +189,14 @@ export function Layout() {
   useEffect(() => { if (feeRole && loc.pathname.startsWith('/billing')) fees.reload(); }, [loc.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!user) return null;
   const multi = !user.amcosId;
-  const feeLocked = isPayer ? !!fees.data?.lock : !!lockMsg || (feeRole && !!fees.error && /imefungwa/i.test(fees.error));
+  // Afisa Ushirika: ukurasa wake wa kwanza ni dashibodi ya wilaya; 2FA ikipita muda -> Akaunti yangu tu
+  if (officer && loc.pathname === '/') return <Navigate to="/oversight" replace />;
+  if (officer && user.twoFactor?.overdue && !user.totpEnabled && loc.pathname !== '/oversight/account') return <Navigate to="/oversight/account" replace />;
+  const feeLocked = officer ? false : isPayer ? !!fees.data?.lock : !!lockMsg || (feeRole && !!fees.error && /imefungwa/i.test(fees.error));
   if (isPayer && feeLocked && !loc.pathname.startsWith('/billing') && !loc.pathname.startsWith('/support')) return <Navigate to="/billing" replace />;
   // Menyu ya chini (simu): vitu vikuu vya cheo hiki kwa mpangilio wa kipaumbele
-  const allItems = NAV.flatMap((g) => g.items).filter((it) => (!it.roles || can(...it.roles)) && (!it.perm || may(...it.perm)));
-  const PRIORITY: Record<string, string> = { '/': 'Nyumbani', '/approvals': decider ? 'Idhini' : 'Maombi', '/members': 'Wakulima', '/input-issues': 'Pembejeo', '/finance': 'Fedha', '/sales': 'Mauzo', '/inputs': 'Stoo', '/accounting/reports': 'Ripoti' };
+  const allItems = NAV.flatMap((g) => g.items).filter((it) => !(officer && it.to === '/') && (!it.roles || can(...it.roles)) && (!it.perm || may(...it.perm)));
+  const PRIORITY: Record<string, string> = { '/': 'Nyumbani', ...(officer ? { '/oversight': 'Wilaya', '/oversight/inspections': 'Ukaguzi' } : {}), '/approvals': decider || officer ? 'Idhini' : 'Maombi', '/members': 'Wakulima', '/input-issues': 'Pembejeo', '/finance': 'Fedha', '/sales': 'Mauzo', '/inputs': 'Stoo', '/accounting/reports': 'Ripoti' };
   const bottomItems: BottomItem[] = Object.keys(PRIORITY).map((to) => allItems.find((it) => it.to === to)).filter(Boolean)
     .map((it) => ({ to: it!.to, label: PRIORITY[it!.to], icon: <Icon d={it!.icon} />, badge: it!.to === '/approvals' && decider ? pending.data?.total : undefined }));
   const due = feeRole && !feeLocked ? fees.data?.fees.find((f) => (f.status === 'UNPAID' || f.status === 'PARTIAL') && (Date.parse(f.dueDate) - Date.now()) / 86_400_000 <= 30) : undefined;
@@ -193,15 +213,16 @@ export function Layout() {
         <nav className="nav nav-animated" ref={navRef}>
           <NavIndicator box={indicator} />
           {(() => { let n = 0; return NAV.map((g, i) => {
-            const items = g.items.filter((it) => (!it.roles || can(...it.roles)) && (!it.perm || may(...it.perm)) && (!feeLocked || it.to === '/billing' || it.to === '/support'));
+            const items = g.items.filter((it) => !(officer && it.to === '/') && (!it.roles || can(...it.roles)) && (!it.perm || may(...it.perm)) && (!feeLocked || it.to === '/billing' || it.to === '/support'));
             if (!items.length) return null;
             return (
               <div key={i} style={{ display: 'contents' }}>
                 {g.section && <div className="nav-section">{t(g.section)}</div>}
                 {items.map((it) => (
-                  <NavLink key={it.to} to={it.to} end={it.to === '/' || it.to === '/accounting'} style={{ animationDelay: `${60 + n++ * 35}ms` }}>
-                    <span className="nav-icon"><Icon d={it.icon} /></span>{it.to === '/approvals' && !decider ? t('Maombi yangu') : t(it.label)}
+                  <NavLink key={it.to} to={it.to} end={it.to === '/' || it.to === '/accounting' || it.to === '/oversight'} style={{ animationDelay: `${60 + n++ * 35}ms` }}>
+                    <span className="nav-icon"><Icon d={it.icon} /></span>{it.to === '/approvals' && !decider ? t(officer ? 'Idhini za chama' : 'Maombi yangu') : t(it.label)}
                     {it.to === '/approvals' && decider && !!pending.data?.total && <span className="nav-count">{pending.data.total}</span>}
+                    {it.to === '/oversight' && !officer && !!oversight.data?.directives.open && <span className="nav-count">{oversight.data.directives.open}</span>}
                   </NavLink>
                 ))}
               </div>
@@ -270,6 +291,17 @@ export function Layout() {
         {amcos?.training && user.amcosId && <div className="training-strip" role="status">🎓 {t('Hali ya mafunzo: data ya chama hiki ni ya mazoezi na itafutwa yote kabla ya kuanza matumizi halisi. Akaunti zenu zitabaki.')}</div>}
         <main className="content" ref={contentRef}>
           {user.amcosId && <AnnouncementBar />}
+          {officer && user.twoFactor?.required && !user.totpEnabled && !user.twoFactor.overdue && user.twoFactor.deadline && loc.pathname !== '/oversight/account' && (
+            <div className="tfa-banner" role="status">🔐 <span>{t('Washa 2FA kabla ya')} <b>{date(user.twoFactor.deadline)}</b>. {t('Akaunti za Afisa Ushirika zina mamlaka ya kiserikali — 2FA ni lazima.')}</span>
+              <Link className="btn btn-sm btn-primary" to="/oversight/account">{t('Washa sasa')}</Link></div>
+          )}
+          {!loc.pathname.startsWith('/oversight') && oversight.data?.holds.map((h) => (
+            <div key={h.id} className="ov-hold ov-hold-strip" role="alert">
+              <span className="ov-hold-ic" aria-hidden="true">⛔</span>
+              <div><b>{t('ZUIO LA MALIPO kutoka kwa Afisa Ushirika')}</b> — {t('malipo yote yanayotoka yamesimamishwa mpaka zuio liondolewe.')} <small>{t('Sababu')}: {h.reason}</small></div>
+              <Link className="btn btn-sm btn-secondary" to="/oversight/holds">{t('Maelezo')}</Link>
+            </div>
+          ))}
           {due && !loc.pathname.startsWith('/billing') && (
             <div className="fee-banner">
               <span><strong>{t(due.label)}</strong>: {t('salio {amount}, mwisho wa kulipa {date}.', { amount: tsh(due.outstanding), date: date(due.dueDate) })}{!isPayer && fees.data?.payer ? ` ${t('{who} ndiye analipa.', { who: t(fees.data.payer.label) })}` : ''} {t('Ada isipolipwa kufikia tarehe hiyo, chama kitafungwa.')}</span>

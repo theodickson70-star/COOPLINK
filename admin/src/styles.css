@@ -2242,3 +2242,101 @@ a.dl-stat:hover { background: rgba(6, 30, 21, .35); }
 .verify-note { font-size: 12.5px; color: var(--muted); margin: 16px 0 0; }
 .fdoc-table td.fdoc-blank { border: none; }
 @media print { body:has(.fdoc), body:has(.fdoc) .content, .fdoc { background: #fff !important; } }
+
+/* ====================== v0.43 USIMAMIZI WA SERIKALI (Afisa Ushirika) ====================== */
+.field > .label { font-size: 13px; font-weight: 600; color: var(--head); }
+.ov-nav { display: flex; gap: 6px; flex-wrap: wrap; margin: -4px 0 16px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.ov-nav a { padding: 7px 14px; border-radius: 999px; font-size: 13.5px; font-weight: 600; color: var(--muted); text-decoration: none; border: 1px solid transparent; }
+.ov-nav a:hover { background: var(--tint); color: var(--head); }
+.ov-nav a.active { background: var(--forest); color: #fff; }
+.ov-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.ov-chip { border: 1px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+.ov-chip.on { background: var(--head); border-color: var(--head); color: var(--paper); }
+.ov-strip { display: flex; gap: 24px; flex-wrap: wrap; padding: 12px 16px; margin: 0 0 16px; border-radius: 12px; background: var(--tint-green); font-size: 14px; }
+.ov-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 14px; padding: 14px; }
+.ov-card { border: 1px solid var(--line); border-left: 5px solid var(--line-2); border-radius: 14px; padding: 14px 16px; background: var(--paper); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ov-card.ov-risk-high { border-left-color: var(--danger); }
+.ov-card.ov-risk-medium { border-left-color: var(--gold); }
+.ov-card.ov-risk-low { border-left-color: var(--green); }
+.ov-card header, .ov-card footer { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.ov-card h3 { margin: 0; font-size: 16px; font-family: var(--font-head); color: var(--head); }
+.ov-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; margin: 0; }
+.ov-metrics div { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; border-bottom: 1px dashed var(--line); padding-bottom: 3px; }
+.ov-metrics dt { color: var(--muted); }
+.ov-metrics dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.ov-flags { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.ov-flags li { padding: 4px 8px; border-radius: 8px; }
+.ov-flag-bad { background: var(--danger-bg); color: var(--bad-ink); }
+.ov-flag-warn { background: var(--warn-bg); color: var(--warn-ink); }
+.ov-officers { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 8px; }
+.ov-officer { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.ov-officer small { display: block; }
+.ov-hold { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; margin-bottom: 16px; border-radius: 14px; background: var(--danger-bg); color: var(--bad-ink); border: 1.5px solid var(--danger); }
+.ov-hold p { margin: 4px 0; }
+.ov-hold-ic { font-size: 22px; line-height: 1; }
+.ov-hold-strip { align-items: center; flex-wrap: wrap; }
+.ov-hold-strip > div { flex: 1; min-width: 220px; }
+/* Ripoti / agizo rasmi */
+.ov-report { max-width: 900px; }
+.ov-gov { display: flex; gap: 14px; align-items: center; justify-content: center; text-align: center; border-bottom: 3px double var(--head); padding-bottom: 12px; margin-bottom: 14px; }
+.ov-gov-emblem { font-size: 34px; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; border: 2px solid var(--head); color: var(--head); flex: none; }
+.ov-gov-t { display: flex; flex-direction: column; gap: 2px; }
+.ov-gov-t b { letter-spacing: .06em; font-size: 14px; }
+.ov-gov-t span { font-size: 12.5px; color: var(--muted); letter-spacing: .03em; }
+.ov-gov-t h2 { margin: 6px 0 0; font-size: 17px; letter-spacing: .04em; color: var(--head); }
+.ov-gov-t .ov-gov-no { font-weight: 700; color: var(--ink); }
+.ov-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 6px 20px; margin: 0 0 12px; font-size: 13.5px; }
+.ov-meta div { display: flex; gap: 8px; }
+.ov-meta dt { color: var(--muted); min-width: 84px; }
+.ov-meta dd { margin: 0; font-weight: 600; }
+.ov-sevbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 13px; }
+.ov-sevbar > span:last-child { margin-left: auto; }
+.ov-sev { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+.ov-sev-low { background: var(--tint); color: var(--neutral-ink); }
+.ov-sev-medium { background: var(--warn-bg); color: var(--warn-ink); }
+.ov-sev-high { background: var(--danger-bg); color: var(--bad-ink); }
+.ov-sev-critical { background: var(--danger); color: #fff; }
+.ov-h { font-size: 15px; margin: 18px 0 8px; color: var(--head); font-family: var(--font-head); }
+.ov-p { white-space: pre-wrap; line-height: 1.55; margin: 6px 0; }
+.ov-finding { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; break-inside: avoid; }
+.ov-finding header { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.ov-f-open, .ov-f-reopened { border-left: 4px solid var(--danger); }
+.ov-f-responded { border-left: 4px solid var(--gold); }
+.ov-f-resolved { border-left: 4px solid var(--green); }
+.ov-fh-tags { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ov-reply { background: var(--tint); border-radius: 10px; padding: 8px 12px; margin-top: 8px; font-size: 13.5px; }
+.ov-reply p { margin: 4px 0 0; white-space: pre-wrap; }
+.ov-reply-ok { background: var(--ok-bg); }
+.ov-reply-bad { background: var(--danger-bg); }
+.ov-sign { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 24px; margin-top: 36px; }
+.ov-sign div { display: flex; flex-direction: column; border-top: 1px solid var(--ink); padding-top: 6px; font-size: 13px; }
+.ov-sign small { color: var(--muted); }
+.ov-foot { font-size: 11px; color: var(--muted); text-align: center; margin-top: 18px; }
+/* Maagizo */
+.ov-dirs { display: flex; flex-direction: column; gap: 12px; }
+.ov-dir { border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; background: var(--paper); display: flex; flex-direction: column; gap: 6px; }
+.ov-dir header { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.ov-dir-urgent { border-left: 5px solid var(--danger); }
+.ov-clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ov-picks { max-height: 220px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; padding: 4px 12px 10px; }
+/* Owner: maafisa */
+.ov-districts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 14px; }
+.ov-district { padding: 14px 16px; }
+.ov-district header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+.ov-district h3 { margin: 0; font-size: 16px; color: var(--head); }
+.ov-slot { font-weight: 700; padding: 4px 10px; border-radius: 999px; background: var(--ok-bg); color: var(--ok-ink); }
+.ov-slot.full { background: var(--warn-bg); color: var(--warn-ink); }
+.ov-off-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ov-off-list li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 0; border-top: 1px solid var(--line); }
+.ov-off-list li.off { opacity: .6; }
+.ov-off-list small { display: block; }
+@media print {
+  .ov-nav, .ov-hold-strip { display: none !important; }
+  .ov-finding { border-color: #999; }
+  .ov-report { max-width: none; }
+}
+@media (max-width: 640px) {
+  .ov-nav { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .ov-nav a { white-space: nowrap; }
+  .ov-strip { flex-direction: column; gap: 6px; }
+}
