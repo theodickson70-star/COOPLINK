@@ -1,6 +1,6 @@
 // Njia zisizohitaji kuingia, na matangazo kwa watumiaji wa vyama
 import { LEGAL_EFFECTIVE, LEGAL_EFFECTIVE_EN, LEGAL_VERSION } from '../lib/legal';
-import { normPhone, sendNow, smsConfigured, smsEnabled, toGsm } from '../lib/sms';
+import { applyDeliveryEvent, normPhone, sendNow, smsConfigured, smsEnabled, toGsm, verifyAstraSignature } from '../lib/sms';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { badRequest } from '../lib/errors';
@@ -117,4 +117,24 @@ publicRouter.post('/abliner/webhook', ah(async (req, res) => {
   if (type.startsWith('transaction.')) await syncAblinerWebhook(req.body?.data); // ikishindwa -> 500 -> Abliner wanarudia
   await db.insert(schema.teepayEvents).values({ id: eventId, type: type || 'unknown', payload: req.body ?? {} }).onConflictDoNothing();
   res.json({ ok: true });
+}));
+
+// ---------------------------------------------------------------------
+//  WEBHOOK YA ASTRACALL (ripoti za kufika kwa SMS)
+//  Saini: X-Webhook-Signature = hex(HMAC-SHA256(ASTRACALL_WEBHOOK_SECRET, rawBody)). Tukio moja linashughulikiwa mara moja.
+//  Matukio: sms.delivered, sms.failed (hali ya SMS), sender_id.* (yanarekodiwa tu), webhook.test.
+// ---------------------------------------------------------------------
+publicRouter.post('/astracall/webhook', ah(async (req, res) => {
+  if (!process.env.ASTRACALL_WEBHOOK_SECRET) return res.status(503).json({ error: { code: 'NOT_CONFIGURED', message: 'Webhook haijawekwa' } });
+  const raw = (req as { rawBody?: Buffer }).rawBody;
+  if (!raw || !verifyAstraSignature(raw, req.header('x-webhook-signature'))) return res.status(401).json({ error: { code: 'BAD_SIGNATURE', message: 'Saini si sahihi' } });
+  const id = String(req.body?.id ?? '');
+  if (!id) return res.status(400).json({ error: { code: 'NO_EVENT_ID', message: 'Event ID haipo' } });
+  const eventId = 'astracall:' + id;
+  const [seen] = await db.select({ id: schema.teepayEvents.id }).from(schema.teepayEvents).where(eq(schema.teepayEvents.id, eventId));
+  if (seen) return res.json({ ok: true, duplicate: true });
+  const type = String(req.body?.event ?? '');
+  const updated = await applyDeliveryEvent(type, req.body?.data ?? {});
+  await db.insert(schema.teepayEvents).values({ id: eventId, type: type || 'unknown', payload: req.body ?? {} }).onConflictDoNothing();
+  res.json({ ok: true, updated });
 }));

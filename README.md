@@ -124,7 +124,9 @@ Business Center na Owner Settings. Kitufe "Mwonekano wa Vyama" kinarudisha upand
 - **Subscription ikiisha** (baada ya siku za grace), chama kinasitishwa kiotomatiki na kinarudishwa malipo yakithibitishwa (kazi ya kila saa).
 - **Backup halisi** zinachukuliwa na Railway. Mfumo haufanyi restore wala kufuta database wenyewe.
 
-Vigezo vya ziada (hiari) kwenye Railway: `AT_USERNAME`, `AT_API_KEY`, `AT_SENDER_ID` (SMS kupitia Africa's Talking). Bila hivyo SMS zinarekodiwa kama "Imerukwa".
+SMS kupitia **AstraCall**: weka `ASTRACALL_API_KEY` na `ASTRACALL_WEBHOOK_SECRET` kwenye Railway (webhook: `/api/v1/public/astracall/webhook`).
+Sender ID: **MKULIMA** kwa kila SMS inayoenda kwa mkulima (OTP, taarifa, vikundi, matangazo ya chama) na **COOPLINK** kwa watumishi wa vyama
+na wafanyakazi wa CoopLink (zinabadilishwa kwa `ASTRACALL_SENDER_FARMER` / `ASTRACALL_SENDER_STAFF`). Bila API key SMS zinarekodiwa kama "Imerukwa".
 
 ## Brand
 

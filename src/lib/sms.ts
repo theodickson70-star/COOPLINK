@@ -1,6 +1,6 @@
 // =====================================================================
 //  SMS YA COOPLINK — msingi mmoja kwa SMS zote
-//   - Mtoa huduma: RodSMS (RODSMS_API_KEY + RODSMS_SENDER_ID) — au Africa's Talking (AT_USERNAME + AT_API_KEY).
+//   - Mtoa huduma: AstraCall (ASTRACALL_API_KEY). Sender ID mbili: MKULIMA kwa wakulima, COOPLINK kwa watumishi.
 //     Funguo zinasomwa kwenye environment tu; hazikai kwenye code wala hazionyeshwi.
 //   - Kila aina ya SMS ina swichi yake (Owner) kwa sababu gharama inabebwa na CoopLink. Swichi kuu (switches.sms)
 //     inazima zote kwa dharura.
@@ -13,113 +13,125 @@ import { and, asc, eq, isNull, lte, or, sql } from 'drizzle-orm';
 import { db, pool, schema, type DbOrTx } from '../db';
 import { getSetting } from './settings';
 
-import { SMS_KINDS, type SmsKind } from './sms-kinds';
-export { SMS_KINDS, SMS_GROUPS, SMS_EVENT_DEFAULTS, type SmsKind } from './sms-kinds';
+import crypto from 'node:crypto';
+import { SMS_KINDS, smsAudience, type SmsAudience, type SmsKind } from './sms-kinds';
+export { SMS_KINDS, SMS_GROUPS, SMS_EVENT_DEFAULTS, smsAudience, type SmsAudience, type SmsKind } from './sms-kinds';
 
 export type DeliveryResult = { status: 'SENT' | 'FAILED' | 'SKIPPED'; providerRef?: string; error?: string };
 
-// ------------------------------ MTOA HUDUMA ------------------------------
-type Provider = 'RODSMS' | 'AT' | 'DRY';
+// ------------------------------ MTOA HUDUMA: ASTRACALL ------------------------------
+//  ASTRACALL_API_KEY (lazima) · ASTRACALL_WEBHOOK_SECRET (ripoti za kufika) · ASTRACALL_SENDER_FARMER / ASTRACALL_SENDER_STAFF (hiari)
+//  Sender ID kwa anayepokea: wakulima -> MKULIMA, watumishi wa vyama na wafanyakazi wa CoopLink -> COOPLINK.
+type Provider = 'ASTRACALL' | 'DRY';
 /** DRY: majaribio (NODE_ENV=test au SMS_DRY_RUN=true) — hakuna SMS halisi, ujumbe unahifadhiwa kwenye kumbukumbu ya kumbukumbu tu */
 export function smsProvider(): Provider | null {
   if (process.env.SMS_DRY_RUN === 'true' || process.env.NODE_ENV === 'test') return 'DRY';
-  if (process.env.RODSMS_API_KEY) return 'RODSMS';
-  if (process.env.AT_USERNAME && process.env.AT_API_KEY) return 'AT';
+  if (process.env.ASTRACALL_API_KEY) return 'ASTRACALL';
   return null;
 }
 export const smsConfigured = () => smsProvider() !== null;
-const RODSMS_BASE = () => (process.env.RODSMS_BASE_URL ?? 'https://rodsms.com/api/v1').replace(/\/$/, '');
-export const senderId = () => (smsProvider() === 'RODSMS' ? process.env.RODSMS_SENDER_ID?.trim() || (senderCache?.v ? `${senderCache.v} (auto)` : null) : process.env.AT_SENDER_ID) ?? null;
+const ASTRA_BASE = () => (process.env.ASTRACALL_BASE_URL ?? 'https://astracall.cc/api/v1').replace(/\/$/, '');
+/** Sender ID kwa kila kundi la wanaopokea (majina yaliyoidhinishwa kwenye AstraCall) */
+export function senderFor(audience: SmsAudience) {
+  return audience === 'FARMER' ? process.env.ASTRACALL_SENDER_FARMER?.trim() || 'MKULIMA' : process.env.ASTRACALL_SENDER_STAFF?.trim() || 'COOPLINK';
+}
+export const senderOfKind = (kind: SmsKind | string | null | undefined) => senderFor(smsAudience(kind));
 
 /** Ujumbe wa mwisho uliotumwa kwa DRY (kwa majaribio ya OTP tu — haujawahi kutumika production) */
-export const dryOutbox: { phone: string; text: string; at: number }[] = [];
+export const dryOutbox: { phone: string; text: string; at: number; sender?: string }[] = [];
 
-async function rodsms(path: string, init: { method: 'GET' | 'POST'; body?: unknown }) {
-  const res = await fetch(`${RODSMS_BASE()}${path}`, {
+async function astra(path: string, init: { method: 'GET' | 'POST'; body?: unknown; idempotencyKey?: string }) {
+  const res = await fetch(`${ASTRA_BASE()}${path}`, {
     method: init.method,
-    headers: { Authorization: `Bearer ${process.env.RODSMS_API_KEY}`, Accept: 'application/json', ...(init.body ? { 'Content-Type': 'application/json' } : {}) },
+    headers: {
+      Authorization: `Bearer ${process.env.ASTRACALL_API_KEY}`, Accept: 'application/json',
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...(init.idempotencyKey ? { 'Idempotency-Key': init.idempotencyKey } : {}),
+    },
     body: init.body ? JSON.stringify(init.body) : undefined,
     signal: AbortSignal.timeout(15_000),
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   return { res, data };
 }
-/** Kosa kamili la mtoa huduma: ujumbe + makosa yote ya fields (mf. Laravel: { message, errors: { field: [..] } }) */
+/** Kosa la AstraCall: { success:false, error:{ code, message } } */
 const errText = (d: Record<string, unknown>, status: number) => {
   const e = d.error as { code?: string; message?: string } | string | undefined;
-  const head = (typeof e === 'string' ? e : e?.message ?? e?.code) ?? (d.message as string | undefined) ?? `HTTP ${status}`;
-  const errs = d.errors && typeof d.errors === 'object'
-    ? Object.entries(d.errors as Record<string, unknown>).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(' ') : String(v)}`).join('; ')
-    : '';
-  return (errs ? `${errs} (HTTP ${status})` : `${head} (HTTP ${status})`).slice(0, 400);
+  const code = typeof e === 'object' ? e?.code : undefined;
+  const msg = (typeof e === 'string' ? e : e?.message) ?? (d.message as string | undefined) ?? `HTTP ${status}`;
+  return `${code ? `${code}: ` : ''}${msg} (HTTP ${status})`.slice(0, 400);
 };
+/** Matokeo ya kutuma: 'unknown' = AstraCall haijui kama ilipokelewa (503) — rudia kwa Idempotency-Key ileile */
+export type SendOutcome = DeliveryResult & { unknown?: boolean; sender?: string };
 
-/** Sender ID: RODSMS_SENDER_ID, au ya kwanza iliyoidhinishwa kwenye akaunti ya RodSMS (inakumbukwa saa 1) */
-let senderCache: { v: string | null; at: number } | null = null;
-const senderOf = (x: unknown) => typeof x === 'string' ? x : String((x as Record<string, unknown>)?.sender_id ?? (x as Record<string, unknown>)?.name ?? (x as Record<string, unknown>)?.sender ?? '');
-async function rodsmsSender(): Promise<string | null> {
-  const env = process.env.RODSMS_SENDER_ID?.trim();
-  if (env) return env;
-  if (senderCache && Date.now() - senderCache.at < 3600_000) return senderCache.v;
-  let v: string | null = null;
-  try {
-    const { res, data } = await rodsms('/sender-ids', { method: 'GET' });
-    const list = (data.data ?? data.sender_ids ?? data) as unknown;
-    if (res.ok && Array.isArray(list)) {
-      const ok = list.find((x) => /approved|active/i.test(String((x as Record<string, unknown>)?.status ?? 'approved'))) ?? list[0];
-      v = ok ? senderOf(ok) || null : null;
-    }
-  } catch { /* hakuna */ }
-  senderCache = { v, at: Date.now() };
-  return v;
-}
-
-export async function providerSend(phone: string, text: string): Promise<DeliveryResult> {
+/**
+ * Kutuma SMS moja. idempotencyKey: moja kwa kila ujumbe (kurudia kwa key ileile hakutumi mara mbili).
+ * AstraCall inarudisha 202 = imepokelewa kutumwa; kufika halisi kunakuja kwenye webhook (sms.delivered / sms.failed).
+ */
+export async function providerSend(phone: string, text: string, opts: { kind?: SmsKind | string | null; idempotencyKey?: string; reference?: string } = {}): Promise<SendOutcome> {
   const p = smsProvider();
-  if (!p) return { status: 'SKIPPED', error: 'Mtoa huduma wa SMS hajasanidiwa (RODSMS_API_KEY au AT_USERNAME/AT_API_KEY)' };
-  if (p === 'DRY') { dryOutbox.push({ phone, text, at: Date.now() }); if (dryOutbox.length > 200) dryOutbox.shift(); return { status: 'SENT', providerRef: 'dry-run' }; }
+  const sender = senderOfKind(opts.kind);
+  if (!p) return { status: 'SKIPPED', error: 'Mtoa huduma wa SMS hajasanidiwa (ASTRACALL_API_KEY)', sender };
+  if (p === 'DRY') { dryOutbox.push({ phone, text, at: Date.now(), sender }); if (dryOutbox.length > 200) dryOutbox.shift(); return { status: 'SENT', providerRef: 'dry-run', sender }; }
   try {
-    if (p === 'RODSMS') {
-      // RodSMS API v1: POST /messages (namba 255XXXXXXXXX, Sender ID iliyoidhinishwa, SMS ya kawaida ya huduma)
-      const sender = await rodsmsSender();
-      if (!sender) return { status: 'FAILED', error: 'Sender ID haipo: weka RODSMS_SENDER_ID kwenye Railway (jina la Sender ID iliyoidhinishwa kwenye RodSMS)' };
-      const { res, data } = await rodsms('/messages', { method: 'POST', body: { sender_id: sender, recipient: phone, message: text, sms_type: 'transactional' } });
-      const d = (data.data ?? data) as Record<string, unknown>;
-      if (res.ok && !data.error) return { status: 'SENT', providerRef: String(d.id ?? d.message_id ?? d.messageId ?? '') || undefined };
-      return { status: 'FAILED', error: errText(data, res.status) };
-    }
-    const username = process.env.AT_USERNAME!;
-    const host = username === 'sandbox' ? 'https://api.sandbox.africastalking.com' : 'https://api.africastalking.com';
-    const body = new URLSearchParams({ username, to: `+${phone}`, message: text });
-    if (process.env.AT_SENDER_ID) body.set('from', process.env.AT_SENDER_ID);
-    const res = await fetch(`${host}/version1/messaging`, {
-      method: 'POST', headers: { apiKey: process.env.AT_API_KEY!, Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }, body, signal: AbortSignal.timeout(15_000),
+    const { res, data } = await astra('/sms/send', {
+      method: 'POST', idempotencyKey: opts.idempotencyKey ?? `cl-${crypto.randomUUID()}`,
+      body: { to: `+${phone}`, sender_id: sender, message: text, message_type: 'transactional', ...(opts.reference ? { reference: opts.reference.slice(0, 64) } : {}) },
     });
-    const data = (await res.json().catch(() => ({}))) as { SMSMessageData?: { Recipients?: { status?: string; messageId?: string }[]; Message?: string } };
-    const r = data.SMSMessageData?.Recipients?.[0];
-    if (res.ok && r?.status === 'Success') return { status: 'SENT', providerRef: r.messageId };
-    return { status: 'FAILED', error: r?.status ?? data.SMSMessageData?.Message ?? `HTTP ${res.status}` };
+    const d = (data.data ?? {}) as Record<string, unknown>;
+    if (res.ok && data.success !== false) return { status: 'SENT', providerRef: String(d.id ?? d.message_id ?? '') || undefined, sender };
+    const code = typeof data.error === 'object' ? (data.error as { code?: string }).code : undefined;
+    return { status: 'FAILED', error: errText(data, res.status), sender, unknown: res.status === 503 || code === 'submission_unknown' };
   } catch (e) {
-    return { status: 'FAILED', error: (e as Error).message };
+    // Muda umeisha / mtandao: hatujui kama ilipokelewa — rudia kwa key ileile
+    return { status: 'FAILED', error: (e as Error).message, sender, unknown: true };
   }
 }
 
-/** Salio na Sender ID za mtoa huduma (Owner: SMS Center). Hakuna funguo zinazorudishwa. */
+/** Salio na Sender ID za AstraCall (Owner: SMS Center). Hakuna funguo zinazorudishwa. */
 export async function providerStatus() {
   const p = smsProvider();
-  const base = { provider: p, configured: !!p, senderId: senderId(), balance: null as string | null, senderIds: [] as string[], error: null as string | null };
-  if (p !== 'RODSMS') return base;
+  const senders = { FARMER: senderFor('FARMER'), STAFF: senderFor('STAFF') };
+  const base = {
+    provider: p, configured: !!p, senderId: `${senders.FARMER} · ${senders.STAFF}`, senders, balance: null as string | null, mode: null as string | null,
+    senderIds: [] as string[], usable: {} as Record<string, boolean>, webhook: !!process.env.ASTRACALL_WEBHOOK_SECRET, error: null as string | null,
+  };
+  if (p !== 'ASTRACALL') return base;
   try {
-    const b = await rodsms('/balance', { method: 'GET' });
-    const bd = (b.data.data ?? b.data) as Record<string, unknown>;
-    if (b.res.ok) base.balance = bd.sms_credits !== undefined ? `${Number(bd.sms_credits).toLocaleString('en-US')} SMS` : String(bd.balance ?? bd.credits ?? bd.sms_balance ?? JSON.stringify(bd)).slice(0, 80);
+    const b = await astra('/balance', { method: 'GET' });
+    const bd = (b.data.data ?? {}) as Record<string, unknown>;
+    if (b.res.ok) { base.balance = `${Number(bd.sms_balance ?? 0).toLocaleString('en-US')} ${String(bd.unit ?? 'SMS')}`; base.mode = bd.mode ? String(bd.mode) : null; }
     else base.error = errText(b.data, b.res.status);
-    const s = await rodsms('/sender-ids', { method: 'GET' });
-    const list = (s.data.data ?? s.data.sender_ids ?? s.data) as unknown;
-    if (!(s.res.ok && Array.isArray(list))) base.error = `${base.error ? base.error + ' · ' : ''}sender-ids: ${s.res.ok ? JSON.stringify(s.data).slice(0, 200) : errText(s.data, s.res.status)}`;
-    if (s.res.ok && Array.isArray(list)) base.senderIds = list.map((x) => (typeof x === 'string' ? x : String((x as Record<string, unknown>).name ?? (x as Record<string, unknown>).sender_id ?? ''))).filter(Boolean).slice(0, 20);
+    const s = await astra('/sender-ids', { method: 'GET' });
+    const list = (s.data.data ?? []) as { sender_id?: string; status?: string; usable?: boolean }[];
+    if (s.res.ok && Array.isArray(list)) {
+      base.senderIds = list.map((x) => `${x.sender_id ?? ''}${x.status && x.status !== 'approved' ? ` (${x.status})` : ''}`).filter(Boolean).slice(0, 20);
+      for (const x of list) if (x.sender_id) base.usable[x.sender_id.toUpperCase()] = !!x.usable;
+      const missing = Object.values(senders).filter((n) => !base.usable[n.toUpperCase()]);
+      if (missing.length) base.error = `${base.error ? base.error + ' · ' : ''}Sender ID haiwezi kutumika bado: ${missing.join(', ')}`;
+    } else base.error = `${base.error ? base.error + ' · ' : ''}sender-ids: ${errText(s.data, s.res.status)}`;
   } catch (e) { base.error = (e as Error).message; }
   return base;
+}
+
+/**
+ * Webhook ya AstraCall: X-Webhook-Signature = hex(HMAC-SHA256(ASTRACALL_WEBHOOK_SECRET, rawBody)).
+ * sms.delivered / sms.failed -> hali ya SMS kwenye kumbukumbu (kwa message_id).
+ */
+export function verifyAstraSignature(raw: Buffer, got: string | undefined) {
+  const secret = process.env.ASTRACALL_WEBHOOK_SECRET;
+  if (!secret || !got) return false;
+  const expected = crypto.createHmac('sha256', secret).update(raw).digest('hex');
+  return got.length === expected.length && crypto.timingSafeEqual(Buffer.from(got), Buffer.from(expected));
+}
+export async function applyDeliveryEvent(event: string, data: { message_id?: string; status?: string; error?: string | null; delivered_at?: string | null }) {
+  if (!data?.message_id || !['sms.delivered', 'sms.failed'].includes(event)) return 0;
+  const L = schema.smsLogs;
+  const ok = event === 'sms.delivered';
+  const r = await db.update(L).set(ok
+    ? { status: 'DELIVERED', deliveredAt: data.delivered_at ? new Date(data.delivered_at) : new Date(), updatedAt: new Date() }
+    : { status: 'FAILED', error: `Haikufika: ${String(data.error ?? data.status ?? 'failed').slice(0, 200)}`, updatedAt: new Date() })
+    .where(and(eq(L.providerRef, data.message_id), eq(L.provider, 'ASTRACALL'))).returning({ id: L.id });
+  return r.length;
 }
 
 // ------------------------------ MSAADA ------------------------------
@@ -170,13 +182,20 @@ async function quietUntil(kind: SmsKind): Promise<Date | null> {
 export async function sendNow(m: SmsMessage, opts: { force?: boolean } = {}): Promise<DeliveryResult> {
   const phone = normPhone(m.phone);
   const text = toGsm(m.text);
-  let r: DeliveryResult;
+  let r: SendOutcome;
   if (!phone) r = { status: 'SKIPPED', error: 'Namba ya simu si sahihi' };
   else if (!opts.force && !(await getSetting('switches')).sms) r = { status: 'SKIPPED', error: 'SMS zimesitishwa kwa swichi kuu' };
   else if (!opts.force && !(await getSetting('sms.events'))[m.kind]) r = { status: 'SKIPPED', error: 'Aina hii ya SMS imezimwa na Owner' };
-  else r = await providerSend(phone, text);
+  else {
+    // Haijulikani kama ilipokelewa (503 / muda umeisha): jaribu mara moja tena kwa Idempotency-Key ileile — haitumwi mara mbili
+    const key = `cl-${crypto.randomUUID()}`;
+    let o = await providerSend(phone, text, { kind: m.kind, idempotencyKey: key, reference: m.referenceType ?? undefined });
+    if (o.unknown) o = await providerSend(phone, text, { kind: m.kind, idempotencyKey: key, reference: m.referenceType ?? undefined });
+    r = o;
+  }
   await db.insert(schema.smsLogs).values({
     amcosId: m.amcosId ?? null, phone: phone ?? String(m.phone ?? ''), message: m.logText ?? text, status: r.status, provider: smsProvider(), providerRef: r.providerRef ?? null, error: r.error ?? null,
+    senderId: senderOfKind(m.kind),
     kind: m.kind, memberId: m.memberId ?? null, userId: m.userId ?? null, segments: segments(text), referenceType: m.referenceType ?? null, referenceId: m.referenceId ?? null,
     attempts: 1, sentAt: r.status === 'SENT' ? new Date() : null,
   }).catch((e) => console.error('[sms] kumbukumbu:', (e as Error).message));
@@ -197,7 +216,7 @@ export async function enqueue(tx: DbOrTx, list: SmsMessage | SmsMessage[]) {
     const phone = normPhone(m.phone);
     if (!ev[m.kind] || !phone) continue;
     const text = toGsm(m.text);
-    rows.push({ amcosId: m.amcosId ?? null, phone, message: text, status: 'QUEUED' as const, kind: m.kind, memberId: m.memberId ?? null, userId: m.userId ?? null,
+    rows.push({ amcosId: m.amcosId ?? null, phone, message: text, status: 'QUEUED' as const, kind: m.kind, memberId: m.memberId ?? null, userId: m.userId ?? null, senderId: senderOfKind(m.kind),
       segments: segments(text), referenceType: m.referenceType ?? null, referenceId: m.referenceId ?? null, sendAfter: await quietUntil(m.kind) });
   }
   if (rows.length) { await tx.insert(schema.smsLogs).values(rows); scheduleFlush(); }
@@ -226,13 +245,17 @@ export async function flushSms(limit = 200) {
       const due = await db.select().from(L).where(and(eq(L.status, 'QUEUED'), or(isNull(L.sendAfter), lte(L.sendAfter, new Date())))).orderBy(asc(L.createdAt)).limit(limit);
       const [sw, ev] = await Promise.all([getSetting('switches', { fresh: true }), getSetting('sms.events', { fresh: true })]);
       for (const m of due) {
-        const r: DeliveryResult = !sw.sms ? { status: 'SKIPPED', error: 'SMS zimesitishwa kwa swichi kuu' }
+        // Idempotency-Key: ileile kama jaribio lililopita halikujulikana (503), mpya kama lilishindwa kweli
+        const unknownBefore = !!m.error?.startsWith('[unknown]');
+        const key = `cl-${m.id}-${unknownBefore ? m.attempts - 1 : m.attempts}`;
+        const r: SendOutcome = !sw.sms ? { status: 'SKIPPED', error: 'SMS zimesitishwa kwa swichi kuu' }
           : m.kind && !ev[m.kind as SmsKind] ? { status: 'SKIPPED', error: 'Aina hii ya SMS imezimwa na Owner' }
-          : await providerSend(m.phone, m.message);
-        // Imeshindwa: inajaribiwa tena mara 2 (kila baada ya dakika 5)
-        const retry = r.status === 'FAILED' && m.attempts < 2;
+          : await providerSend(m.phone, m.message, { kind: m.kind, idempotencyKey: key, reference: m.referenceType ?? undefined });
+        // Imeshindwa: inajaribiwa tena mara 2 (kila baada ya dakika 5); haijulikani (503): mara 4 kwa key ileile
+        const retry = r.status === 'FAILED' && (r.unknown ? m.attempts < 4 : m.attempts < 2);
         await db.update(L).set({
-          status: retry ? 'QUEUED' : r.status, attempts: m.attempts + 1, provider: smsProvider(), providerRef: r.providerRef ?? null, error: r.error ?? null,
+          status: retry ? 'QUEUED' : r.status, attempts: m.attempts + 1, provider: smsProvider(), providerRef: r.providerRef ?? null,
+          error: r.error ? `${r.unknown && retry ? '[unknown] ' : ''}${r.error}` : null, senderId: r.sender ?? m.senderId,
           sentAt: r.status === 'SENT' ? new Date() : null, sendAfter: retry ? new Date(Date.now() + 5 * 60_000) : m.sendAfter, updatedAt: new Date(),
         }).where(eq(L.id, m.id));
         if (r.status === 'SENT') sent++; else if (r.status === 'FAILED') failed++; else skipped++;

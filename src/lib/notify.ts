@@ -1,6 +1,6 @@
 // =====================================================================
 //  SMS na Email
-//  SMS: kupitia lib/sms.ts (RodSMS au Africa's Talking, swichi za Owner, kumbukumbu).
+//  SMS: kupitia lib/sms.ts (AstraCall — Sender ID MKULIMA / COOPLINK, swichi za Owner, kumbukumbu).
 //  Email: hakuna provider aliyesanidiwa bado -> kila email inarekodiwa kama SKIPPED.
 //  Hakuna ujumbe unaorekodiwa kama "umetumwa" bila jibu la mafanikio kutoka kwa provider.
 // =====================================================================

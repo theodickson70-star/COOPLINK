@@ -37,6 +37,16 @@ export const SMS_KINDS = {
   SYSTEM_ALERT: { group: 'BROADCAST', label: 'Tahadhari za mfumo kwa Owner', who: 'Owner / Tech Support', urgent: true, desc: 'System Control Center: tahadhari kubwa (CRITICAL).' },
 } as const;
 export type SmsKind = keyof typeof SMS_KINDS;
+
+/**
+ * Nani anapokea — inaamua Sender ID (v0.41):
+ *   FARMER -> Sender ID ya wakulima (MKULIMA): OTP za mkulima, taarifa, vikundi na matangazo ya chama kwa wakulima
+ *   STAFF  -> Sender ID ya CoopLink (COOPLINK): wafanyakazi wa CoopLink na watumishi wote wa vyama
+ */
+export type SmsAudience = 'FARMER' | 'STAFF';
+const STAFF_KINDS: SmsKind[] = ['LOGIN_OTP', 'PASSWORD_RESET_OTP', 'STAFF_CREDENTIALS', 'SECURITY_ALERT', 'OWNER_ANNOUNCEMENT', 'STAFF_ALERT', 'SYSTEM_ALERT'];
+export const smsAudience = (kind: SmsKind | string | null | undefined): SmsAudience =>
+  kind && STAFF_KINDS.includes(kind as SmsKind) ? 'STAFF' : kind && kind in SMS_KINDS ? 'FARMER' : 'STAFF';
 export const SMS_GROUPS: Record<string, string> = { OTP: 'OTP na usalama', FARMER: 'Taarifa kwa mkulima', GROUP: 'Vikundi', BROADCAST: 'Matangazo na tahadhari' };
 /** Zilizokuwa zikitumika kabla ya swichi hizi zinaanza zikiwa wazi; mpya zote zimefungwa mpaka Owner aziwashe. */
 export const SMS_EVENT_DEFAULTS = Object.fromEntries((Object.keys(SMS_KINDS) as SmsKind[]).map((k) => [k, ['SECURITY_ALERT', 'OWNER_ANNOUNCEMENT', 'SYSTEM_ALERT', 'STAFF_CREDENTIALS', 'STAFF_ALERT'].includes(k)])) as Record<SmsKind, boolean>;

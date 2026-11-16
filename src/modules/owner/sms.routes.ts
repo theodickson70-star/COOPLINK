@@ -11,7 +11,7 @@ import { badRequest, forbidden } from '../../lib/errors';
 import { requirePermission, requireReauth } from '../../middleware/auth';
 import { audit } from '../../lib/audit';
 import { clearSettingsCache, getSetting, setSetting } from '../../lib/settings';
-import { flushSms, providerStatus, sendNow, SMS_GROUPS, SMS_KINDS, type SmsKind } from '../../lib/sms';
+import { flushSms, providerStatus, senderOfKind, sendNow, SMS_GROUPS, SMS_KINDS, type SmsKind } from '../../lib/sms';
 
 export const ownerSmsRouter = Router();
 const L = schema.smsLogs;
@@ -33,7 +33,7 @@ ownerSmsRouter.get('/', requirePermission('system.read'), ah(async (_req, res) =
   const segs = byKind.reduce((t, k) => t + k.segments, 0);
   res.json({
     provider: status, masterOn: sw.sms, limits,
-    kinds: KINDS.map((k) => ({ key: k, ...SMS_KINDS[k], on: !!ev[k], month: byKind.find((b) => b.kind === k) ?? null })),
+    kinds: KINDS.map((k) => ({ key: k, ...SMS_KINDS[k], sender: senderOfKind(k), on: !!ev[k], month: byKind.find((b) => b.kind === k) ?? null })),
     groups: SMS_GROUPS,
     month: { sent: byKind.reduce((t, k) => t + k.sent, 0), failed: byKind.reduce((t, k) => t + k.failed, 0), queued: byKind.reduce((t, k) => t + k.queued, 0), segments: segs, cost: segs * limits.pricePerSms },
     byAmcos: byAmcos.map((r) => ({ amcosId: r.amcos_id, name: r.name ?? 'CoopLink (jukwaa)', code: r.code, sent: r.sent, segments: r.segments, cost: r.segments * limits.pricePerSms })),

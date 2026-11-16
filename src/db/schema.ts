@@ -658,9 +658,11 @@ export const smsLogs = pgTable('sms_logs', {
   sendAfter: timestamp({ withTimezone: true }), // taarifa za usiku zinasubiri asubuhi
   attempts: integer().notNull().default(0),
   sentAt: timestamp({ withTimezone: true }),
+  senderId: text(),             // v0.41: Sender ID iliyotumika (MKULIMA / COOPLINK)
+  deliveredAt: timestamp({ withTimezone: true }), // v0.41: ripoti ya kufika (webhook ya AstraCall)
   createdAt: createdAt(),
   updatedAt: updatedAt(),
-}, (t) => [index().on(t.amcosId, t.createdAt), index().on(t.status, t.createdAt), index().on(t.kind, t.createdAt)]);
+}, (t) => [index().on(t.amcosId, t.createdAt), index().on(t.status, t.createdAt), index().on(t.kind, t.createdAt), index().on(t.providerRef)]);
 
 /**
  * Namba za uthibitisho (OTP) zinazotumwa kwa SMS. Namba yenyewe haihifadhiwi — hash yake tu.

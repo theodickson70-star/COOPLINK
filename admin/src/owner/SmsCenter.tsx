@@ -9,17 +9,17 @@ import { dateTime, phone as fmtPhone } from '../lib/format';
 import { Alert, Badge, Button, Empty, Loading, PageHead, Pager, Select, TextField } from '../components/ui';
 import { ConfirmDialog, Kpi, Section, Tabs, money, nfmt } from '../components/owner-ui';
 
-interface Kind { key: string; group: string; label: string; who: string; urgent: boolean; desc: string; on: boolean; month: { sent: number; failed: number; skipped: number; queued: number; segments: number } | null }
+interface Kind { key: string; group: string; label: string; who: string; urgent: boolean; desc: string; sender?: string; on: boolean; month: { sent: number; failed: number; skipped: number; queued: number; segments: number } | null }
 interface Limits { broadcastPerMonth: number; pricePerSms: number; quietStart: number; quietEnd: number }
 interface Center {
-  provider: { provider: string | null; configured: boolean; senderId: string | null; balance: string | null; senderIds: string[]; error: string | null };
+  provider: { provider: string | null; configured: boolean; senderId: string | null; senders?: { FARMER: string; STAFF: string }; usable?: Record<string, boolean>; webhook?: boolean; mode?: string | null; balance: string | null; senderIds: string[]; error: string | null };
   masterOn: boolean; limits: Limits; kinds: Kind[]; groups: Record<string, string>;
   month: { sent: number; failed: number; queued: number; segments: number; cost: number };
   byAmcos: { amcosId: string | null; name: string; code: string | null; sent: number; segments: number; cost: number }[];
 }
-interface Log { id: string; phone: string; message: string; status: string; kind: string | null; kindLabel: string; amcosName: string | null; segments: number; error: string | null; createdAt: string; sentAt: string | null; attempts: number }
+interface Log { id: string; phone: string; message: string; status: string; kind: string | null; kindLabel: string; amcosName: string | null; segments: number; error: string | null; createdAt: string; sentAt: string | null; attempts: number; senderId: string | null; deliveredAt: string | null }
 
-const PROVIDER: Record<string, string> = { RODSMS: 'RodSMS', AT: "Africa's Talking", DRY: 'Majaribio (haitumi)' };
+const PROVIDER: Record<string, string> = { ASTRACALL: 'AstraCall', DRY: 'Majaribio (haitumi)' };
 
 export function OwnerSmsCenter() {
   const t = useT();
@@ -61,17 +61,34 @@ export function OwnerSmsCenter() {
         <Button variant="secondary" onClick={flush} busy={busy}>{t('Tuma foleni sasa')}</Button>
       </PageHead>
 
-      {!d.provider.configured && <Alert kind="warn">{t('Mtoa huduma wa SMS hajasanidiwa. Weka RODSMS_API_KEY na RODSMS_SENDER_ID kwenye Railway (Variables). Mpaka hapo SMS zinarekodiwa kama Imerukwa.')}</Alert>}
+      {!d.provider.configured && <Alert kind="warn">{t('Mtoa huduma wa SMS hajasanidiwa. Weka ASTRACALL_API_KEY kwenye Railway (Variables). Mpaka hapo SMS zinarekodiwa kama Imerukwa.')}</Alert>}
       {d.provider.configured && !d.masterOn && <Alert kind="warn">{t('Swichi kuu ya SMS imezimwa (System Control Center). Hakuna SMS itakayotumwa hata kama aina imewashwa hapa chini.')} <Link to="/owner/system">System Control Center →</Link></Alert>}
       {d.provider.error && <Alert kind="warn">{t('Mtoa huduma:')} {d.provider.error}</Alert>}
       {msg && <Alert kind="ok">{msg}</Alert>}
 
       <div className="grid grid-kpi">
-        <Kpi label="Mtoa huduma" value={d.provider.provider ? PROVIDER[d.provider.provider] ?? d.provider.provider : t('Hajasanidiwa')} hint={d.provider.senderId ? `Sender ID: ${d.provider.senderId}` : undefined} tone="dark" />
-        <Kpi label="Salio la SMS" value={d.provider.balance ?? '—'} hint={d.provider.senderIds.length ? d.provider.senderIds.join(', ') : undefined} />
+        <Kpi label="Mtoa huduma" value={d.provider.provider ? PROVIDER[d.provider.provider] ?? d.provider.provider : t('Hajasanidiwa')} hint={d.provider.mode ? `${t('Hali')}: ${d.provider.mode}` : undefined} tone="dark" />
+        <Kpi label="Salio la SMS" value={d.provider.balance ?? '—'} hint={d.provider.senderIds.length ? `${t('Sender ID')}: ${d.provider.senderIds.join(', ')}` : undefined} />
         <Kpi label="SMS mwezi huu" value={nfmt(d.month.segments)} hint={`${nfmt(d.month.sent)} ${t('ujumbe')} · ${nfmt(d.month.failed)} ${t('zimeshindwa')} · ${nfmt(d.month.queued)} ${t('foleni')}`} />
         <Kpi label="Gharama ya mwezi" value={money(d.month.cost)} hint={`${money(d.limits.pricePerSms)} ${t('kwa SMS')}`} tone="gold" />
       </div>
+
+      {d.provider.senders && (
+        <div className="sender-map">
+          {([['FARMER', 'Kwa wakulima', 'OTP za mkulima, taarifa za akaunti, vikundi na matangazo ya chama'], ['STAFF', 'Kwa watumishi', 'Watumishi wa vyama na wafanyakazi wa CoopLink: kuingia, nenosiri, arifa za kazi, matangazo']] as const).map(([k, title, desc]) => {
+            const name = d.provider.senders![k];
+            const ok = d.provider.usable?.[name.toUpperCase()];
+            return (
+              <div key={k} className="sender-card">
+                <span className="sender-name">{name}</span>
+                <div className="grow"><b>{t(title)}</b><span className="muted small">{t(desc)}</span></div>
+                {d.provider.provider === 'ASTRACALL' && <Badge status={ok ? 'APPROVED' : 'PENDING'} label={ok ? t('Inatumika') : t('Haijaidhinishwa')} />}
+              </div>
+            );
+          })}
+          {d.provider.provider === 'ASTRACALL' && !d.provider.webhook && <Alert kind="warn">{t('Ripoti za kufika hazijawekwa: weka ASTRACALL_WEBHOOK_SECRET kwenye Railway, na kwenye AstraCall weka webhook')} <code>/api/v1/public/astracall/webhook</code></Alert>}
+        </div>
+      )}
 
       <Tabs value={tab} onChange={setTab} items={[['kinds', 'Huduma za SMS'], ['usage', 'Matumizi kwa chama'], ['logs', 'Kumbukumbu']]} />
 
@@ -86,7 +103,7 @@ export function OwnerSmsCenter() {
                     <div>
                       <strong>{t(k.label)}</strong> {k.urgent && <span className="pill">{t('Haraka')}</span>}
                       <div className="muted small">{t(k.desc)}</div>
-                      <div className="muted small">{t('Anayepokea:')} {t(k.who)}{k.month ? ` · ${t('Mwezi huu')}: ${nfmt(k.month.segments)} SMS${k.month.failed ? ` · ${k.month.failed} ${t('zimeshindwa')}` : ''}` : ''}</div>
+                      <div className="muted small">{t('Anayepokea:')} {t(k.who)}{k.sender ? ` · Sender ID: ${k.sender}` : ''}{k.month ? ` · ${t('Mwezi huu')}: ${nfmt(k.month.segments)} SMS${k.month.failed ? ` · ${k.month.failed} ${t('zimeshindwa')}` : ''}` : ''}</div>
                     </div>
                   </label>
                 ))}
@@ -169,11 +186,11 @@ function SmsLogs({ kinds }: { kinds: Kind[] }) {
           <tbody>{r.data.data.map((l) => (
             <tr key={l.id}>
               <td className="nowrap">{dateTime(l.createdAt)}</td>
-              <td>{t(l.kindLabel)}</td>
+              <td>{t(l.kindLabel)}{l.senderId && <div className="muted small">{l.senderId}</div>}</td>
               <td className="nowrap">{fmtPhone(l.phone)}</td>
               <td style={{ minWidth: 220, maxWidth: 420, whiteSpace: 'normal' }}>{l.message}{l.error && <div className="muted small">⚠ {l.error}</div>}</td>
               <td>{l.amcosName ?? '—'}</td>
-              <td><Badge status={l.status} />{l.segments > 1 && <div className="muted small">{l.segments} SMS</div>}</td>
+              <td><Badge status={l.status} />{l.deliveredAt && <div className="muted small">{dateTime(l.deliveredAt)}</div>}{l.segments > 1 && <div className="muted small">{l.segments} SMS</div>}</td>
             </tr>
           ))}</tbody>
         </table></div>
