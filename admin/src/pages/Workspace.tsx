@@ -1,12 +1,13 @@
 // Dashibodi za watumishi: Meneja, Mhasibu, Storekeeper — kila mmoja anaona kazi zake
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useFetch } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
 import { dateTime, MOVE_LABEL, num, STAFF_DUTY, tsh, UNIT_LABEL } from '../lib/format';
-import { Alert, Badge, Empty, Loading, PageHead } from '../components/ui';
+import { Alert, Badge, Empty, Loading } from '../components/ui';
 import { Kpi, Section } from '../components/owner-ui';
-import { Dashboard } from './Dashboard';
+import { Dashboard, HomeHero, QuickLinks, TaskPanel, type Task } from './Dashboard';
+import { Icon } from '../components/icons';
 import { useT } from '../lib/prefs';
 import { FinanceAlerts } from '../components/FinanceAlerts';
 import { AccountingHome } from './Accounting';
@@ -34,16 +35,35 @@ const APPROVAL_STATUS: Record<string, string> = { PENDING: 'Inasubiri', APPROVED
 
 export function Workspace() {
   const t = useT();
-  const { user } = useAuth();
+  const { user, may } = useAuth();
   const isStaff = user && ['AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK'].includes(user.role);
   const { data, error, loading } = useFetch<Summary>(isStaff ? '/workspace/summary' : null);
+  const ov = useFetch<{ findings: { open: number }; directives: { open: number; inProgress: number } }>(isStaff && may('oversight.read') ? '/oversight/summary' : null);
   if (!isStaff) return <Dashboard />;
   if (loading && !data) return <Loading />;
   if (!data) return <Alert>{error}</Alert>;
   const first = user!.fullName.split(' ')[0];
+  // Kazi zinazosubiri — kutoka muhtasari wa kazi wa mtumishi (takwimu halisi)
+  const tasks: Task[] = [];
+  const f = data.finance, st = data.stock, pr = data.production;
+  if (data.approvals?.total) tasks.push({ to: '/approvals', icon: 'tasks', tone: 'gold', title: data.role === 'AMCOS_ADMIN' ? `Maombi ${num(data.approvals.total)} yanasubiri uamuzi wako` : `Maombi yako ${num(data.approvals.total)} yanasubiri idhini`, sub: 'Idhini' });
+  if (data.members.pending) tasks.push({ to: '/members', icon: 'userPlus', tone: 'green', title: `Wakulima ${num(data.members.pending)} wanasubiri uthibitisho`, sub: 'Wanachama' });
+  if (f?.toPost) tasks.push({ to: '/finance', icon: 'receipt', tone: 'blue', title: `Miamala ${num(f.toPost)} imeidhinishwa — ikamilishwe`, sub: 'Miamala na hati', right: tsh(f.toPostAmount) });
+  if (pr?.pendingIssues && data.role !== 'AMCOS_ADMIN') tasks.push({ to: '/input-issues', icon: 'inputs', tone: 'gold', title: `Ugawaji ${num(pr.pendingIssues)} unasubiri idhini`, sub: 'Ugawaji wa pembejeo' });
+  if (st?.purchasesAwaitingReceipt) tasks.push({ to: '/purchases', icon: 'cart', tone: 'blue', title: `Manunuzi ${num(st.purchasesAwaitingReceipt)} yanasubiri mzigo`, sub: 'Manunuzi na wazabuni' });
+  if (st?.low.length) tasks.push({ to: '/inputs', icon: 'inputs', tone: 'red', title: `Bidhaa ${num(st.low.length)} zina stoo ndogo`, sub: st.low.slice(0, 3).map((l) => l.name).join(', ') });
+  const ovOpen = (ov.data?.findings.open ?? 0) + (ov.data?.directives.open ?? 0) + (ov.data?.directives.inProgress ?? 0);
+  if (ovOpen) tasks.push({ to: '/oversight', icon: 'shield', tone: 'red', title: `Hoja na maagizo ${num(ovOpen)} ya Afisa Ushirika`, sub: 'Ukaguzi na maagizo' });
+  const work = (
+    <div className="dash2-row">
+      <TaskPanel tasks={tasks} allTo={may('approvals.read') ? '/approvals' : undefined} />
+      {/* Mhasibu ana vigae vyake vya fedha (AccountingHome) — hatuongezi njia za mkato za pili */}
+      {data.role !== 'ACCOUNTANT' && <QuickLinks />}
+    </div>
+  );
   return (
     <>
-      <PageHead title={t('Habari, {name}', { name: first })} sub={<><strong>{t(data.title ?? '')}</strong> · {t(STAFF_DUTY[data.role])}{data.season ? <> · {t('Msimu')} <strong>{data.season.name}</strong></> : null}</>}>
+      <HomeHero name={first} sub={<><strong>{t(data.title ?? '')}</strong> · {t(STAFF_DUTY[data.role])}{data.season ? <> · {t('Msimu')} <strong>{data.season.name}</strong></> : null}</>}>
         {data.role === 'CLERK' && <>
           <Link className="btn btn-secondary" to="/inputs">{t('Ingiza pembejeo')}</Link>
           <Link className="btn btn-gold" to="/input-issues/new">{t('Toa pembejeo')}</Link>
@@ -55,11 +75,11 @@ export function Workspace() {
         </>}
         {data.role === 'AMCOS_ADMIN' && <Link className="btn btn-secondary" to="/accounting/reports">{t('Ripoti za fedha')}</Link>}
         {data.role === 'AMCOS_ADMIN' && <Link className="btn btn-gold" to="/approvals">{t('Idhini')} ({data.approvals?.total ?? 0})</Link>}
-      </PageHead>
+      </HomeHero>
       {data.role === 'AMCOS_ADMIN' && <SetupChecklist />}
-      {data.role === 'AMCOS_ADMIN' && <Manager d={data} />}
-      {data.role === 'ACCOUNTANT' && <div className="stack"><AccountingHome embedded /><Pending d={data} title={t('Maombi yangu')} /></div>}
-      {data.role === 'CLERK' && <Storekeeper d={data} />}
+      {data.role === 'AMCOS_ADMIN' && <Manager d={data} work={work} />}
+      {data.role === 'ACCOUNTANT' && <div className="stack">{work}<AccountingHome embedded /><Pending d={data} title={t('Maombi yangu')} /></div>}
+      {data.role === 'CLERK' && <Storekeeper d={data} work={work} />}
     </>
   );
 }
@@ -102,7 +122,7 @@ function LowStock({ s }: { s: NonNullable<Summary['stock']> }) {
   );
 }
 
-function Manager({ d }: { d: Summary }) {
+function Manager({ d, work }: { d: Summary; work: ReactNode }) {
   const t = useT();
   const f = d.finance, s = d.stock, p = d.production;
   return (
@@ -119,13 +139,14 @@ function Manager({ d }: { d: Summary }) {
       )}
       <FinanceAlerts />
       <div className="grid grid-kpi">
-        <Kpi tone={d.approvals?.total ? 'gold' : 'dark'} label={t('Maombi yanayosubiri idhini')} value={num(d.approvals?.total)} hint={d.approvals?.total ? t('Bofya "Idhini" kuamua') : t('Hakuna kinachosubiri')} />
-        <Kpi label={t('Wakulima hai')} value={num(d.members.active)} hint={d.members.pending ? t('{n} wanasubiri uthibitisho', { n: d.members.pending }) : t('{n} wanawake', { n: num(d.members.female) })} tone={d.members.pending ? 'warn' : undefined} />
-        {p && <Kpi label={t('Uzalishaji unaotarajiwa')} value={`${num(p.approvedKg)} kg`} hint={t('Ekari {a} · makisio {n} yanasubiri', { a: num(p.acres), n: p.draft })} />}
-        {p && <Kpi label={t('Pembejeo zilizotolewa')} value={tsh(p.inputsIssuedValue)} hint={t('Wakulima {n}', { n: num(p.farmersWithInputs) })} />}
-        {f && <Kpi label={t('Fedha zilizopo')} value={tsh(f.cashTotal)} hint={t('Akaunti {n}', { n: f.accounts.length })} />}
-        {f && <Kpi tone={Number(f.farmerDebts) > 0 ? 'warn' : undefined} label={t('Madeni ya wakulima')} value={tsh(f.farmerDebts)} hint={t('Wakulima {n}', { n: num(f.farmersOwing) })} />}
+        <Kpi tone={d.approvals?.total ? 'gold' : 'dark'} icon={<Icon name="tasks" />} label={t('Maombi yanayosubiri idhini')} value={num(d.approvals?.total)} hint={d.approvals?.total ? t('Bofya "Idhini" kuamua') : t('Hakuna kinachosubiri')} />
+        <Kpi icon={<Icon name="members" />} label={t('Wakulima hai')} value={num(d.members.active)} hint={d.members.pending ? t('{n} wanasubiri uthibitisho', { n: d.members.pending }) : t('{n} wanawake', { n: num(d.members.female) })} tone={d.members.pending ? 'warn' : undefined} />
+        {p && <Kpi icon={<Icon name="leaf" />} label={t('Uzalishaji unaotarajiwa')} value={`${num(p.approvedKg)} kg`} hint={t('Ekari {a} · makisio {n} yanasubiri', { a: num(p.acres), n: p.draft })} />}
+        {p && <Kpi icon={<Icon name="inputs" />} label={t('Pembejeo zilizotolewa')} value={tsh(p.inputsIssuedValue)} hint={t('Wakulima {n}', { n: num(p.farmersWithInputs) })} />}
+        {f && <Kpi icon={<Icon name="bank" />} label={t('Fedha zilizopo')} value={tsh(f.cashTotal)} hint={t('Akaunti {n}', { n: f.accounts.length })} />}
+        {f && <Kpi tone={Number(f.farmerDebts) > 0 ? 'warn' : undefined} icon={<Icon name="scale" />} label={t('Madeni ya wakulima')} value={tsh(f.farmerDebts)} hint={t('Wakulima {n}', { n: num(f.farmersOwing) })} />}
       </div>
+      {work}
       <Pending d={d} title={t('Maombi ya karibuni')} />
       <div className="grid grid-2">
         {f && (
@@ -155,21 +176,22 @@ function Manager({ d }: { d: Summary }) {
   );
 }
 
-function Storekeeper({ d }: { d: Summary }) {
+function Storekeeper({ d, work }: { d: Summary; work: ReactNode }) {
   const t = useT();
   const s = d.stock!;
   return (
     <div className="stack">
       <div className="grid grid-kpi">
-        <Kpi tone="dark" label={t('Bidhaa')} value={num(s.items)} hint={t('{n} zimeisha stoo', { n: s.outOfStock })} />
-        <Kpi tone={s.low.length ? 'warn' : undefined} label={t('Stoo ndogo')} value={num(s.low.length)} />
-        <Kpi label={t('Zilizoingia (msimu)')} value={num(s.received)} />
-        <Kpi label={t('Zilizotoka (msimu)')} value={num(s.issued)} />
-        <Kpi tone={Number(s.damaged) + Number(s.expired) > 0 ? 'bad' : undefined} label={t('Zilizoharibika / muda umeisha')} value={`${num(s.damaged)} / ${num(s.expired)}`} hint={s.expiringSoon ? t('{n} zinakaribia kuisha muda', { n: s.expiringSoon }) : undefined} />
-        <Kpi tone={s.purchasesAwaitingReceipt ? 'gold' : undefined} label={t('Manunuzi — subiri mzigo')} value={num(s.purchasesAwaitingReceipt)} hint={t('{n} yanasubiri idhini', { n: s.purchasesAwaitingApproval })} />
-        <Kpi label={t('Ugawaji unasubiri idhini')} value={num(d.production?.pendingIssues)} />
-        <Kpi label={t('Wakulima wanasubiri uthibitisho')} value={num(d.members.pending)} />
+        <Kpi tone="dark" icon={<Icon name="inputs" />} label={t('Bidhaa')} value={num(s.items)} hint={t('{n} zimeisha stoo', { n: s.outOfStock })} />
+        <Kpi tone={s.low.length ? 'warn' : undefined} icon={<Icon name="debt" />} label={t('Stoo ndogo')} value={num(s.low.length)} />
+        <Kpi icon={<Icon name="arrowIn" />} label={t('Zilizoingia (msimu)')} value={num(s.received)} />
+        <Kpi icon={<Icon name="arrowOut" />} label={t('Zilizotoka (msimu)')} value={num(s.issued)} />
+        <Kpi tone={Number(s.damaged) + Number(s.expired) > 0 ? 'bad' : undefined} icon={<Icon name="stop" />} label={t('Zilizoharibika / muda umeisha')} value={`${num(s.damaged)} / ${num(s.expired)}`} hint={s.expiringSoon ? t('{n} zinakaribia kuisha muda', { n: s.expiringSoon }) : undefined} />
+        <Kpi tone={s.purchasesAwaitingReceipt ? 'gold' : undefined} icon={<Icon name="cart" />} label={t('Manunuzi — subiri mzigo')} value={num(s.purchasesAwaitingReceipt)} hint={t('{n} yanasubiri idhini', { n: s.purchasesAwaitingApproval })} />
+        <Kpi icon={<Icon name="issue" />} label={t('Ugawaji unasubiri idhini')} value={num(d.production?.pendingIssues)} />
+        <Kpi icon={<Icon name="userPlus" />} label={t('Wakulima wanasubiri uthibitisho')} value={num(d.members.pending)} />
       </div>
+      {work}
       <div className="grid grid-2">
         <LowStock s={s} />
         <Section pad={false} title={t('Mienendo ya stoo ya karibuni')}>

@@ -1,3 +1,4 @@
+import { Icon, type IconName } from './icons';
 import { useEffect, useRef, useState, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { LogoMark } from './Logo';
 import { useT, tr } from '../lib/prefs';
@@ -149,11 +150,11 @@ export function Modal({ open, title, onClose, children, footer, size, head }: { 
   );
 }
 
-export function Stat({ label, value, hint, accent }: { label: string; value: ReactNode; hint?: ReactNode; accent?: boolean }) {
+export function Stat({ label, value, hint, accent, icon, tone }: { label: string; value: ReactNode; hint?: ReactNode; accent?: boolean; icon?: IconName; tone?: 'green' | 'gold' | 'blue' | 'red' }) {
   const t = useT();
   return (
-    <div className={`card stat ${accent ? 'accent' : ''}`}>
-      <span className="label">{t(label)}</span>
+    <div className={`card stat ${accent ? 'accent' : ''} ${icon ? 'stat-ic' : ''}`}>
+      <span className="label">{t(label)}{icon && <span className={`stat-chip chip-${tone ?? 'green'}`}><Icon name={icon} /></span>}</span>
       <span className="value">{value}</span>
       {hint && <span className="hint">{tx(t, hint)}</span>}
     </div>

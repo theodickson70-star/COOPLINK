@@ -13,25 +13,27 @@ import { NavIndicator, useNavIndicator } from '../components/NavIndicator';
 import { useTableCards } from '../components/MobileUi';
 import { NotificationBell, TwoFactorBanner, TwoFactorGate } from './TeamUi';
 
+import { ICONS } from '../components/icons';
 const ic = (d: ReactNode) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>;
+// v2: nakshi kutoka seti moja ya mfumo (components/icons.tsx)
 const I = {
-  dash: ic(<><rect x="3" y="3" width="7" height="9" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" /><rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="16" width="7" height="5" rx="1.5" /></>),
-  amcos: ic(<><path d="M3 21h18M5 21V9l7-5 7 5v12" /><path d="M9 21v-6h6v6" /></>),
-  support: ic(<><circle cx="12" cy="12" r="9" /><path d="M9.5 9.3a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.3-2.5 3.8" /><path d="M12 17v.01" /></>),
-  subs: ic(<><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M7 15h4" /></>),
-  finance: ic(<><path d="M3 17l5-5 4 4 8-8" /><path d="M15 8h5v5" /></>),
-  staff: ic(<><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /><path d="M17 11l2 2 3-3" /></>),
-  system: ic(<><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4M7 10h2l1.5-3 3 6 1.5-3h2" /></>),
-  comms: ic(<><path d="M3 11l15-6v14L3 13z" /><path d="M7 13v4a2 2 0 0 0 4 0v-3" /></>),
-  sms: ic(<><path d="M4 5h16v11H8l-4 4z" /><path d="M8 9h8M8 12h5" /></>),
-  security: ic(<><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z" /><path d="M9 12l2 2 4-4" /></>),
-  backup: ic(<><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" /></>),
-  business: ic(<><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18" /></>),
-  settings: ic(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></>),
-  menu: ic(<path d="M3 6h18M3 12h18M3 18h18" />),
-  requests: ic(<><path d="M4 4h16v12H8l-4 4z" /><path d="M9 9h6M9 12h4" /></>),
-  success: ic(<><path d="M12 21s-7-4.4-9.3-9A5.2 5.2 0 0 1 12 6.5 5.2 5.2 0 0 1 21.3 12C19 16.6 12 21 12 21z" /></>),
-  leads: ic(<><path d="M3 4h18l-7 8.5V19l-4 2v-8.5z" /></>),
+  dash: ic(ICONS.dash),
+  amcos: ic(ICONS.groups),
+  support: ic(ICONS.help),
+  subs: ic(ICONS.card),
+  finance: ic(ICONS.trend),
+  staff: ic(ICONS.staff),
+  system: ic(ICONS.activity),
+  comms: ic(ICONS.megaphone),
+  sms: ic(ICONS.sms),
+  security: ic(ICONS.shield),
+  backup: ic(ICONS.database),
+  business: ic(ICONS.briefcase),
+  settings: ic(ICONS.sliders),
+  menu: ic(ICONS.menu),
+  requests: ic(ICONS.inbox),
+  success: ic(ICONS.heart),
+  leads: ic(ICONS.funnel),
 };
 
 // Menyu ya Owner kwa makundi (bila namba)
