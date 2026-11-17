@@ -3,6 +3,7 @@
 //  Hakuna kinachosomwa wala kuandikwa kwenye ledger ya wanachama wa vyama.
 //  Malipo yote yanaanza PENDING; yanakuwa VERIFIED tu kwa uthibitisho wa mtu (na nenosiri).
 // =====================================================================
+import { recordFeeExpense } from '../../lib/fee-expense';
 import { Router } from 'express';
 import { z } from 'zod';
 import { alias } from 'drizzle-orm/pg-core';
@@ -125,6 +126,7 @@ financeRouter.post(
         const out = await extendSubscription(tx, sub, { periods: p.periods, cycle: p.cycle ?? undefined, plan });
         extension = { from: sub.endDate, to: out.sub.endDate, status: out.sub.status, access: out.access };
       }
+      await recordFeeExpense(tx, v); // v2.7: ada ya CoopLink -> matumizi kwenye vitabu vya chama
       await audit(tx, req, { action: 'PLATFORM_PAYMENT_VERIFY', entity: 'PlatformPayment', entityId: id, amcosId: p.amcosId,
         before: { status: p.status }, after: { status: 'VERIFIED', amount: p.amount, extension } });
       return { payment: v, extension };

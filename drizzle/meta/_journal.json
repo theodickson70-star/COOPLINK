@@ -302,6 +302,13 @@
       "when": 1794850212739,
       "tag": "0042_statement_links",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1794947267981,
+      "tag": "0043_fee_receipts",
+      "breakpoints": true
     }
   ]
 }

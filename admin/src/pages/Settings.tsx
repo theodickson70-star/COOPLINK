@@ -3,6 +3,7 @@
 //   Nani anaweza kubadilisha nini kinatoka kwenye server (GET /settings → access); UI inasoma tu.
 //   Sehemu zenye kurasa zao (bei za madaraja, makato, mikopo, dola) zinaonyesha HALI + KIUNGO tu — hazirudiwi hapa.
 // =====================================================================
+import { RECEIPT_THEMES } from '../lib/receipt-themes';
 import { LocationFields } from '../components/LocationPicker';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -39,7 +40,7 @@ interface Data {
   };
   stock: null | { items: StockItem[]; low: number; withoutLevel: number };
   sms: null | { enabled: boolean; limit: number; used: number; remaining: number; allThisMonth: number; failedThisMonth: number };
-  docs: { footer: string | null; showBank: boolean; bank: { name: string; bankName: string | null; accountNumber: string | null } | null };
+  docs: { footer: string | null; showBank: boolean; theme?: 'KIJANI' | 'SAFI' | 'RASMI'; bank: { name: string; bankName: string | null; accountNumber: string | null } | null };
   recent: { id: string; action: string; createdAt: string; by: string | null; role: string | null }[];
 }
 interface StockItem { id: string; name: string; unit: string; category: string; reorderLevel: string | null; balance: string; low: boolean }
@@ -537,7 +538,7 @@ function DocsTab({ d, onSaved }: { d: Data; onSaved: () => void }) {
   const t = useT();
   const { amcos, refresh } = useAuth();
   const edit = d.access.edit.docs;
-  const base = useMemo(() => ({ footer: d.docs.footer ?? '', showBank: d.docs.showBank }), [d.docs]);
+  const base = useMemo(() => ({ footer: d.docs.footer ?? '', showBank: d.docs.showBank, theme: d.docs.theme ?? 'KIJANI' }), [d.docs]);
   const [f, setF] = useState(base);
   useEffect(() => setF(base), [base]);
   const [logo, setLogo] = useState<string | null | undefined>(undefined); // undefined = haijabadilishwa
@@ -550,7 +551,7 @@ function DocsTab({ d, onSaved }: { d: Data; onSaved: () => void }) {
   const p = d.profile;
   const org = { ...p, logo: curLogo };
   const save = async () => {
-    const body = { footer: f.footer, showBank: f.showBank, ...(logo !== undefined ? { logo } : {}) };
+    const body = { footer: f.footer, showBank: f.showBank, theme: f.theme, ...(logo !== undefined ? { logo } : {}) };
     if (await act.run(() => api('/settings/docs', { method: 'PUT', body }))) { setOk('Mipangilio ya nyaraka imehifadhiwa.'); setLogo(undefined); onSaved(); refresh().catch(() => undefined); }
   };
   return (
@@ -572,6 +573,17 @@ function DocsTab({ d, onSaved }: { d: Data; onSaved: () => void }) {
               {curLogo && <Button variant="ghost" onClick={() => setLogo(null)}>{t('Ondoa')}</Button>}
             </div>
           )}
+        </div>
+      </Sec>
+      <Sec title="Muundo wa risiti" sub="Chagua muonekano wa Stakabadhi ya Fedha. Unaweza pia kujaribu miundo yote kwenye ukurasa wa risiti kabla ya kuchapisha.">
+        <div className="rc-pick" role="radiogroup" aria-label={t('Muundo wa risiti')}>
+          {RECEIPT_THEMES.map((x) => (
+            <button key={x.key} type="button" role="radio" aria-checked={f.theme === x.key} disabled={!edit} className={f.theme === x.key ? 'on' : ''} onClick={() => setF({ ...f, theme: x.key })}>
+              <span className={`rc-thumb rc-thumb-${x.key.toLowerCase()}`} aria-hidden="true"><i /><b /><em /><span /><span /><span /><u /></span>
+              <strong>{t(x.label)}{f.theme === x.key && <Icon name="check" />}</strong>
+              <small>{t(x.desc)}</small>
+            </button>
+          ))}
         </div>
       </Sec>
       <Sec title="Kijachini cha nyaraka" sub="Maneno mafupi chini ya kila risiti na vocha.">

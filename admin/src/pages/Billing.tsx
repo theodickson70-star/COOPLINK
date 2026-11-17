@@ -13,6 +13,7 @@ import { amountInWords } from '../lib/words';
 import { Alert, Badge, Button, Empty, Loading, PageHead, TextField } from '../components/ui';
 import { Section } from '../components/owner-ui';
 import { LogoMark } from '../components/Logo';
+import { Icon } from '../components/icons';
 import { PhoneNameFields } from '../components/PhoneName';
 import { PrintButton } from './acc-common';
 
@@ -190,6 +191,7 @@ interface Receipt {
   fee: { kind: string; label: string; amount: string; paidToDate: string; balance: string; dueDate: string };
   amcos: { name: string; code: string };
   message: string;
+  expense?: { id: string; docNo: string | null; status: string } | null;
   business: { companyName: string; productName: string; phone: string; email: string; address: string; tin: string; website: string; supportPhone?: string; supportEmail?: string };
 }
 
@@ -206,33 +208,65 @@ export function BillingReceipt({ base = '/billing' }: { base?: string }) {
         <Link className="btn btn-secondary no-print" to={base === '/billing' ? '/billing' : '/owner/subscriptions?tab=fees'}>{t('← Rudi')}</Link>
         <PrintButton label="Chapisha / PDF" />
       </PageHead>
-      <section className="card card-pad print-doc receipt-doc">
-        <div className="doc-head">
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <LogoMark size={44} onDark={false} />
+      <article className="card print-doc rc rc-theme-kijani rc-cl">
+        <div className="rc-leaves" aria-hidden="true" />
+        <header className="rc-head">
+          <div className="rc-org">
+            <span className="rc-logo rc-logo-mark"><LogoMark size={44} ring={false} /></span>
             <div>
-              <div className="doc-org">{b.productName} · {b.companyName}</div>
-              <div className="doc-org-sub">{[b.address, b.tin ? `TIN ${b.tin}` : ''].filter(Boolean).join(' · ')}</div>
-              {(b.phone || b.email) && <div className="doc-org-sub">{t('Mauzo')}: {[b.phone, b.email].filter(Boolean).join(' · ')}</div>}
-              {(b.supportPhone || b.supportEmail) && <div className="doc-org-sub">{t('Msaada wa kiufundi')}: {[b.supportPhone, b.supportEmail].filter(Boolean).join(' · ')}</div>}
+              <b>{b.productName} · {b.companyName}</b>
+              {[b.address, b.tin ? `TIN ${b.tin}` : ''].filter(Boolean).length > 0 && <small>{[b.address, b.tin ? `TIN ${b.tin}` : ''].filter(Boolean).join(' · ')}</small>}
+              {(b.phone || b.email) && <small>{t('Mauzo')}: {[b.phone, b.email].filter(Boolean).join(' · ')}</small>}
+              {(b.supportPhone || b.supportEmail) && <small>{t('Msaada wa kiufundi')}: {[b.supportPhone, b.supportEmail].filter(Boolean).join(' · ')}</small>}
             </div>
           </div>
-          <div style={{ textAlign: 'right' }}>
-            <div className="doc-title">{data.isTest ? 'RISITI YA MALIPO YA MAJARIBIO' : 'RISITI YA MALIPO'}</div>
-            <div className="doc-no">{r.receiptNo}</div>
-            <div className="doc-org-sub">{dateTime(r.paidAt)}</div>
+          <div className="rc-title">
+            <span className="rc-kicker">{data.isTest ? 'Risiti ya majaribio' : 'Risiti ya malipo'}</span>
+            <span className="rc-en">Payment receipt</span>
+            <span className="rc-no">{r.receiptNo}</span>
           </div>
-        </div>
-        <div className="receipt-msg">{data.message}</div>
-        <dl className="dl receipt-dl">
-          <dt>{t('Imepokelewa kutoka')}</dt><dd><strong>{data.amcos.name}</strong> ({data.amcos.code})</dd>
-          <dt>{t('Kwa ajili ya')}</dt><dd>{f.label}</dd>
-          <dt>{t('Kiasi')}</dt><dd><strong>{tsh(r.amount)}</strong><div className="muted" style={{ fontSize: 13 }}>{amountInWords(r.amount)}</div></dd>
-          <dt>{t('Njia ya malipo')}</dt><dd>{r.method}{r.providerRef ? ` · kumb. ${r.providerRef}` : ''}</dd>
-          {f.kind === 'SEASON' && <><dt>{t('Ada ya msimu')}</dt><dd>{tsh(f.amount)} · imelipwa {tsh(f.paidToDate)} · salio {tsh(f.balance)}{Number(f.balance) > 0 ? ` (mwisho ${date(f.dueDate)})` : ''}</dd></>}
-        </dl>
-        <p className="muted" style={{ fontSize: 12, marginTop: 24 }}>Risiti hii imetolewa na mfumo wa {b.productName} baada ya malipo kuthibitishwa na mtoa huduma wa malipo. Haihitaji sahihi.</p>
-      </section>
+        </header>
+        <section className="rc-hero">
+          <div className="rc-hero-l">
+            <span className="rc-lbl">{t('Imepokelewa kutoka')}</span>
+            <b className="rc-party">{data.amcos.name} <small className="muted">({data.amcos.code})</small></b>
+            <span className="rc-lbl">{t('Kwa ajili ya')}</span>
+            <span className="rc-purpose">{f.label}</span>
+          </div>
+          <div className="rc-amount">
+            <span className="rc-status ok"><Icon name="check" />{t('Imelipwa')}</span>
+            <div className="rc-big"><small>TSh</small>{Number(r.amount).toLocaleString('en-US', { maximumFractionDigits: 0 })}<sup>.{(Number(r.amount).toFixed(2)).split('.')[1]}</sup></div>
+          </div>
+        </section>
+        <div className="rc-words"><Icon name="book" /><span><em>Kwa maneno:</em> {amountInWords(r.amount)}</span></div>
+        <div className="rc-msg"><Icon name="sparkle" /><span>{data.message}</span></div>
+        <section className="rc-tiles">
+          <div><span className="rc-lbl"><Icon name="history" />{t('Tarehe')}</span><b>{dateTime(r.paidAt)}</b></div>
+          <div><span className="rc-lbl"><Icon name="phone" />{t('Njia ya malipo')}</span><b>{r.method}</b></div>
+          <div><span className="rc-lbl"><Icon name="receipt" />{t('Kumbukumbu')}</span><b>{r.providerRef ?? '—'}</b></div>
+        </section>
+        {f.kind === 'SEASON' && (
+          <table className="rc-items">
+            <thead><tr><th className="sn">#</th><th>{t('Ada ya msimu')}</th><th className="num">TZS</th></tr></thead>
+            <tbody>
+              <tr><td className="sn">01</td><td>{t('Ada kamili ya msimu')}</td><td className="num">{tsh(f.amount).replace('TSh ', '')}</td></tr>
+              <tr><td className="sn">02</td><td>{t('Imelipwa hadi sasa (pamoja na risiti hii)')}</td><td className="num">{tsh(f.paidToDate).replace('TSh ', '')}</td></tr>
+            </tbody>
+            <tfoot><tr><td /><td className="rc-total-l">{Number(f.balance) > 0 ? `Salio · mwisho ${date(f.dueDate)}` : 'Salio'}</td><td className="num rc-total">{tsh(f.balance).replace('TSh ', '')}</td></tr></tfoot>
+          </table>
+        )}
+        {data.expense && (
+          <div className="rc-books">
+            <Icon name="book" />
+            <span>{data.expense.status === 'POSTED'
+              ? <>Malipo haya yameandikwa kwenye <b>matumizi ya chama</b> (Hati ya Malipo <b>{data.expense.docNo}</b>).</>
+              : <>Yameandikwa kwenye <b>matumizi ya chama</b> (Hati ya Malipo <b>{data.expense.docNo}</b>) — Mhasibu achague akaunti iliyolipa ili yakamilike.</>}</span>
+            <Link className="btn btn-sm btn-secondary no-print" to={data.expense.status === 'POSTED' ? `/vouchers/${data.expense.id}` : `/finance?txn=${data.expense.id}`}>{data.expense.status === 'POSTED' ? t('Fungua hati') : t('Kamilisha')}</Link>
+          </div>
+        )}
+        <div className="rc-perf" aria-hidden="true"><span /></div>
+        <div className="rc-brand"><span>{t('Risiti hii imetolewa na mfumo baada ya malipo kuthibitishwa na mtoa huduma wa malipo. Haihitaji sahihi.')}</span><span><b>CoopLink</b> · Connecting Cooperatives. Empowering Farmers.</span></div>
+      </article>
     </>
   );
 }

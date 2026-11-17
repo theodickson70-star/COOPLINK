@@ -13,6 +13,7 @@ import { PAYER_LABEL, feePayerRole, PROVIDER_NAME, type Provider, abandonMobileP
 import { getSetting } from '../lib/settings';
 import { lookupNameOrNull } from '../lib/name-lookup';
 import { TeePayError } from '../lib/teepay';
+import { feeReference, SYSTEM_FEE_CATEGORY } from '../lib/fee-expense';
 
 export const billingRouter = Router();
 const MP = schema.platformMobilePayments;
@@ -97,7 +98,11 @@ billingRouter.post('/payments/:id/cancel', ah(async (req, res) => {
 
 billingRouter.get('/receipts/:id', ah(async (req, res) => {
   const { id } = uuidParam.parse(req.params);
-  res.json(await receiptOf(id, req.auth!.amcosId!));
+  const r = await receiptOf(id, req.auth!.amcosId!);
+  // v2.7: matumizi yaliyoandikwa yenyewe kwenye vitabu vya chama kwa risiti hii
+  const [exp] = await db.select({ id: schema.financeTransactions.id, docNo: schema.financeTransactions.docNo, status: schema.financeTransactions.status })
+    .from(schema.financeTransactions).where(and(eq(schema.financeTransactions.amcosId, req.auth!.amcosId!), eq(schema.financeTransactions.category, SYSTEM_FEE_CATEGORY), eq(schema.financeTransactions.reference, feeReference(r.receipt.receiptNo))));
+  res.json({ ...r, expense: exp ?? null });
 }));
 
 /**

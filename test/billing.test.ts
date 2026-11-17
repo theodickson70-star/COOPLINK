@@ -242,6 +242,37 @@ test('Kingilio: kinadaiwa chama kikifunguliwa, chama kinafungwa baada ya siku 3,
   // Mapato ya kampuni (Owner) — kumbukumbu ileile ya malipo ya jukwaa
   const od = await call('GET', `/api/v1/owner/amcos/${amcosId}`, owner);
   assert.ok(od.body.payments.some((p: any) => p.id === rid && p.status === 'VERIFIED' && p.category === 'SETUP'));
+
+  // v2.7: matumizi kwenye vitabu vya chama — yameandikwa yenyewe (mara moja tu), PV-…, bila kukisia akaunti
+  const exp = (await db.execute<{ id: string; status: string; amount: string; doc_no: string; account_id: string | null; category: string; reference: string }>(sql`
+    select id, status, amount, doc_no, account_id, category, reference from finance_transactions where amcos_id = ${amcosId} and category = 'SYSTEM_FEE'`)).rows;
+  assert.equal(exp.length, 1, 'Rekodi moja ya matumizi');
+  assert.equal(exp[0].amount, '45000.00'); assert.match(exp[0].doc_no, /^PV-/); assert.equal(exp[0].reference, `CoopLink ${rc.body.receipt.receiptNo}`);
+  assert.equal(exp[0].status, 'APPROVED', 'Simu iliyolipa si akaunti ya chama -> Mhasibu anachagua akaunti');
+  assert.equal(exp[0].account_id, null);
+  // Risiti inafika kwenye kengele ya Meneja/Mhasibu
+  let nb = await call('GET', '/api/v1/notifications', manager);
+  const rn = nb.body.items.find((i: any) => i.type === 'RECEIPT' && i.id === rid);
+  assert.ok(rn && rn.unread, 'Risiti mpya kwenye arifa'); assert.match(rn.body, new RegExp(exp[0].doc_no));
+  assert.equal((await call('POST', `/api/v1/notifications/receipts/${rid}/read`, manager, {})).status, 200);
+  nb = await call('GET', '/api/v1/notifications', manager);
+  assert.equal(nb.body.items.find((i: any) => i.id === rid).unread, false);
+  const clerkTok = (await login(clerkPhone, 'Staff12345')).body.token;
+  assert.ok(!(await call('GET', '/api/v1/notifications', clerkTok)).body.items.some((i: any) => i.type === 'RECEIPT'), 'Storekeeper haoni risiti za ada');
+
+  // Simu iliyolipa = akaunti ya simu ya chama yenye salio -> imekamilika moja kwa moja kwenye akaunti hiyo
+  const { recordFeeExpense } = await import('../src/lib/fee-expense');
+  const [acc] = (await db.execute<{ id: string }>(sql`insert into finance_accounts (amcos_id, name, kind, account_number, opening_balance)
+    values (${amcosId}, 'M-Pesa ya chama', 'MOBILE_MONEY', '0712345678', 100000) returning id`)).rows;
+  const pay = (await db.execute<any>(sql`select * from platform_payments where id = ${rid}`)).rows[0];
+  const fake = { ...pay, id: crypto.randomUUID(), invoiceNo: pay.invoice_no + '-T', amcosId, feeId: pay.fee_id, status: 'VERIFIED', category: 'SETUP', amount: '30000.00', createdById: null };
+  const posted = await db.transaction((tx) => recordFeeExpense(tx, fake, { payerPhone: '255712345678' }));
+  assert.equal(posted?.status, 'POSTED'); assert.equal(posted?.accountId, acc.id);
+  assert.equal(await db.transaction((tx) => recordFeeExpense(tx, fake, { payerPhone: '255712345678' })), null, 'Haiandikwi mara mbili');
+  const big = { ...fake, invoiceNo: pay.invoice_no + '-B', amount: '900000.00' };
+  assert.equal((await db.transaction((tx) => recordFeeExpense(tx, big, { payerPhone: '255712345678' })))?.status, 'APPROVED', 'Salio halitoshi -> halikisiwi');
+  assert.equal(await db.transaction((tx) => recordFeeExpense(tx, { ...fake, invoiceNo: 'X-1', category: 'OTHER' })), null, 'Majaribio hayaingii vitabuni');
+  await db.execute(sql`update finance_accounts set is_active = false where id = ${acc.id}`);
 });
 
 test('Ada ya msimu: 700,000 kwa awamu mbili sawa, mwisho 15/10; chama kinafungwa kisipomaliza', async () => {

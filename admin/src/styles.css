@@ -2696,3 +2696,194 @@ a.card:hover, button.card:hover, .card.clickable:hover { transform: translateY(-
 .cbx-list li.cur { font-weight: 700; color: var(--green); }
 .cbx-ok { width: 16px; height: 16px; color: var(--green); }
 .cbx-none { color: var(--muted); cursor: default !important; justify-content: center; }
+
+/* ---------- v2.6: STAKABADHI YA KISASA (risiti) ---------- */
+.rc { position: relative; max-width: 820px; margin: 0 auto; padding: 0; overflow: hidden; color: #10231a; background: #fffdf8; border-radius: 20px;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.rc-head { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 22px 28px; color: #fff;
+  background: radial-gradient(120% 140% at 100% 0%, rgba(227, 168, 58, .28), transparent 55%), linear-gradient(135deg, #0B2F23 0%, #14513a 100%); }
+.rc-org { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.rc-org b { display: block; font-family: var(--font-head); font-size: 20px; letter-spacing: .01em; }
+.rc-org small { display: block; font-size: 12px; opacity: .82; line-height: 1.45; }
+.rc-logo { width: 56px; height: 56px; border-radius: 14px; object-fit: cover; background: #fff; flex: none; box-shadow: 0 0 0 3px rgba(255, 255, 255, .18); }
+.rc-logo-mark { display: grid; place-items: center; background: #fffdf8; }
+.rc-title { display: flex; flex-direction: column; align-items: flex-end; text-align: right; gap: 2px; flex: none; }
+.rc-kicker { font-family: var(--font-head); font-weight: 800; font-size: 15px; letter-spacing: .12em; text-transform: uppercase; }
+.rc-en { font-size: 10.5px; letter-spacing: .22em; opacity: .7; text-transform: uppercase; }
+.rc-no { margin-top: 6px; padding: 5px 12px; border-radius: 99px; background: #E3A83A; color: #0B2F23; font-family: var(--font-head); font-weight: 800; font-size: 15px; letter-spacing: .05em; }
+.rc-hero { display: grid; grid-template-columns: 1.15fr 1fr; gap: 22px; padding: 24px 28px 10px; align-items: stretch; }
+.rc-hero-l { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.rc-lbl { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #6b7a71; }
+.rc-lbl svg { width: 13px; height: 13px; color: #1F6B3A; }
+.rc-party { font-family: var(--font-head); font-size: 22px; line-height: 1.2; margin-bottom: 12px; overflow-wrap: anywhere; }
+.rc-purpose { font-size: 15px; font-weight: 600; color: #233; }
+.rc-amount { position: relative; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 4px; padding: 16px 20px; border-radius: 18px;
+  background: linear-gradient(160deg, #EAF5EE, #F7FBF4); border: 1px solid #CFE4D6; }
+.rc-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 4px 10px; border-radius: 99px; }
+.rc-status.ok { background: #1F6B3A; color: #fff; } .rc-status.ok svg { width: 13px; height: 13px; stroke-width: 3; }
+.rc-status.wait { background: #FFF1D6; color: #8A5A00; }
+.rc-big { font-family: var(--font-head); font-weight: 800; font-size: 40px; line-height: 1; color: #0B2F23; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.rc-big small { font-size: 15px; font-weight: 700; color: #4b6b5a; margin-right: 6px; vertical-align: 14px; }
+.rc-big sup { font-size: 17px; color: #4b6b5a; vertical-align: 16px; }
+.rc-usd { font-size: 12px; color: #4b6b5a; }
+.rc-words { display: flex; gap: 10px; align-items: flex-start; margin: 6px 28px 0; padding: 10px 14px; border-radius: 12px; background: #FBF4E4; border-left: 4px solid #E3A83A; font-size: 13.5px; color: #3d3320; }
+.rc-words svg { width: 16px; height: 16px; color: #B07B12; margin-top: 2px; }
+.rc-words em { font-style: normal; font-weight: 700; margin-right: 4px; }
+.rc-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 16px 28px 6px; }
+.rc-tiles > div { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid #E3E8E2; border-radius: 14px; background: #fff; min-width: 0; }
+.rc-tiles b { font-size: 14.5px; overflow-wrap: anywhere; } .rc-tiles small { font-size: 11.5px; color: #6b7a71; }
+.rc-items { width: calc(100% - 56px); margin: 14px 28px 4px; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
+.rc-items th { text-align: left; font-size: 10.5px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #6b7a71; padding: 8px 10px; border-bottom: 2px solid #0B2F23; }
+.rc-items td { padding: 10px; border-bottom: 1px dashed #D6DDD6; vertical-align: top; }
+.rc-items td small { color: #6b7a71; }
+.rc-items .sn { width: 40px; color: #8a978f; font-variant-numeric: tabular-nums; }
+.rc-items .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; width: 150px; }
+.rc-items tfoot td { border: 0; padding-top: 12px; }
+.rc-total-l { text-align: right; font-weight: 800; font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: #0B2F23; }
+.rc-total { background: #0B2F23; color: #fff; font-family: var(--font-head); font-weight: 800; font-size: 16px; border-radius: 10px; padding: 10px 12px !important; }
+.rc-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; padding: 8px 28px 6px; font-size: 12px; }
+.rc-sign > div { display: flex; flex-direction: column; gap: 2px; }
+.rc-sign b { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; } .rc-sign small { color: #556; }
+.rc-perf { position: relative; height: 26px; margin-top: 14px; }
+.rc-perf span { position: absolute; left: 22px; right: 22px; top: 50%; border-top: 2px dashed #C9D2CB; }
+.rc-perf::before, .rc-perf::after { content: ''; position: absolute; top: 0; width: 26px; height: 26px; border-radius: 50%; background: var(--bg, #F4EFE3); }
+.rc-perf::before { left: -13px; } .rc-perf::after { right: -13px; }
+.rc-stub { display: flex; align-items: center; gap: 16px; padding: 6px 28px 14px; }
+.rc-qr { padding: 6px; background: #fff; border: 1px solid #E3E8E2; border-radius: 12px; flex: none; line-height: 0; }
+.rc-stub-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; color: #445; }
+.rc-stub-t b { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #0B2F23; }
+.rc-stub-t b svg { width: 14px; height: 14px; color: #1F6B3A; }
+.rc-stub-t small { font-size: 10.5px; color: #6b7a71; }
+.rc-copy { flex: none; font-family: var(--font-head); font-weight: 800; font-size: 11.5px; letter-spacing: .12em; padding: 8px 12px; border-radius: 10px; background: #0B2F23; color: #fff; text-align: center; }
+.rc-copy.is-copy { background: #A3261A; }
+.rc-brand { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 28px 16px; border-top: 1px solid #EEF0EA; font-size: 11px; color: #6b7a71; text-align: center; }
+.rc-brand .doc-foot { margin: 0; padding: 0; border: 0; }
+.rc-brand b { color: #1F6B3A; }
+.rc .fdoc-stamp { z-index: 2; opacity: .2; }
+/* A5 — nusu ukurasa */
+.rc-a5 { max-width: 560px; border-radius: 14px; }
+.rc-a5 .rc-head { padding: 14px 18px; } .rc-a5 .rc-org b { font-size: 16px; } .rc-a5 .rc-logo { width: 42px; height: 42px; border-radius: 10px; }
+.rc-a5 .rc-hero { padding: 14px 18px 6px; gap: 14px; } .rc-a5 .rc-party { font-size: 17px; } .rc-a5 .rc-big { font-size: 28px; }
+.rc-a5 .rc-words, .rc-a5 .rc-items { margin-left: 18px; margin-right: 18px; } .rc-a5 .rc-items { width: calc(100% - 36px); font-size: 12px; }
+.rc-a5 .rc-tiles, .rc-a5 .rc-sign, .rc-a5 .rc-stub, .rc-a5 .rc-brand { padding-left: 18px; padding-right: 18px; }
+.rc-a5 .rc-tiles { gap: 8px; } .rc-a5 .rc-tiles > div { padding: 8px 10px; }
+/* Simu */
+@media (max-width: 640px) {
+  .rc-head { flex-direction: column; align-items: flex-start; padding: 18px; } .rc-title { align-items: flex-start; text-align: left; }
+  .rc-hero { grid-template-columns: 1fr; padding: 18px 18px 6px; } .rc-amount { align-items: flex-start; }
+  .rc-tiles { grid-template-columns: 1fr; padding: 12px 18px 4px; } .rc-words { margin: 6px 18px 0; }
+  .rc-items { width: calc(100% - 36px); margin: 12px 18px 4px; } .rc-items .num { width: auto; }
+  .rc-sign { grid-template-columns: 1fr; padding: 16px 18px 4px; } .rc-stub { flex-wrap: wrap; padding: 6px 18px 12px; }
+}
+@media print {
+  .rc { box-shadow: none !important; border: 1px solid #D9DED8; border-radius: 12px; max-width: none; }
+  .rc-perf::before, .rc-perf::after { background: #fff; }
+}
+
+/* ---------- v2.7: miundo ya risiti (chama kinachagua: Mipangilio → Nyaraka) ---------- */
+.rc-wm, .rc-seal { display: none; }
+.rc-theme-pick button { min-width: 64px; }
+
+/* SAFI — nyeupe, mistari myembamba, inaokoa wino */
+.rc-theme-safi { background: #fff; border: 1px solid #E3E7E2; }
+.rc-theme-safi .rc-head { background: #fff; color: #10231a; border-top: 6px solid #1F6B3A; border-bottom: 1px solid #E8ECE7; }
+.rc-theme-safi .rc-org small { opacity: 1; color: #5c6b62; }
+.rc-theme-safi .rc-logo { box-shadow: 0 0 0 1px #E3E7E2; }
+.rc-theme-safi .rc-kicker { color: #1F6B3A; }
+.rc-theme-safi .rc-en { opacity: 1; color: #8a978f; }
+.rc-theme-safi .rc-no { background: transparent; color: #A3261A; border: 1.5px solid #A3261A; }
+.rc-theme-safi .rc-amount { background: #fff; border: 0; border-left: 4px solid #1F6B3A; border-radius: 0; padding: 6px 0 6px 18px; align-items: flex-start; }
+.rc-theme-safi .rc-status.ok { background: transparent; color: #1F6B3A; padding: 0; }
+.rc-theme-safi .rc-words { background: transparent; border-left: 0; border-top: 1px solid #ECEFEA; border-bottom: 1px solid #ECEFEA; border-radius: 0; padding: 9px 0; }
+.rc-theme-safi .rc-tiles > div { border: 0; border-radius: 0; border-bottom: 1px solid #ECEFEA; padding: 8px 0; background: transparent; }
+.rc-theme-safi .rc-items th { border-bottom: 1px solid #10231a; }
+.rc-theme-safi .rc-total { background: transparent; color: #10231a; border-top: 2px solid #10231a !important; border-bottom: 4px double #10231a !important; border-radius: 0; }
+.rc-theme-safi .rc-copy { background: transparent; color: #0B2F23; border: 1.5px solid #0B2F23; }
+.rc-theme-safi .rc-copy.is-copy { color: #A3261A; border-color: #A3261A; }
+.rc-theme-safi .rc-perf::before, .rc-theme-safi .rc-perf::after { display: none; }
+.rc-theme-safi .rc-perf span { left: 28px; right: 28px; border-top: 1px dashed #C9D2CB; }
+
+/* RASMI — fremu mbili, kichwa katikati, alama ya nembo na muhuri */
+.rc-theme-rasmi { background: #FFFDF6; border-radius: 6px; outline: 2px solid #0B2F23; outline-offset: -10px; box-shadow: inset 0 0 0 14px #FFFDF6, inset 0 0 0 15px #B98A2E; }
+.rc-theme-rasmi > * { position: relative; z-index: 1; }
+.rc-theme-rasmi .rc-wm { display: flex; flex-direction: column; justify-content: center; gap: 46px; position: absolute; inset: -40% -30%; z-index: 0; transform: rotate(-24deg); pointer-events: none; overflow: hidden; }
+.rc-theme-rasmi .rc-wm span { white-space: nowrap; font-family: var(--font-head); font-weight: 800; font-size: 15px; letter-spacing: .18em; text-transform: uppercase; color: #0B2F23; opacity: .028; }
+.rc-theme-rasmi .rc-head { flex-direction: column; text-align: center; background: transparent; color: #0B2F23; padding: 34px 40px 14px; gap: 10px; }
+.rc-theme-rasmi .rc-org { flex-direction: column; gap: 8px; }
+.rc-theme-rasmi .rc-org b { font-family: Georgia, 'Times New Roman', serif; font-size: 24px; letter-spacing: .02em; }
+.rc-theme-rasmi .rc-org small { opacity: 1; color: #5c5040; }
+.rc-theme-rasmi .rc-logo { box-shadow: none; background: transparent; }
+.rc-theme-rasmi .rc-title { align-items: center; text-align: center; width: 100%; }
+.rc-theme-rasmi .rc-kicker { display: flex; align-items: center; gap: 14px; width: 100%; justify-content: center; font-size: 16px; letter-spacing: .2em; }
+.rc-theme-rasmi .rc-kicker::before, .rc-theme-rasmi .rc-kicker::after { content: ''; flex: 1; max-width: 140px; border-top: 1.5px solid #B98A2E; }
+.rc-theme-rasmi .rc-en { opacity: 1; color: #8a7a5c; }
+.rc-theme-rasmi .rc-no { background: transparent; color: #A3261A; padding: 0; font-family: Georgia, serif; font-size: 18px; }
+.rc-theme-rasmi .rc-hero, .rc-theme-rasmi .rc-tiles, .rc-theme-rasmi .rc-sign, .rc-theme-rasmi .rc-stub, .rc-theme-rasmi .rc-brand { padding-left: 40px; padding-right: 40px; }
+.rc-theme-rasmi .rc-words, .rc-theme-rasmi .rc-items { margin-left: 40px; margin-right: 40px; }
+.rc-theme-rasmi .rc-items { width: calc(100% - 80px); }
+.rc-theme-rasmi .rc-party { font-family: Georgia, serif; }
+.rc-theme-rasmi .rc-amount { background: transparent; border: 3px double #0B2F23; border-radius: 4px; }
+.rc-theme-rasmi .rc-status { display: none; }
+.rc-theme-rasmi .rc-words { background: transparent; border-left: 0; border-bottom: 1px dotted #8a7a5c; border-radius: 0; font-style: italic; }
+.rc-theme-rasmi .rc-tiles > div { background: transparent; border-radius: 4px; border-color: #D9CDB0; }
+.rc-theme-rasmi .rc-items th { border-bottom: 1.5px solid #0B2F23; border-top: 1.5px solid #0B2F23; }
+.rc-theme-rasmi .rc-items td { border-bottom: 1px dotted #C8BC9F; }
+.rc-theme-rasmi .rc-total { background: transparent; color: #0B2F23; border-radius: 0; border-bottom: 4px double #0B2F23 !important; }
+.rc-theme-rasmi .rc-sign { position: relative; }
+.rc-theme-rasmi .rc-seal { display: flex; position: absolute; z-index: 2; left: 31%; top: -58px; width: 118px; height: 118px; border-radius: 50%; border: 3px solid #1F6B3A; box-shadow: inset 0 0 0 4px #FFFDF6, inset 0 0 0 5.5px #1F6B3A;
+  color: #1F6B3A; flex-direction: column; align-items: center; justify-content: center; gap: 2px; transform: rotate(-14deg); opacity: .78; font-family: var(--font-head); text-align: center; }
+.rc-theme-rasmi .rc-seal span { font-size: 10px; font-weight: 800; letter-spacing: .14em; }
+.rc-theme-rasmi .rc-seal b { font-size: 13px; }
+.rc-theme-rasmi .rc-perf::before, .rc-theme-rasmi .rc-perf::after { display: none; }
+.rc-theme-rasmi .rc-perf span { left: 40px; right: 40px; border-top: 1px solid #B98A2E; }
+.rc-theme-rasmi .rc-copy { background: transparent; color: #0B2F23; border: 2px solid #0B2F23; border-radius: 4px; }
+.rc-theme-rasmi .rc-copy.is-copy { color: #A3261A; border-color: #A3261A; }
+.rc-theme-rasmi .rc-brand { border-top: 0; }
+.rc-a5.rc-theme-rasmi .rc-seal { width: 86px; height: 86px; top: -20px; }
+@media (max-width: 640px) { .rc-theme-rasmi .rc-seal { display: none; } .rc-theme-rasmi .rc-hero, .rc-theme-rasmi .rc-tiles, .rc-theme-rasmi .rc-sign, .rc-theme-rasmi .rc-stub { padding-left: 22px; padding-right: 22px; } .rc-theme-rasmi .rc-words, .rc-theme-rasmi .rc-items { margin-left: 22px; margin-right: 22px; } .rc-theme-rasmi .rc-items { width: calc(100% - 44px); } }
+/* Mipangilio → Nyaraka: kuchagua muundo wa risiti */
+.rc-pick { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
+.rc-pick > button { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 12px; border: 2px solid var(--line); border-radius: 16px; background: var(--paper); cursor: pointer; transition: border-color .15s, transform .15s; font: inherit; color: inherit; }
+.rc-pick > button:hover:not(:disabled) { transform: translateY(-2px); border-color: #9cc9ad; }
+.rc-pick > button.on { border-color: var(--green); box-shadow: 0 0 0 4px rgba(47, 163, 107, .15); }
+.rc-pick > button:disabled { cursor: default; }
+.rc-pick strong { display: flex; align-items: center; justify-content: space-between; font-size: 15px; }
+.rc-pick strong svg { width: 18px; height: 18px; color: var(--green); }
+.rc-pick small { font-size: 12.5px; color: var(--muted); }
+.rc-thumb { position: relative; display: grid; gap: 6px; height: 132px; padding: 0 0 10px; border-radius: 10px; overflow: hidden; background: #fffdf8; border: 1px solid #E3E8E2; align-content: start; }
+.rc-thumb i { display: block; height: 30px; background: linear-gradient(135deg, #0B2F23, #14513a); }
+.rc-thumb b { justify-self: end; width: 46%; height: 22px; margin: 4px 10px 0; border-radius: 8px; background: #EAF5EE; border: 1px solid #CFE4D6; }
+.rc-thumb em { margin: 0 10px; height: 8px; border-radius: 4px; background: #FBF4E4; border-left: 3px solid #E3A83A; }
+.rc-thumb span { margin: 0 10px; height: 5px; border-radius: 3px; background: #E3E8E2; }
+.rc-thumb span:nth-of-type(2) { width: 70%; } .rc-thumb span:nth-of-type(3) { width: 50%; }
+.rc-thumb u { justify-self: end; width: 34%; height: 10px; margin: 2px 10px 0; border-radius: 4px; background: #0B2F23; }
+.rc-thumb-safi { background: #fff; } .rc-thumb-safi i { height: 4px; background: #1F6B3A; margin-bottom: 20px; }
+.rc-thumb-safi b { background: #F2F5F1; border: 0; border-left: 3px solid #1F6B3A; border-radius: 0; }
+.rc-thumb-safi em { background: transparent; border-left: 0; border-top: 1px solid #E3E8E2; border-bottom: 1px solid #E3E8E2; border-radius: 0; }
+.rc-thumb-safi u { background: transparent; border-top: 2px solid #10231a; border-bottom: 3px double #10231a; border-radius: 0; }
+.rc-thumb-rasmi { outline: 1.5px solid #0B2F23; outline-offset: -5px; box-shadow: inset 0 0 0 7px #fffdf8, inset 0 0 0 8px #B98A2E; }
+.rc-thumb-rasmi i { width: 22px; height: 22px; justify-self: center; margin-top: 12px; border-radius: 6px; }
+.rc-thumb-rasmi b { justify-self: center; width: 50%; height: 6px; background: #B98A2E; border: 0; margin-top: 0; }
+.rc-thumb-rasmi em { background: transparent; border-left: 0; border-bottom: 1px dotted #8a7a5c; border-radius: 0; }
+.rc-thumb-rasmi u { background: transparent; border-bottom: 3px double #0B2F23; border-radius: 0; }
+.rc-thumb-rasmi::after { content: ''; position: absolute; left: 34%; bottom: 8px; width: 30px; height: 30px; border-radius: 50%; border: 2px solid #1F6B3A; opacity: .7; }
+/* Risiti ya ada ya CoopLink */
+.rc-msg, .rc-books { display: flex; gap: 10px; align-items: flex-start; margin: 10px 28px 0; padding: 11px 14px; border-radius: 12px; font-size: 13.5px; }
+.rc-msg { background: #EAF5EE; color: #1F4A30; } .rc-msg svg, .rc-books svg { width: 16px; height: 16px; flex: none; margin-top: 2px; }
+.rc-books { background: #F3F6FB; color: #23344d; align-items: center; } .rc-books span { flex: 1; }
+.rc-party small { font-family: var(--font-body, inherit); font-size: 14px; font-weight: 500; }
+@media (max-width: 640px) { .rc-msg, .rc-books { margin: 10px 18px 0; flex-wrap: wrap; } }
+
+/* ---------- v2.7.1: WATERMARK YA MAJANI YA TUMBAKU kwenye risiti (kama menyu ya pembeni) ---------- */
+.rc { isolation: isolate; }
+.rc-leaves { position: absolute; inset: 0; z-index: 0; border-radius: inherit; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='none' stroke='%231F6B3A' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='rotate%28-18 50 50%29' stroke-opacity='1' stroke-width='0.9'%3E%3Cpath d='M50 92C20 72 18 34 50 8C82 34 80 72 50 92Z'/%3E%3Cpath d='M50 100V14M50 74 31 61M50 74 69 61M50 56 29 43M50 56 71 43M50 38 37 29M50 38 63 29'/%3E%3C/g%3E%3C/svg%3E"), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150' viewBox='0 0 150 150' fill='none' stroke='%231F6B3A' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate%288 14%29 rotate%28-28 50 50%29 scale%28.62%29' stroke-opacity='1' stroke-width='1.6'%3E%3Cpath d='M50 92C20 72 18 34 50 8C82 34 80 72 50 92Z'/%3E%3Cpath d='M50 100V14M50 74 31 61M50 74 69 61M50 56 29 43M50 56 71 43M50 38 37 29M50 38 63 29'/%3E%3C/g%3E%3Cg transform='translate%2886 78%29 rotate%2834 50 50%29 scale%28.42%29' stroke-opacity='0.75' stroke-width='1.8'%3E%3Cpath d='M50 92C20 72 18 34 50 8C82 34 80 72 50 92Z'/%3E%3Cpath d='M50 100V14M50 74 31 61M50 74 69 61M50 56 29 43M50 56 71 43M50 38 37 29M50 38 63 29'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat, repeat; background-position: center 58%, 0 0; background-size: min(420px, 62%), 150px 150px; opacity: .11; }
+.rc-head { position: relative; }
+.rc-head::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .12; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150' viewBox='0 0 150 150' fill='none' stroke='%23E3A83A' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate%288 14%29 rotate%28-28 50 50%29 scale%28.62%29' stroke-opacity='1' stroke-width='1.6'%3E%3Cpath d='M50 92C20 72 18 34 50 8C82 34 80 72 50 92Z'/%3E%3Cpath d='M50 100V14M50 74 31 61M50 74 69 61M50 56 29 43M50 56 71 43M50 38 37 29M50 38 63 29'/%3E%3C/g%3E%3Cg transform='translate%2886 78%29 rotate%2834 50 50%29 scale%28.42%29' stroke-opacity='0.75' stroke-width='1.8'%3E%3Cpath d='M50 92C20 72 18 34 50 8C82 34 80 72 50 92Z'/%3E%3Cpath d='M50 100V14M50 74 31 61M50 74 69 61M50 56 29 43M50 56 71 43M50 38 37 29M50 38 63 29'/%3E%3C/g%3E%3C/svg%3E"); background-size: 120px 120px; }
+.rc-head > * { position: relative; z-index: 1; }
+.rc-theme-safi .rc-head::after, .rc-theme-rasmi .rc-head::after { display: none; }
+.rc-theme-safi .rc-leaves { opacity: .1; }
+.rc-theme-rasmi .rc-leaves { opacity: .1; }
+.rc-theme-rasmi .rc-wm span { opacity: .02; }
+.rc-a5 .rc-leaves { background-size: min(300px, 62%), 120px 120px; }

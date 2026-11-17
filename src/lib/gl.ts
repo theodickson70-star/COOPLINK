@@ -69,6 +69,7 @@ export const DEFAULT_CHART: ChartRow[] = [
   { code: '5260', name: 'Gharama za benki', type: 'EXPENSE' },
   { code: '5270', name: 'Upakiaji na usafirishaji wa pembejeo', type: 'EXPENSE' },
   { code: '5280', name: 'Mafunzo', type: 'EXPENSE' },
+  { code: '5285', name: 'Ada ya mfumo wa kidijitali (CoopLink)', type: 'EXPENSE' },
   { code: '5060', name: 'Upotevu / uharibifu wa stoo', type: 'EXPENSE' },
   { code: '5700', name: 'Hasara ya kubadilisha fedha (dola)', type: 'EXPENSE' },
   { code: '5900', name: 'Uchakavu wa mali', type: 'EXPENSE' },
@@ -83,7 +84,7 @@ export const CATEGORY_GL: Record<string, string> = {
   LOAN_RECEIVED: '2500', GRANT: '4300', INTEREST: '4400', OTHER_INCOME: '4900', ASSET_SALE: '5950',
   // matumizi
   SALARIES: '5100', TRANSPORT: '5200', OFFICE: '5210', UTILITIES: '5220', MEETINGS: '5230', REPAIRS: '5240', TAXES: '5250',
-  BANK_CHARGES: '5260', INPUT_HANDLING: '5270', TRAINING: '5280', OTHER_EXPENSE: '5990',
+  BANK_CHARGES: '5260', INPUT_HANDLING: '5270', TRAINING: '5280', SYSTEM_FEE: '5285', OTHER_EXPENSE: '5990',
   // malipo
   PAYMENT: '2200', CASH_LOAN: '1200', SUPPLIER: '2100', TRANSFER: '1990', REMITTANCE: '2320',
 };

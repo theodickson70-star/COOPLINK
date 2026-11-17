@@ -52,7 +52,7 @@ export interface Amcos {
   id: string; name: string; code: string; district?: string | null; training?: boolean;
   // Chapa ya nyaraka (Mipangilio → Profaili / Nyaraka)
   regNumber?: string | null; region?: string | null; ward?: string | null; village?: string | null; phone?: string | null; email?: string | null;
-  postalAddress?: string | null; tin?: string | null; logo?: string | null; docFooter?: string | null; docShowBank?: boolean;
+  postalAddress?: string | null; tin?: string | null; logo?: string | null; docFooter?: string | null; docShowBank?: boolean; docTheme?: 'KIJANI' | 'SAFI' | 'RASMI';
   mainBank?: { name: string; bankName: string | null; accountNumber: string | null } | null;
   /** Utaratibu wa mikopo ya pembejeo */
   creditMode?: 'GROUP' | 'INDIVIDUAL';

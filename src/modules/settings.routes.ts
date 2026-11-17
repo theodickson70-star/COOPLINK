@@ -141,7 +141,7 @@ settingsRouter.get('/', ah(async (req, res) => {
     farmers: { portal: a.farmerPortal, members: members[0]?.n ?? 0, lastMemberNo: lastMember[0]?.no ?? null, code: a.code },
     finance, stock, sms,
     creditMode: a.creditMode, canEditCreditMode: req.auth!.role === 'AMCOS_ADMIN',
-    docs: { footer: a.docFooter, showBank: a.docShowBank, bank: main ? { name: main.name, bankName: main.bankName, accountNumber: main.accountNumber } : null },
+    docs: { footer: a.docFooter, showBank: a.docShowBank, theme: a.docTheme, bank: main ? { name: main.name, bankName: main.bankName, accountNumber: main.accountNumber } : null },
     recent: acc.edit.profile || acc.edit.finance || acc.edit.docs ? recent : [],
   });
 }));
@@ -244,17 +244,18 @@ settingsRouter.put('/credit-mode', ah(async (req, res) => {
 // ------------------------------ NYARAKA (Meneja / Mhasibu) ------------------------------
 settingsRouter.put('/docs', ah(async (req, res) => {
   if (!settingsAccess(req.auth!).edit.docs) throw forbidden('Ni Meneja au Mhasibu pekee wanaoweza kubadilisha nyaraka');
-  const b = z.object({ footer: txt(200), showBank: z.boolean().optional(), logo: logoSchema }).strict().parse(req.body);
+  const b = z.object({ footer: txt(200), showBank: z.boolean().optional(), logo: logoSchema, theme: z.enum(['KIJANI', 'SAFI', 'RASMI']).optional() }).strict().parse(req.body);
   const amcosId = await resolveWriteAmcosId(req);
-  const before = await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId), columns: { docFooter: true, docShowBank: true, logo: true } });
+  const before = await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId), columns: { docFooter: true, docShowBank: true, logo: true, docTheme: true } });
   if (!before) throw notFound('Chama');
   const patch = {
     ...(b.footer !== undefined ? { docFooter: b.footer } : {}), ...(b.showBank !== undefined ? { docShowBank: b.showBank } : {}),
-    ...(b.logo !== undefined ? { logo: b.logo } : {}),
+    ...(b.logo !== undefined ? { logo: b.logo } : {}), ...(b.theme !== undefined ? { docTheme: b.theme } : {}),
   };
   if (!Object.keys(patch).length) throw badRequest('Hakuna kilichobadilishwa');
   // Picha haiwekwi yote kwenye audit — ukubwa wake tu
-  const shot = (o: { docFooter?: string | null; docShowBank?: boolean; logo?: string | null }) => ({
+  const shot = (o: { docFooter?: string | null; docShowBank?: boolean; logo?: string | null; docTheme?: string }) => ({
+    ...('docTheme' in o ? { docTheme: o.docTheme } : {}),
     ...('docFooter' in o ? { docFooter: o.docFooter } : {}), ...('docShowBank' in o ? { docShowBank: o.docShowBank } : {}),
     ...('logo' in o ? { logo: o.logo ? `[nembo · ${Math.round(o.logo.length * 0.75 / 1024)}KB]` : null } : {}),
   });

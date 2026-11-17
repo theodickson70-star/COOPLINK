@@ -14,7 +14,7 @@ import { Icon, type IconName } from './icons';
 import { LogoMark } from './Logo';
 
 export interface Notif {
-  type: 'ANNOUNCEMENT' | 'SUPPORT'; id: string; kind: string; title: string; body: string; at: string; unread: boolean;
+  type: 'ANNOUNCEMENT' | 'SUPPORT' | 'RECEIPT'; id: string; kind: string; title: string; body: string; at: string; unread: boolean;
   author?: string | null; status?: string;
 }
 const KIND: Record<string, { label: string; icon: IconName; tone: string }> = {
@@ -23,6 +23,7 @@ const KIND: Record<string, { label: string; icon: IconName; tone: string }> = {
   EXPIRY_REMINDER: { label: 'Kumbusho la ada', icon: 'card', tone: 'red' },
   MARKETING: { label: 'Habari', icon: 'megaphone', tone: 'blue' },
   SUPPORT: { label: 'Jibu la msaada', icon: 'inbox', tone: 'blue' },
+  FEE_RECEIPT: { label: 'Risiti ya CoopLink', icon: 'receipt', tone: 'green' },
 };
 const POLL_MS = 90_000;
 
@@ -41,7 +42,7 @@ export function NotificationBell() {
   const loc = useLocation();
   const [items, setItems] = useState<Notif[]>([]);
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<'ALL' | 'ANNOUNCEMENT' | 'SUPPORT'>('ALL');
+  const [tab, setTab] = useState<'ALL' | 'ANNOUNCEMENT' | 'SUPPORT' | 'RECEIPT'>('ALL');
   const [view, setView] = useState<Notif | null>(null);
   const [toast, setToast] = useState<Notif | null>(null);
   const [ring, setRing] = useState(false);
@@ -85,6 +86,10 @@ export function NotificationBell() {
   const openItem = (n: Notif) => {
     setOpen(false); setToast(null);
     if (n.type === 'SUPPORT') { markRead(n); nav(`/support/${n.id}`); return; }
+    if (n.type === 'RECEIPT') {
+      if (n.unread) { markRead(n); void api(`/notifications/receipts/${n.id}/read`, { method: 'POST' }).catch(() => {}); }
+      nav(`/billing/receipts/${n.id}`); return;
+    }
     setView(n);
     if (n.unread) { markRead(n); void api(`/notifications/announcements/${n.id}/read`, { method: 'POST' }).catch(() => {}); }
   };
@@ -108,7 +113,8 @@ export function NotificationBell() {
             {!!unread && <button type="button" className="nb-link" onClick={readAll}>{t('Weka zote zimesomwa')}</button>}
           </div>
           <div className="nb-tabs" role="tablist">
-            {([['ALL', 'Zote'], ['ANNOUNCEMENT', 'Kutoka CoopLink'], ['SUPPORT', 'Tiketi']] as const).map(([k, l]) => {
+            {([['ALL', 'Zote'], ['ANNOUNCEMENT', 'Kutoka CoopLink'], ['SUPPORT', 'Tiketi'], ['RECEIPT', 'Risiti']] as const)
+              .filter(([k]) => k !== 'RECEIPT' || items.some((i) => i.type === 'RECEIPT')).map(([k, l]) => {
               const n = items.filter((i) => i.unread && (k === 'ALL' || i.type === k)).length;
               return <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{t(l)}{!!n && <em>{n}</em>}</button>;
             })}
@@ -143,8 +149,8 @@ export function NotificationBell() {
       {toast && !open && createPortal(
         <div className="nb-toast" role="status">
           <span className="nb-toast-logo"><LogoMark size={30} ring={false} /></span>
-          <span className="nb-t"><span className="nb-meta">{t('Ujumbe mpya kutoka CoopLink')}</span><b>{toast.title}</b></span>
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => openItem(toast)}>{t('Soma')}</button>
+          <span className="nb-t"><span className="nb-meta">{toast.type === 'RECEIPT' ? t('Risiti mpya ya malipo') : t('Ujumbe mpya kutoka CoopLink')}</span><b>{toast.title}</b></span>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => openItem(toast)}>{toast.type === 'RECEIPT' ? t('Fungua risiti') : t('Soma')}</button>
           <button type="button" className="nb-x" aria-label={t('Funga')} onClick={() => setToast(null)}>×</button>
         </div>, document.body,
       )}

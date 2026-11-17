@@ -127,6 +127,7 @@ export const amcos = pgTable('amcos', {
   // Nyaraka (risiti, vocha, taarifa)
   docFooter: text(),
   docShowBank: boolean().notNull().default(false),
+  docTheme: text().notNull().default('KIJANI'), // v2.7: muundo wa risiti — KIJANI | SAFI | RASMI
   // Chama cha mafunzo: Owner anaweza kufuta data yote ya mafunzo mara moja (watumishi wanabaki); kisha kinakuwa hai
   training: boolean().notNull().default(false),
   trainingResetAt: timestamp({ withTimezone: true }),
@@ -1257,6 +1258,15 @@ export const announcementReads = pgTable('announcement_reads', {
   userId: uuid().notNull().references(() => users.id, { onDelete: 'cascade' }),
   readAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
 }, (t) => [uniqueIndex('announcement_reads_unique').on(t.announcementId, t.userId), index().on(t.userId)]);
+
+/** v2.7: "imesomwa" kwa arifa zisizo matangazo (mf. risiti za ada ya CoopLink) — kwa kila mtumiaji */
+export const notificationReads = pgTable('notification_reads', {
+  id: id(),
+  userId: uuid().notNull().references(() => users.id, { onDelete: 'cascade' }),
+  kind: text().notNull(),     // FEE_RECEIPT
+  refId: uuid().notNull(),
+  readAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex('notification_reads_unique').on(t.userId, t.kind, t.refId)]);
 
 /**
  * v2.4: kiungo salama cha taarifa ya mkulima kwa SMS (bila kuingia). Token haihifadhiwi — hash yake tu (sha256).

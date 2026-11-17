@@ -18,6 +18,7 @@ import { addDays, nextInvoiceNo, today } from './subscriptions';
 import { createCollection, fromMinor, getCollection, teepayConfig, TeePayError, toMinor, type Collection, type CollectionCreate } from './teepay';
 import { ablinerConfig, ablinerStatus, createDeposit, findDeposit, type AblinerTxn, type DepositCreate } from './abliner';
 import { badRequest, conflict, notFound } from './errors';
+import { recordFeeExpense } from './fee-expense';
 
 const F = schema.platformFees;
 const CN = schema.platformControlNumbers; // historia tu (control numbers zimeachwa)
@@ -293,6 +294,8 @@ export async function syncMobilePayment(mpId: string, hint?: Remote) {
       const [fee] = await tx.update(F).set({ paid: fmt2(paid), status: f.status === 'WAIVED' ? 'WAIVED' : full ? 'PAID' : 'PARTIAL', paidAt: full ? new Date() : f.paidAt, updatedAt: new Date() })
         .where(eq(F.id, f.id)).returning();
       await sysAudit(tx, 'FEE_PAYMENT_VERIFIED', f.amcosId, f.id, { invoiceNo: row.invoiceNo, amount, ref, provider: mp.provider, paid: fee.paid, status: fee.status });
+      // v2.7: matumizi kwenye vitabu vya chama (akaunti ya simu iliyolipa ikijulikana -> imekamilika)
+      await recordFeeExpense(tx, row, { payerPhone: mp.phone, userId: mp.createdById });
       if (fee.kind === 'ENTRANCE' && fee.status === 'PAID') await ensureSeasonFee(tx, fee.amcosId);
     }
     const [u] = await tx.update(MP).set({ status: 'SUCCEEDED', statusDetail: null, channel: remote.channel ?? null, reference: cur.reference ?? remote.reference ?? null, paidAt: new Date(), platformPaymentId: row.id, lastError: null, lastSyncedAt: new Date() })
