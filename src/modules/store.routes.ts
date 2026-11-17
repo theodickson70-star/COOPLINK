@@ -19,6 +19,8 @@ import { stockBalance } from '../lib/stock';
 import { currentSeason } from './seasons.routes';
 import { today as darToday } from '../lib/subscriptions';  // tarehe ya Tanzania, si UTC
 import { toCsv } from './owner/common';
+import { stockOverview } from '../lib/stock-overview';
+import { movementFilter, movementWhere } from './inputs.routes';
 
 export const storeRouter = Router();
 const S = schema.suppliers;
@@ -198,6 +200,37 @@ storeRouter.post('/stock-count', requireAmcosPerm('stock.adjust.request'), ah(as
 }));
 
 // ------------------------------ MUHTASARI NA RIPOTI ------------------------------
+/** v2.8: hali ya stoo — zilizoisha, zinazokaribia kuisha, siku zilizobaki, thamani na mwenendo */
+storeRouter.get('/overview', requireAmcosPerm('stock.read'), ah(async (req, res) => {
+  const { days } = z.object({ days: z.coerce.number().int().min(7).max(90).default(30) }).parse(req.query);
+  const season = await currentSeason();
+  if (!season) throw notFound('Msimu');
+  const amcosId = await resolveWriteAmcosId(req);
+  res.json({ season: { id: season.id, name: season.name }, ...(await stockOverview(amcosId, season.id, days)) });
+}));
+
+/** v2.8: mienendo ya stoo (inayoingia / inayotoka) kwa Excel — vichujio vilevile vya ukurasa */
+storeRouter.get('/movements.csv', requireAmcosPerm('reports.stock'), ah(async (req, res) => {
+  const q = movementFilter.parse(req.query);
+  const rows = await db.select({
+    at: moves.createdAt, item: items.name, unit: items.unit, type: moves.type, quantity: moves.quantity, reference: moves.reference,
+    batchNo: moves.batchNo, notes: moves.notes, by: schema.users.fullName,
+    member: sql<string | null>`(select m.first_name || ' ' || m.last_name || ' (' || m.member_no || ')' from input_issues ii join members m on m.id = ii.member_id where ii.id = ${moves.inputIssueId})`,
+  }).from(moves).innerJoin(items, eq(items.id, moves.inputItemId)).leftJoin(schema.users, eq(schema.users.id, moves.createdById))
+    .where(movementWhere(req, q)).orderBy(desc(moves.createdAt)).limit(20000);
+  const L: Record<string, string> = { RECEIPT: 'Kupokea', ISSUE: 'Kutoa', RETURN: 'Kurudishwa', ADJUSTMENT: 'Marekebisho', DAMAGE: 'Zimeharibika', EXPIRY: 'Muda umeisha' };
+  const csv = toCsv([
+    ['Tarehe', 'Bidhaa', 'Kipimo', 'Aina', 'Ingia', 'Toka', 'Kumbukumbu', 'Batch', 'Mkulima', 'Aliyefanya', 'Maelezo'],
+    ...rows.map((r) => {
+      const n = Number(r.quantity);
+      return [new Date(r.at).toLocaleString('sv-SE', { timeZone: 'Africa/Dar_es_Salaam' }), r.item, r.unit, L[r.type] ?? r.type, n > 0 ? r.quantity : '', n < 0 ? String(-n) : '', r.reference ?? '', r.batchNo ?? '', r.member ?? '', r.by ?? '', r.notes ?? ''];
+    }),
+  ]);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="stoo-ingia-toka-${darToday()}.csv"`);
+  res.send(csv);
+}));
+
 storeRouter.get('/expiring', requireAmcosPerm('stock.read'), ah(async (req, res) => {
   const { days } = z.object({ days: z.coerce.number().int().min(1).max(365).default(60) }).parse(req.query);
   const rows = await db.select({

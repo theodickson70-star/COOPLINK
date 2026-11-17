@@ -2887,3 +2887,41 @@ a.card:hover, button.card:hover, .card.clickable:hover { transform: translateY(-
 .rc-theme-rasmi .rc-leaves { opacity: .1; }
 .rc-theme-rasmi .rc-wm span { opacity: .02; }
 .rc-a5 .rc-leaves { background-size: min(300px, 62%), 120px 120px; }
+
+/* ---------- v2.8: STOO — hali, tahadhari, inayoingia/inayotoka ---------- */
+.stk-kpis { margin-bottom: 14px; }
+.stk-kpi { all: unset; display: block; cursor: pointer; border-radius: var(--radius, 16px); }
+.stk-kpi:focus-visible { outline: 3px solid var(--gold); }
+.stk-kpi .card { height: 100%; transition: transform .15s; } .stk-kpi:hover .card { transform: translateY(-2px); }
+.stk-io b { color: #1F6B3A; } .stk-io i { font-style: normal; color: #B07B12; margin-left: 8px; }
+.stk-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.stk-bar .seg button em { font-style: normal; margin-left: 6px; font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--line); color: var(--head); }
+.stk-bar .seg button em.bad { background: #FBE3DE; color: #A3261A; }
+.stk-bar .select, .stk-bar .input { width: auto; min-width: 150px; }
+.stk-search { flex: 1; min-width: 180px !important; }
+.stk-presets { display: inline-flex; gap: 10px; }
+.stk-pill { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.stk-pill.st-out { background: #FBE3DE; color: #A3261A; } .stk-pill.st-low { background: #FFF1D6; color: #8A5A00; }
+.stk-pill.st-soon { background: #FFF6E3; color: #9A6A10; } .stk-pill.st-ok { background: #E3F2E8; color: #1F6B3A; } .stk-pill.st-new { background: var(--line-2); color: var(--muted); }
+.stk-row.st-out td:first-child { box-shadow: inset 4px 0 0 #C2483A; } .stk-row.st-low td:first-child, .stk-row.st-soon td:first-child { box-shadow: inset 4px 0 0 #E3A83A; }
+.stk-meter { position: relative; height: 6px; width: 110px; margin: 6px 0 3px auto; border-radius: 99px; background: var(--line-2); overflow: hidden; }
+.stk-meter i { position: absolute; inset: 0 auto 0 0; border-radius: 99px; background: #2FA36B; }
+.st-low .stk-meter i, .st-soon .stk-meter i { background: #E3A83A; } .st-out .stk-meter i { background: #C2483A; }
+.stk-meter b { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--head); opacity: .5; }
+.stk-in { color: #1F6B3A; font-weight: 600; } .stk-out { color: #B07B12; font-weight: 600; }
+.stk-type { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 12px; font-weight: 700; }
+.stk-type.in { background: #E3F2E8; color: #1F6B3A; } .stk-type.out { background: #FFF1D6; color: #8A5A00; }
+.stk-sum { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 4px 16px 12px; }
+.stk-sum > div { display: flex; gap: 10px; align-items: center; padding: 10px 14px; border-radius: 14px; min-width: 190px; }
+.stk-sum > div svg { width: 22px; height: 22px; } .stk-sum b { display: block; font-size: 18px; font-family: var(--font-head); } .stk-sum small { color: var(--muted); font-size: 12px; }
+.stk-sum .in { background: #E9F5EE; color: #1F6B3A; } .stk-sum .out { background: #FDF3E1; color: #8A5A00; }
+.stk-sum p { margin: 0; font-size: 12.5px; flex: 1; min-width: 200px; }
+.stk-trend { padding: 14px 18px 10px; margin-bottom: 14px; }
+.stk-trend-h { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 13.5px; margin-bottom: 10px; }
+.stk-trend-h span { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12.5px; }
+.stk-trend-h i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-left: 8px; } .stk-trend-h i.in { background: #2FA36B; } .stk-trend-h i.out { background: #E3A83A; }
+.stk-bars { display: flex; align-items: flex-end; gap: 3px; height: 70px; }
+.stk-day { flex: 1; display: flex; align-items: flex-end; gap: 1px; height: 100%; min-width: 0; }
+.stk-day span { flex: 1; border-radius: 3px 3px 0 0; min-height: 1px; } .stk-day .in { background: #2FA36B; } .stk-day .out { background: #E3A83A; }
+.stk-trend-x { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+@media (max-width: 720px) { .stk-bar .select, .stk-bar .input { flex: 1 1 140px; } .stk-meter { margin-left: 0; } }

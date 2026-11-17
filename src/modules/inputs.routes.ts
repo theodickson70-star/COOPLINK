@@ -197,19 +197,46 @@ inputsRouter.get(
   '/stock/movements',
   requireAmcosPerm('stock.read'),
   ah(async (req, res) => {
-    const q = paginationQuery.extend({ seasonId: z.string().uuid().optional(), inputItemId: z.string().uuid().optional() }).parse(req.query);
-    const where = and(
-      amcosScope(req, moves.amcosId),
-      q.seasonId ? eq(moves.seasonId, q.seasonId) : undefined,
-      q.inputItemId ? eq(moves.inputItemId, q.inputItemId) : undefined,
-    );
-    const [rows, [{ total }]] = await Promise.all([
-      db.select().from(moves).where(where).orderBy(desc(moves.createdAt)).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
+    const q = paginationQuery.merge(movementFilter).parse(req.query);
+    const where = movementWhere(req, q);
+    // v2.8: kila mwendo na jina la bidhaa, aliyefanya, na mkulima (ugawaji)
+    const [rows, [{ total }], [tot]] = await Promise.all([
+      db.select({
+        id: moves.id, inputItemId: moves.inputItemId, type: moves.type, quantity: moves.quantity, reference: moves.reference, notes: moves.notes,
+        batchNo: moves.batchNo, expiryDate: moves.expiryDate, unitCost: moves.unitCost, createdAt: moves.createdAt,
+        itemName: items.name, unit: items.unit, by: schema.users.fullName,
+        member: sql<string | null>`(select m.first_name || ' ' || m.last_name || ' · ' || m.member_no from input_issues ii join members m on m.id = ii.member_id where ii.id = ${moves.inputIssueId})`,
+        supplier: sql<string | null>`(select s.name from suppliers s where s.id = ${moves.supplierId})`,
+      }).from(moves).innerJoin(items, eq(items.id, moves.inputItemId)).leftJoin(schema.users, eq(schema.users.id, moves.createdById))
+        .where(where).orderBy(desc(moves.createdAt)).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
       db.select({ total: count() }).from(moves).where(where),
+      db.select({
+        inQty: sql<string>`coalesce(sum(${moves.quantity}) filter (where ${moves.quantity} > 0), 0)`,
+        outQty: sql<string>`coalesce(-sum(${moves.quantity}) filter (where ${moves.quantity} < 0), 0)`,
+        inCount: sql<number>`count(*) filter (where ${moves.quantity} > 0)::int`, outCount: sql<number>`count(*) filter (where ${moves.quantity} < 0)::int`,
+      }).from(moves).where(where),
     ]);
-    res.json(paged(rows, total, q.page, q.pageSize));
+    res.json({ ...paged(rows, total, q.page, q.pageSize), totals: tot });
   }),
 );
+
+/** v2.8: vichujio vya mienendo ya stoo (inayoingia / inayotoka) — vinatumika pia na ripoti ya CSV */
+export const movementFilter = z.object({
+  seasonId: z.string().uuid().optional(), inputItemId: z.string().uuid().optional(),
+  direction: z.enum(['IN', 'OUT']).optional(), type: z.enum(schema.stockMovementTypeEnum.enumValues).optional(),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+export function movementWhere(req: import('express').Request, q: z.infer<typeof movementFilter>) {
+  return and(
+    amcosScope(req, moves.amcosId),
+    q.seasonId ? eq(moves.seasonId, q.seasonId) : undefined,
+    q.inputItemId ? eq(moves.inputItemId, q.inputItemId) : undefined,
+    q.direction === 'IN' ? sql`${moves.quantity} > 0` : q.direction === 'OUT' ? sql`${moves.quantity} < 0` : undefined,
+    q.type ? eq(moves.type, q.type) : undefined,
+    q.from ? sql`(${moves.createdAt} at time zone 'Africa/Dar_es_Salaam')::date >= ${q.from}::date` : undefined,
+    q.to ? sql`(${moves.createdAt} at time zone 'Africa/Dar_es_Salaam')::date <= ${q.to}::date` : undefined,
+  );
+}
 
 const stockBody = z.object({
   seasonId: z.string().uuid().optional(),

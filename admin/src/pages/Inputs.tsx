@@ -1,21 +1,33 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api, apiDownload, type Paged } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
 import { CATEGORY_LABEL, date, dateTime, MOVE_LABEL, num, packsAndKg, tsh, UNIT_LABEL } from '../lib/format';
 import { useAuth } from '../lib/auth';
-import { Alert, Badge, Button, Empty, Loading, Modal, PageHead, Pager, SelectField, TextField } from '../components/ui';
+import { Alert, Badge, Button, Empty, Loading, Modal, PageHead, Pager, SelectField, Stat, TextField } from '../components/ui';
+import { Icon } from '../components/icons';
 import { Tabs } from '../components/owner-ui';
 import { ReceiveInputsModal } from '../components/ReceiveInputs';
 import { usd, useFx } from '../lib/fx';
 
 interface Item { id: string; name: string; category: string; unit: string; isActive: boolean; reorderLevel: string | null; packKg: string | null; looseKg: boolean }
 interface Price { id: string; inputItemId: string; unitPrice: string; unitPriceUsd: string | null }
+type StockStatus = 'OUT' | 'LOW' | 'SOON' | 'OK' | 'NEW';
+interface OvItem { id: string; name: string; unit: string; balance: number; received: number; issued: number; lost: number; inPeriod: number; outPeriod: number; avgDaily: number; daysLeft: number | null; suggestedLevel: number | null; value: number; status: StockStatus; lastIn: string | null; lastOut: string | null; reorderLevel: string | null }
+interface Overview { season: { name: string }; days: number; kpis: { items: number; out: number; low: number; soon: number; noLevel: number; value: number; movesIn: number; movesOut: number }; items: OvItem[]; daily: { day: string; ins: number; outs: number }[] }
+const ST: Record<StockStatus, { label: string; cls: string; rank: number }> = {
+  OUT: { label: 'Imeisha', cls: 'st-out', rank: 0 }, LOW: { label: 'Chini ya kiwango', cls: 'st-low', rank: 1 }, SOON: { label: 'Inakaribia kuisha', cls: 'st-soon', rank: 2 },
+  OK: { label: 'Inatosha', cls: 'st-ok', rank: 3 }, NEW: { label: 'Bado haijaingia', cls: 'st-new', rank: 4 },
+};
 interface Stock { inputItemId: string; received: string; issued: string; returned: string; adjusted: string; damaged: string; expired: string; balance: string; low: boolean }
 
 export function Inputs() {
   const { may } = useAuth();
-  const [tab, setTab] = useState<'stock' | 'expiring' | 'history'>('stock');
+  const [sp, setSp] = useSearchParams();
+  const [tab, setTab] = useState<'stock' | 'expiring' | 'history'>(sp.get('tab') === 'moves' ? 'history' : 'stock');
+  const [filter, setFilter] = useState<'all' | 'attention' | 'out' | 'nolevel'>(sp.get('f') === 'attention' ? 'attention' : 'all');
+  const [q, setQ] = useState('');
+  const ov = useFetch<Overview>('/store/overview', { days: 30 });
   const items = useFetch<{ data: Item[] }>('/inputs/items');
   const prices = useFetch<{ data: Price[] }>('/inputs/prices');
   const stock = useFetch<{ data: Stock[] }>('/inputs/stock');
@@ -23,13 +35,24 @@ export function Inputs() {
   const pending = useFetch<{ data: { id: string; requestNo: string; title: string; amount: string | null; reason: string | null; createdAt: string; requestedBy: string | null }[] }>(may('approvals.read') ? '/approvals' : null, { status: 'PENDING', type: 'STOCK_RECEIPT', pageSize: 50 });
   const [notice, setNotice] = useState<string | null>(null);
   const fx = useFx();
-  const reloadAll = () => { items.reload(); prices.reload(); stock.reload(); pending.reload(); };
+  const reloadAll = () => { items.reload(); prices.reload(); stock.reload(); pending.reload(); ov.reload(); };
   const done = (msg?: string) => { setModal(null); reloadAll(); setNotice(msg ?? null); };
 
   if (items.loading && !items.data) return <Loading />;
   // Chama cha USD: bei ni ya dola (bei bila dola = haijawekwa)
   const priceOf = new Map(prices.data?.data.filter((p) => !fx.usdMode || p.unitPriceUsd).map((p) => [p.inputItemId, fx.usdMode ? p.unitPriceUsd! : p.unitPrice]));
   const stockOf = new Map(stock.data?.data.map((s) => [s.inputItemId, s]));
+  const ovOf = new Map(ov.data?.items.map((x) => [x.id, x]));
+  const k = ov.data?.kpis;
+  const shownItems = (items.data?.data ?? []).filter((it) => {
+    const o = ovOf.get(it.id);
+    if (q && !it.name.toLowerCase().includes(q.toLowerCase())) return false;
+    if (filter === 'attention') return !!o && ['OUT', 'LOW', 'SOON'].includes(o.status);
+    if (filter === 'out') return o?.status === 'OUT';
+    if (filter === 'nolevel') return it.isActive && !it.reorderLevel && !!o && o.status !== 'NEW';
+    return true;
+  }).sort((a, b) => (ST[ovOf.get(a.id)?.status ?? 'OK'].rank - ST[ovOf.get(b.id)?.status ?? 'OK'].rank) || a.name.localeCompare(b.name));
+  const pickFilter = (f: typeof filter) => { setFilter(f); setTab('stock'); setSp(f === 'attention' ? { f } : {}, { replace: true }); };
 
   return (
     <>
@@ -51,33 +74,66 @@ export function Inputs() {
           ))}</tbody></table></div>
         </section>
       )}
-      <Tabs value={tab} onChange={setTab} items={[['stock', 'Salio la stoo'], ['expiring', 'Zinazoisha muda'], ['history', 'Historia ya bidhaa']]} />
+      {k && (
+        <div className="grid grid-4 stk-kpis">
+          <button type="button" className="stk-kpi" onClick={() => pickFilter('out')}><Stat label="Zimeisha stoo" icon="inputs" tone="red" value={<span className={k.out ? 'money-neg' : ''}>{k.out}</span>} hint={k.out ? 'Wakulima hawawezi kupewa — ingiza mzigo' : 'Hakuna bidhaa iliyoisha'} /></button>
+          <button type="button" className="stk-kpi" onClick={() => pickFilter('attention')}><Stat label="Zinakaribia kuisha" icon="activity" tone="gold" value={k.low + k.soon} hint={`${k.low} chini ya kiwango · ${k.soon} kwa kasi ya kutoka`} /></button>
+          <button type="button" className="stk-kpi" onClick={() => setTab('history')}><Stat label={`Mienendo · siku ${ov.data!.days}`} icon="arrowIn" tone="green" value={<span className="stk-io"><b>+{k.movesIn}</b> <i>−{k.movesOut}</i></span>} hint="Zilizoingia · zilizotoka" /></button>
+          <Stat label="Thamani ya stoo" icon="money" tone="blue" value={k.value ? tsh(k.value) : '—'} hint={k.value ? 'Kwa gharama ya kununua' : 'Gharama za mizigo hazijawekwa'} />
+        </div>
+      )}
+      {ov.data && <Trend daily={ov.data.daily} />}
+      <Tabs value={tab} onChange={setTab} items={[['stock', 'Salio la stoo'], ['history', 'Inayoingia na inayotoka'], ['expiring', 'Zinazoisha muda']]} />
 
       {tab === 'stock' && (
         <section className="card">
-          {items.data?.data.length === 0 ? <Empty>Bado hakuna pembejeo stoo. {may('stock.receive') ? 'Bonyeza "+ Ingiza pembejeo" — unaweza kuandika bidhaa mpya moja kwa moja kwenye fomu.' : 'Storekeeper ndiye anaingiza pembejeo.'}</Empty> : (
+          <div className="toolbar stk-bar">
+            <div className="seg" role="group" aria-label="Chuja bidhaa">
+              {([['all', 'Zote', k?.items], ['attention', 'Zinahitaji hatua', k ? k.out + k.low + k.soon : 0], ['out', 'Zimeisha', k?.out], ['nolevel', 'Bila kiwango cha chini', k?.noLevel]] as const).map(([f, l, n]) => (
+                <button key={f} type="button" className={filter === f ? 'on' : ''} onClick={() => pickFilter(f)}>{l}{!!n && <em className={f === 'attention' || f === 'out' ? 'bad' : ''}>{n}</em>}</button>
+              ))}
+            </div>
+            <input className="input stk-search" placeholder="Tafuta bidhaa…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Tafuta bidhaa" />
+          </div>
+          {items.data?.data.length === 0 ? <Empty>Bado hakuna pembejeo stoo. {may('stock.receive') ? 'Bonyeza "+ Ingiza pembejeo" — unaweza kuandika bidhaa mpya moja kwa moja kwenye fomu.' : 'Storekeeper ndiye anaingiza pembejeo.'}</Empty>
+          : !shownItems.length ? <Empty>{filter === 'attention' ? '✓ Hakuna bidhaa inayohitaji hatua — stoo iko sawa.' : 'Hakuna bidhaa inayolingana.'}</Empty> : (
             <div className="table-wrap">
-              <table className="table">
-                <thead><tr><th>Bidhaa</th><th className="num">Bei</th><th className="num">Zilizoingia</th><th className="num">Zilizotoka</th><th className="num">Zilizoharibika / muda</th><th className="num">Salio</th><th /></tr></thead>
+              <table className="table stk-table">
+                <thead><tr><th>Bidhaa</th><th>Hali</th><th className="num">Salio</th><th className="num">Ingia / toka (siku 30)</th><th>Itatosha</th><th className="num">Bei</th><th /></tr></thead>
                 <tbody>
-                  {items.data?.data.map((it) => {
+                  {shownItems.map((it) => {
                     const s = stockOf.get(it.id);
+                    const o = ovOf.get(it.id);
                     const price = priceOf.get(it.id);
+                    const st = ST[o?.status ?? 'NEW'];
+                    const level = it.reorderLevel ? Number(it.reorderLevel) : o?.suggestedLevel ?? null;
+                    const pct = o && level ? Math.min(100, Math.round((o.balance / (level * 3)) * 100)) : o && o.balance > 0 ? 100 : 0;
+                    const fmtQ = (v: number | string | undefined) => (it.packKg ? packsAndKg(String(v ?? 0), it.packKg) : num(v));
                     return (
-                      <tr key={it.id}>
+                      <tr key={it.id} className={`stk-row ${st.cls}`}>
                         <td>
                           <strong>{it.name}</strong> {!it.isActive && <Badge status="CANCELLED" label="Imesitishwa" />}
-                          <div className="muted" style={{ fontSize: 13 }}>{CATEGORY_LABEL[it.category]} · {UNIT_LABEL[it.unit]}{it.packKg ? ` wa kilo ${num(it.packKg)}` : ''}{it.reorderLevel ? ` · kiwango cha chini ${num(it.reorderLevel)}` : ''}</div>
+                          <div className="muted" style={{ fontSize: 13 }}>{CATEGORY_LABEL[it.category]} · {UNIT_LABEL[it.unit]}{it.packKg ? ` wa kilo ${num(it.packKg)}` : ''}</div>
                           {it.looseKg && <span className="badge badge-info" title="Inagawiwa kwa kilo pia (mf. vitalu)">Inagawiwa kwa kilo</span>}
                         </td>
+                        <td><span className={`stk-pill ${st.cls}`}>{st.label}</span></td>
+                        <td className="num">
+                          <strong className={o?.status === 'OUT' ? 'money-neg' : ''}>{fmtQ(o?.balance ?? s?.balance)}</strong>
+                          <div className="stk-meter" title={level ? `Kiwango cha chini: ${num(level)}` : ''}><i style={{ width: `${pct}%` }} />{level && <b style={{ left: '33.3%' }} />}</div>
+                          <div className="muted" style={{ fontSize: 12 }}>{it.reorderLevel ? `kiwango cha chini ${num(it.reorderLevel)}` : o?.suggestedLevel ? `pendekezo: kiwango ${num(o.suggestedLevel)}` : ''}</div>
+                        </td>
+                        <td className="num"><span className="stk-in">+{num(o?.inPeriod)}</span> <span className="stk-out">−{num(o?.outPeriod)}</span>
+                          <div className="muted" style={{ fontSize: 12 }}>msimu: ingia {num(o?.received ?? s?.received)} · toka {fmtQ(o?.issued ?? s?.issued)}{o?.lost ? ` · zimepotea ${num(o.lost)}` : ''}</div></td>
+                        <td>{o?.status === 'OUT' ? <span className="money-neg">Imeisha{o.lastOut ? ` ${date(o.lastOut)}` : ''}</span>
+                          : o?.daysLeft !== null && o?.daysLeft !== undefined ? <><b>≈ siku {o.daysLeft}</b><div className="muted" style={{ fontSize: 12 }}>{num(o.avgDaily)} kwa siku</div></>
+                          : <span className="muted">{o?.status === 'NEW' ? '—' : 'Haitoki kwa sasa'}</span>}
+                          {o?.lastIn && <div className="muted" style={{ fontSize: 12 }}>iliingia {date(o.lastIn)}</div>}</td>
                         <td className="num">{price ? (fx.usdMode ? <>{usd(price)}{fx.rate && <div className="muted" style={{ fontSize: 12 }}>≈ {tsh(Number(price) * fx.rate)}</div>}</> : tsh(price)) : <span className="badge badge-warn">Haijawekwa</span>}
                           {price && it.looseKg && it.packKg && <div className="muted" style={{ fontSize: 12 }}>{fx.usdMode ? usd(Number(price) / Number(it.packKg)) : tsh(Number(price) / Number(it.packKg))} kwa kilo</div>}</td>
-                        <td className="num">{num(s?.received)}</td>
-                        <td className="num">{it.packKg ? packsAndKg(s?.issued, it.packKg) : num(s?.issued)}</td>
-                        <td className="num">{num(Number(s?.damaged ?? 0) + Number(s?.expired ?? 0))}</td>
-                        <td className="num"><strong className={s?.low || Number(s?.balance ?? 0) <= 0 ? 'money-neg' : ''}>{it.packKg ? packsAndKg(s?.balance, it.packKg) : num(s?.balance)}</strong>{s?.low && <div><span className="badge badge-warn">Stoo ndogo</span></div>}</td>
                         <td className="num">
                           <span className="actions" style={{ justifyContent: 'flex-end' }}>
+                            {(o?.status === 'OUT' || o?.status === 'LOW' || o?.status === 'SOON') && may('stock.receive') && <Button size="sm" variant="gold" onClick={() => setModal({ kind: 'receive' })}>Ingiza mzigo</Button>}
+                            {may('products.manage') && !it.reorderLevel && o?.suggestedLevel && <Button size="sm" variant="secondary" onClick={() => setModal({ kind: 'item', item: { ...it, reorderLevel: String(o.suggestedLevel) } })}>Weka kiwango</Button>}
                             {may('stock.adjust.request') && <Button size="sm" variant="ghost" onClick={() => setModal({ kind: 'adjust', item: it })}>Omba marekebisho</Button>}
                             {may('prices.manage') && !price && <Button size="sm" variant="ghost" onClick={() => setModal({ kind: 'price', item: it })}>Weka bei</Button>}
                             {may('products.manage') && <Button size="sm" variant="ghost" onClick={() => setModal({ kind: 'item', item: it })}>Hariri</Button>}
@@ -90,10 +146,11 @@ export function Inputs() {
               </table>
             </div>
           )}
+          <p className="muted st-small" style={{ padding: '0 16px 12px' }}>Bidhaa isiyo na kiwango cha chini inapewa tahadhari ikibakiza chini ya siku 14 kwa kasi ya sasa ya kutoka. Weka kiwango cha chini (Hariri) ili kupata tahadhari mapema; mfumo unapendekeza mahitaji ya siku 14.</p>
         </section>
       )}
       {tab === 'expiring' && <Expiring />}
-      {tab === 'history' && <History items={items.data?.data ?? []} />}
+      {tab === 'history' && <History items={items.data?.data ?? []} canCsv={may('reports.stock')} />}
 
       {modal?.kind === 'item' && <ItemModal item={'item' in modal ? modal.item : undefined} onClose={() => setModal(null)} onDone={() => done()} />}
       {modal?.kind === 'price' && 'item' in modal && modal.item && <PriceModal item={modal.item} current={priceOf.get(modal.item.id)} usdMode={fx.usdMode} rate={fx.rate} onClose={() => setModal(null)} onDone={() => done('Bei imehifadhiwa')} />}
@@ -233,31 +290,80 @@ function Expiring() {
   );
 }
 
-function History({ items }: { items: Item[] }) {
-  const [itemId, setItemId] = useState('');
+function History({ items, canCsv }: { items: Item[]; canCsv: boolean }) {
+  const [f, setF] = useState({ itemId: '', direction: '' as '' | 'IN' | 'OUT', type: '', from: '', to: '' });
   const [page, setPage] = useState(1);
-  const { data, loading } = useFetch<Paged<{ id: string; inputItemId: string; type: string; quantity: string; reference: string | null; notes: string | null; batchNo: string | null; createdAt: string }>>(
-    '/inputs/stock/movements', { inputItemId: itemId || undefined, page, pageSize: 30 });
-  const nameOf = new Map(items.map((i) => [i.id, i.name]));
+  const params = { inputItemId: f.itemId || undefined, direction: f.direction || undefined, type: f.type || undefined, from: f.from || undefined, to: f.to || undefined };
+  const { data, loading } = useFetch<Paged<Move> & { totals: { inQty: string; outQty: string; inCount: number; outCount: number } }>('/inputs/stock/movements', { ...params, page, pageSize: 30 });
+  const set = (k: keyof typeof f) => (v: string) => { setF((x) => ({ ...x, [k]: v })); setPage(1); };
+  const tot = data?.totals;
+  const presets: [string, number][] = [['Leo', 0], ['Siku 7', 6], ['Siku 30', 29]];
+  const iso = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Africa/Dar_es_Salaam' });
   return (
     <section className="card">
-      <div className="toolbar">
-        <select className="select" aria-label="Bidhaa" value={itemId} onChange={(e) => { setItemId(e.target.value); setPage(1); }}>
+      <div className="toolbar stk-bar">
+        <div className="seg" role="group" aria-label="Mwelekeo">
+          {([['', 'Zote'], ['IN', '+ Zinazoingia'], ['OUT', '− Zinazotoka']] as const).map(([v, l]) => <button key={v} type="button" className={f.direction === v ? 'on' : ''} onClick={() => set('direction')(v)}>{l}</button>)}
+        </div>
+        <select className="select" aria-label="Bidhaa" value={f.itemId} onChange={(e) => set('itemId')(e.target.value)}>
           <option value="">Bidhaa zote</option>
           {items.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
         </select>
+        <select className="select" aria-label="Aina" value={f.type} onChange={(e) => set('type')(e.target.value)}>
+          <option value="">Aina zote</option>
+          {Object.entries(MOVE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <input className="input" type="date" aria-label="Kuanzia" value={f.from} max={f.to || undefined} onChange={(e) => set('from')(e.target.value)} />
+        <input className="input" type="date" aria-label="Mpaka" value={f.to} min={f.from || undefined} onChange={(e) => set('to')(e.target.value)} />
+        <span className="stk-presets">{presets.map(([l, d]) => <button key={l} type="button" className="nb-link" onClick={() => { setF((x) => ({ ...x, from: iso(new Date(Date.now() - d * 864e5)), to: iso(new Date()) })); setPage(1); }}>{l}</button>)}</span>
+        {canCsv && <Button size="sm" variant="secondary" onClick={() => apiDownload('/store/movements.csv', { query: params, filename: 'stoo-ingia-toka.csv' })}>Pakua (Excel)</Button>}
       </div>
-      {loading && !data ? <Loading /> : data?.data.length === 0 ? <Empty>Hakuna historia.</Empty> : (
+      {tot && (
+        <div className="stk-sum">
+          <div className="in"><Icon name="arrowIn" /><span><b>{num(tot.inQty)}</b><small>Zilizoingia · mara {tot.inCount}</small></span></div>
+          <div className="out"><Icon name="arrowOut" /><span><b>{num(tot.outQty)}</b><small>Zilizotoka · mara {tot.outCount}</small></span></div>
+          <p className="muted">{f.itemId ? 'Kwa kipimo cha bidhaa hii.' : 'Jumla inachanganya vipimo tofauti — chagua bidhaa moja kupata idadi halisi.'}</p>
+        </div>
+      )}
+      {loading && !data ? <Loading /> : data?.data.length === 0 ? <Empty>Hakuna mwendo wa stoo kwa vichujio hivi.</Empty> : (
         <div className="table-wrap"><table className="table">
-          <thead><tr><th>Wakati</th><th>Bidhaa</th><th>Aina</th><th className="num">Kiasi</th><th>Kumbukumbu</th></tr></thead>
-          <tbody>{data?.data.map((m) => (
-            <tr key={m.id}><td style={{ whiteSpace: 'nowrap' }}>{dateTime(m.createdAt)}</td><td>{nameOf.get(m.inputItemId) ?? '—'}</td><td>{MOVE_LABEL[m.type] ?? m.type}</td>
-              <td className={`num ${Number(m.quantity) < 0 ? 'money-neg' : ''}`}>{Number(m.quantity) > 0 ? '+' : ''}{num(m.quantity)}</td>
-              <td>{m.reference ?? ''}{m.batchNo ? ` · ${m.batchNo}` : ''}{m.notes ? <div className="muted" style={{ fontSize: 12 }}>{m.notes}</div> : null}</td></tr>
-          ))}</tbody>
+          <thead><tr><th>Wakati</th><th>Bidhaa</th><th>Aina</th><th className="num">Ingia</th><th className="num">Toka</th><th>Kwa / kutoka</th><th>Kumbukumbu</th><th>Aliyefanya</th></tr></thead>
+          <tbody>{data?.data.map((m) => {
+            const n = Number(m.quantity);
+            return (
+              <tr key={m.id}><td style={{ whiteSpace: 'nowrap' }}>{dateTime(m.createdAt)}</td>
+                <td><strong>{m.itemName}</strong><div className="muted" style={{ fontSize: 12 }}>{UNIT_LABEL[m.unit] ?? m.unit}</div></td>
+                <td><span className={`stk-type ${n > 0 ? 'in' : 'out'}`}>{MOVE_LABEL[m.type] ?? m.type}</span></td>
+                <td className="num stk-in">{n > 0 ? `+${num(n)}` : ''}</td>
+                <td className="num stk-out">{n < 0 ? `−${num(-n)}` : ''}</td>
+                <td>{m.member ?? m.supplier ?? '—'}</td>
+                <td>{m.reference ?? ''}{m.batchNo ? ` · batch ${m.batchNo}` : ''}{m.expiryDate ? <div className="muted" style={{ fontSize: 12 }}>muda unaisha {date(m.expiryDate)}</div> : null}{m.notes ? <div className="muted" style={{ fontSize: 12 }}>{m.notes}</div> : null}</td>
+                <td>{m.by ?? '—'}</td></tr>
+            );
+          })}</tbody>
         </table></div>
       )}
       <Pager meta={data?.meta} onPage={setPage} />
+    </section>
+  );
+}
+
+interface Move { id: string; inputItemId: string; type: string; quantity: string; reference: string | null; notes: string | null; batchNo: string | null; expiryDate: string | null; createdAt: string; itemName: string; unit: string; by: string | null; member: string | null; supplier: string | null }
+
+/** Mwenendo wa siku 30: mizigo iliyoingia (kijani) na iliyotoka (dhahabu) kila siku */
+function Trend({ daily }: { daily: { day: string; ins: number; outs: number }[] }) {
+  const max = Math.max(1, ...daily.map((d) => Math.max(d.ins, d.outs)));
+  const total = useMemo(() => daily.reduce((t, d) => t + d.ins + d.outs, 0), [daily]);
+  if (!total) return null;
+  return (
+    <section className="card stk-trend" aria-label="Mwenendo wa stoo siku 30">
+      <div className="stk-trend-h"><b>Mwenendo wa stoo · siku {daily.length}</b><span><i className="in" />Zilizoingia <i className="out" />Zilizotoka</span></div>
+      <div className="stk-bars">{daily.map((d) => (
+        <div key={d.day} className="stk-day" title={`${date(d.day)}: ingia ${d.ins} · toka ${d.outs}`}>
+          <span className="in" style={{ height: `${(d.ins / max) * 100}%` }} /><span className="out" style={{ height: `${(d.outs / max) * 100}%` }} />
+        </div>
+      ))}</div>
+      <div className="stk-trend-x"><span>{date(daily[0].day)}</span><span>Leo</span></div>
     </section>
   );
 }

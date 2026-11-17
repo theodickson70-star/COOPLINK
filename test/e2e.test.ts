@@ -231,6 +231,30 @@ test('pembejeo: bila bei / stoo haitoshi / watu wengi kwa wakati mmoja hawazidis
   assert.equal(bal.balance, '1.00');
   assert.equal(bal.issued, '9.00');
 
+  // v2.8: hali ya stoo — inakaribia kuisha (kwa kasi ya kutoka), chini ya kiwango, imeisha; inayoingia/inayotoka; arifa
+  const ovOf = async () => (await call('GET', '/api/v1/store/overview?days=30', clerk)).body.items.find((x: any) => x.id === id);
+  let o = await ovOf();
+  assert.equal(o.balance, 1); assert.equal(o.issued, 9); assert.equal(o.inPeriod, 10); assert.equal(o.outPeriod, 9);
+  assert.equal(o.status, 'SOON', 'Bila kiwango: kwa kasi ya kutoka itaisha ndani ya siku 14'); assert.ok(o.daysLeft !== null && o.daysLeft <= 14);
+  assert.ok(o.suggestedLevel > 0, 'Mfumo unapendekeza kiwango cha chini');
+  assert.equal((await call('PATCH', `/api/v1/inputs/items/${id}`, clerk, { reorderLevel: '5' })).status, 200);
+  o = await ovOf(); assert.equal(o.status, 'LOW');
+  let nb = (await call('GET', '/api/v1/notifications', clerk)).body.items.find((i: any) => i.type === 'STOCK' && i.itemId === id);
+  assert.ok(nb && nb.unread && nb.kind === 'STOCK_LOW', 'Storekeeper anapata tahadhari ya stoo');
+  assert.equal((await call('POST', `/api/v1/notifications/stock/${nb.id}/read`, clerk, {})).status, 200);
+  assert.equal((await call('GET', '/api/v1/notifications', clerk)).body.items.find((i: any) => i.type === 'STOCK' && i.itemId === id).unread, false);
+  const last = await call('POST', '/api/v1/input-issues', clerk, { memberId, lines: [{ inputItemId: id, quantity: 1 }] });
+  assert.equal((await decideFor(last.body.issue.id)).status, 200);
+  o = await ovOf(); assert.equal(o.status, 'OUT'); assert.equal(o.balance, 0);
+  nb = (await call('GET', '/api/v1/notifications', clerk)).body.items.find((i: any) => i.type === 'STOCK' && i.itemId === id);
+  assert.ok(nb.unread && nb.kind === 'STOCK_OUT', 'Mwendo mpya -> arifa inarudi kama "imeisha"');
+  const ovAll = (await call('GET', '/api/v1/store/overview', clerk)).body;
+  assert.ok(ovAll.kpis.out >= 1 && ovAll.daily.length === 30);
+  const ins = (await call('GET', `/api/v1/inputs/stock/movements?inputItemId=${id}&direction=IN`, clerk)).body;
+  const outs = (await call('GET', `/api/v1/inputs/stock/movements?inputItemId=${id}&direction=OUT`, clerk)).body;
+  assert.equal(ins.totals.inQty, '10.0000'); assert.equal(Number(outs.totals.outQty), 10); assert.equal(outs.totals.inCount, 0);
+  assert.ok(outs.data.every((m: any) => Number(m.quantity) < 0 && m.member), 'Inayotoka inaonyesha mkulima aliyepewa');
+
   assert.equal((await call('POST', '/api/v1/inputs/stock/adjustments', accountant, { inputItemId: id, quantity: -1, notes: 'imeharibika stoo' })).status, 403);
   const adj = await call('POST', '/api/v1/inputs/stock/adjustments', clerk, { inputItemId: id, quantity: -2, notes: 'imeharibika stoo' });
   assert.equal(adj.status, 400, 'marekebisho hayawezi kufanya stoo kuwa hasi');

@@ -14,6 +14,9 @@ import { ticketNo } from '../lib/support';
 import { unreadSql, visibleTickets } from './support.routes';
 import { tshText } from '../lib/money';
 import { feeReference, SYSTEM_FEE_CATEGORY } from '../lib/fee-expense';
+import { canAmcos } from '../lib/amcos-permissions';
+import { stockAlerts } from '../lib/stock-overview';
+import { currentSeason } from './seasons.routes';
 
 export const notificationsRouter = Router();
 const AN = schema.announcements, R = schema.announcementReads, T = schema.supportTickets;
@@ -21,6 +24,14 @@ const P = schema.platformPayments, NR = schema.notificationReads;
 const FEE_ROLES = ['AMCOS_ADMIN', 'ACCOUNTANT'];
 /** Risiti za ada ya CoopLink za siku 90 (chama cha mtumiaji) */
 const receiptScope = (req: Request) => and(eq(P.amcosId, req.auth!.amcosId!), eq(P.status, 'VERIFIED'), sql`${P.feeId} is not null`, sql`${P.paidAt} > now() - interval '90 days'`);
+/** v2.8: arifa za stoo — kwa watumishi wa chama wenye ruhusa ya kuona stoo (si Afisa Ushirika) */
+const seesStock = (req: Request) => !!req.auth!.amcosId && req.auth!.role !== 'COOP_OFFICER' && canAmcos(req.auth!, 'stock.read');
+async function stockItems(req: Request) {
+  if (!seesStock(req)) return [];
+  const season = await currentSeason();
+  if (!season) return [];
+  return stockAlerts(req.auth!.amcosId!, season.id);
+}
 const seesReceipts = (req: Request) => !!req.auth!.amcosId && FEE_ROLES.includes(req.auth!.role);
 
 /** Matangazo ya ndani ya mfumo ya siku 60 yanayomhusu mtumiaji huyu (chama chake au vyama vyote) */
@@ -73,7 +84,21 @@ notificationsRouter.get('/', ah(async (req, res) => {
     });
   }
 
+  // Stoo: zilizoisha / chini ya kiwango / zinakaribia kuisha. "Imesomwa" inafungwa kwenye mwendo wa mwisho wa bidhaa:
+  // ikiingia au kutoka tena na bado iko kwenye hali hiyo, arifa inarudi.
+  const alerts = await stockItems(req);
+  const seen = alerts.length ? new Set((await db.select({ ref: NR.refId }).from(NR).where(and(eq(NR.userId, uid), eq(NR.kind, 'STOCK_ALERT'),
+    inArray(NR.refId, alerts.map((a) => a.lastMoveId!).filter(Boolean))))).map((x) => x.ref)) : new Set<string>();
+  const unitTx = (u: string) => ({ BAG: 'mifuko', KG: 'kilo', LITRE: 'lita', PIECE: 'vipande', PACKET: 'pakiti', ROLL: 'roli', BOTTLE: 'chupa', SPOOL: 'spuli', METRE: 'mita' } as Record<string, string>)[u] ?? u.toLowerCase();
+  const stockN = alerts.filter((a) => a.lastMoveId).map((a) => ({
+    type: 'STOCK' as const, id: a.lastMoveId!, kind: `STOCK_${a.status}`, at: a.lastOut ?? a.lastIn ?? new Date().toISOString(), unread: !seen.has(a.lastMoveId!), itemId: a.id,
+    title: a.status === 'OUT' ? `${a.name} imeisha stoo` : a.status === 'LOW' ? `${a.name} iko chini ya kiwango` : `${a.name} inakaribia kuisha`,
+    body: a.status === 'OUT' ? `Salio ni 0. Wakulima hawawezi kupewa ${a.name} mpaka mzigo mpya uingie.`
+      : `Salio ${a.balance.toLocaleString('en-US')} ${unitTx(a.unit)}${a.reorderLevel ? ` (kiwango cha chini ${Number(a.reorderLevel).toLocaleString('en-US')})` : ''}${a.daysLeft !== null ? ` — inatosha takriban siku ${a.daysLeft}` : ''}.`,
+  }));
+
   const items = [
+    ...stockN,
     ...receipts.map((r) => ({ type: 'RECEIPT' as const, id: r.id, kind: 'FEE_RECEIPT', title: `Risiti ${r.no} · ${r.label}`, at: r.at, unread: !r.read,
       body: r.test ? `Malipo ya majaribio ya ${tshText(r.amount)} yamepokelewa.`
         : `${tshText(r.amount)} imepokelewa na CoopLink. ${r.doc ? (r.posted ? `Imeandikwa kwenye matumizi ya chama (${r.doc}).` : `Imeandikwa kwenye matumizi (${r.doc}) — chagua akaunti iliyolipa ili ikamilike.`) : ''}`.trim() })),
@@ -102,10 +127,22 @@ notificationsRouter.post('/receipts/:id/read', ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
-/** Weka zote zimesomwa (matangazo + majibu ya tiketi + risiti) */
+/** Kufungua arifa ya stoo = imesomwa (mpaka mwendo mwingine wa bidhaa hiyo) */
+notificationsRouter.post('/stock/:id/read', ah(async (req, res) => {
+  const { id } = uuidParam.parse(req.params);
+  if (!seesStock(req)) throw notFound('Arifa');
+  const [m] = await db.select({ id: schema.stockMovements.id }).from(schema.stockMovements).where(and(eq(schema.stockMovements.id, id), eq(schema.stockMovements.amcosId, req.auth!.amcosId!)));
+  if (!m) throw notFound('Arifa');
+  await db.insert(NR).values({ userId: req.auth!.userId, kind: 'STOCK_ALERT', refId: id }).onConflictDoNothing();
+  res.json({ ok: true });
+}));
+
+/** Weka zote zimesomwa (matangazo + majibu ya tiketi + risiti + stoo) */
 notificationsRouter.post('/read-all', ah(async (req, res) => {
   const ids = (await db.select({ id: AN.id }).from(AN).where(annScope(req))).map((x) => x.id);
   if (ids.length) await db.insert(R).values(ids.map((announcementId) => ({ announcementId, userId: req.auth!.userId }))).onConflictDoNothing();
+  const al = (await stockItems(req)).map((a) => a.lastMoveId).filter((x): x is string => !!x);
+  if (al.length) await db.insert(NR).values(al.map((refId) => ({ userId: req.auth!.userId, kind: 'STOCK_ALERT', refId }))).onConflictDoNothing();
   if (seesReceipts(req)) {
     const rids = (await db.select({ id: P.id }).from(P).where(receiptScope(req))).map((x) => x.id);
     if (rids.length) await db.insert(NR).values(rids.map((refId) => ({ userId: req.auth!.userId, kind: 'FEE_RECEIPT', refId }))).onConflictDoNothing();
