@@ -3,6 +3,7 @@
 //   Aliyeingia anaona dashibodi yake kama kawaida. Maelezo yote yanaendana na huduma zilizojengwa.
 //   Mawasiliano yanatoka kwenye wasifu wa kampuni (Owner → Business Center) — hakuna namba kwenye code.
 // =====================================================================
+import { LocationFields } from '../components/LocationPicker';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { COMING_SOON } from '../lib/comingSoon';
 import { Icon } from '../components/icons';
@@ -146,7 +147,7 @@ function MegaCards({ items, lang, onPick }: { items: Item[]; lang: L; onPick: (t
 }
 
 function DemoModal({ lang, onClose }: { lang: L; onClose: () => void }) {
-  const [f, setF] = useState({ name: '', phone: '', amcosName: '', region: '', message: '', website: '' });
+  const [f, setF] = useState({ name: '', phone: '', amcosName: '', region: '', district: '', message: '', website: '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -177,7 +178,7 @@ function DemoModal({ lang, onClose }: { lang: L; onClose: () => void }) {
             <label>{sw ? 'Jina lako' : 'Your name'}<input required value={f.name} onChange={set('name')} autoComplete="name" /></label>
             <label>{sw ? 'Namba ya simu' : 'Phone number'}<input required type="tel" inputMode="tel" placeholder="0712 345 678" value={f.phone} onChange={set('phone')} autoComplete="tel" /></label>
             <label>{sw ? 'Jina la chama (AMCOS)' : 'Society (AMCOS) name'}<input required value={f.amcosName} onChange={set('amcosName')} /></label>
-            <label>{sw ? 'Mkoa / Wilaya' : 'Region / District'}<input value={f.region} onChange={set('region')} /></label>
+            <div className="ws-loc"><LocationFields levels={2} value={{ region: f.region, district: f.district }} onChange={(v) => setF((s) => ({ ...s, region: v.region, district: v.district }))} /></div>
             <label>{sw ? 'Ujumbe (si lazima)' : 'Message (optional)'}<textarea rows={3} value={f.message} onChange={set('message')} /></label>
             <input className="ws-hp" tabIndex={-1} autoComplete="off" value={f.website} onChange={set('website')} aria-hidden="true" />
             {err && <div className="ws-err">{err}</div>}

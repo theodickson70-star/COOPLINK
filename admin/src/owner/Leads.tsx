@@ -3,6 +3,7 @@
 //   Ubao wa hatua (pipeline), orodha, historia ya kila lead (simu, vikao, SMS), kupangia mhusika na kufuatilia.
 //   Lead inakuwa mteja kwa kusajili chama (AMCOS Management) — hakuna "WON" ya kubonyeza tu.
 // =====================================================================
+import { LocationFields } from '../components/LocationPicker';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -165,8 +166,7 @@ function NewLead({ onClose, onSaved }: { onClose: () => void; onSaved: (id: stri
         <TextField label="Mhusika (jina) *" value={f.name} onChange={set('name')} />
         <TextField label="Simu *" type="tel" placeholder="07XXXXXXXX" value={f.phone} onChange={set('phone')} />
         <TextField label="Email" type="email" value={f.email} onChange={set('email')} />
-        <TextField label="Mkoa" value={f.region} onChange={set('region')} />
-        <TextField label="Wilaya" value={f.district} onChange={set('district')} />
+        <LocationFields levels={2} value={{ region: f.region, district: f.district }} onChange={(v) => setF((s) => ({ ...s, region: v.region, district: v.district }))} />
         <TextField label="Idadi ya wakulima (makadirio)" type="number" min="1" value={f.members} onChange={set('members')} />
         <SelectField label="Chanzo" value={f.source} onChange={set('source')} options={SOURCES.filter(([k]) => k !== 'WEBSITE').map(([value, label]) => ({ value, label }))} />
         <TextField label="Kufuatilia tarehe" type="datetime-local" value={f.follow} onChange={set('follow')} />

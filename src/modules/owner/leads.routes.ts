@@ -4,6 +4,7 @@
 //   NEW -> CONTACTED -> DEMO_SCHEDULED -> DEMO_DONE -> NEGOTIATION -> WON (chama kimesajiliwa) / LOST (na sababu)
 //   Historia (simu, vikao, SMS, mabadiliko) haifutwi. Safu ya zamani `status` inafuata hatua (kwa uoanifu).
 // =====================================================================
+import { checkLocation } from '../../lib/locations';
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
@@ -111,7 +112,7 @@ const leadBody = z.object({
 });
 
 leadsRouter.post('/', requirePermission('leads.manage'), ah(async (req, res) => {
-  const b = leadBody.parse(req.body);
+  const b = checkLocation(leadBody.parse(req.body));
   const assignedToId = b.assignedToId === undefined ? req.auth!.userId : b.assignedToId;
   await assertAssignee(assignedToId);
   const dup = await db.query.demoRequests.findFirst({ where: and(eq(L.phone, b.phone), inArray(L.stage, OPEN)) });
@@ -145,6 +146,7 @@ leadsRouter.patch('/:id', requirePermission('leads.manage'), ah(async (req, res)
     lostReason: z.string().trim().min(3, 'Andika sababu').max(300).optional(),
   }).parse(req.body);
   const before = await findLead(id);
+  Object.assign(b, checkLocation(b, before));
   if (b.stage === 'WON') throw badRequest('Lead inakuwa mteja kwa kusajili chama (kitufe "Sajili chama")');
   if (b.stage === 'LOST' && !b.lostReason) throw badRequest('Andika sababu ya kupotea kwa lead hii');
   if (before.stage === 'WON' && b.stage) throw conflict('Lead hii imeshakuwa mteja');

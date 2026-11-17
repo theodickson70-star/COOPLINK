@@ -3,6 +3,7 @@
 //   Kila afisa amefungwa kwenye wilaya moja; maafisa 5 walio hai kwa kila wilaya.
 //   Nenosiri la muda linatumwa kwa SMS (COOPLINK) — halionyeshwi kama SMS imefika.
 // =====================================================================
+import { LocationFields } from '../components/LocationPicker';
 import { useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { useAction, useFetch } from '../lib/hooks';
@@ -106,11 +107,6 @@ function OfficerForm({ officer, districts, onClose, onSaved }: { officer: Office
   const [jobTitle, setJobTitle] = useState(officer?.jobTitle ?? 'Afisa Ushirika Wilaya');
   const [district, setDistrict] = useState(officer?.jurisdictionDistrict ?? '');
   const [region, setRegion] = useState(officer?.jurisdictionRegion ?? '');
-  const pickDistrict = (v: string) => {
-    setDistrict(v);
-    const d = districts.find((x) => x.district.toLowerCase() === v.trim().toLowerCase());
-    if (d?.region && !region) setRegion(d.region);
-  };
   const known = districts.find((x) => x.district.toLowerCase() === district.trim().toLowerCase());
   const save = async () => {
     const body = { fullName: fullName.trim(), email: email.trim() || null, jobTitle: jobTitle.trim(), district: district.trim(), region: region.trim() || null };
@@ -137,10 +133,9 @@ function OfficerForm({ officer, districts, onClose, onSaved }: { officer: Office
         )}
         <TextField label="Barua pepe (hiari)" type="email" value={email} onChange={setEmail} />
         <TextField label="Cheo" value={jobTitle} onChange={setJobTitle} />
-        <TextField label="Wilaya *" value={district} onChange={pickDistrict} list="ov-districts" help={known ? `Vyama ${known.amcos} vimesajiliwa na wilaya hii` : district ? 'Hakuna chama chenye wilaya hii bado — angalia tahajia' : 'Chagua wilaya ya vyama atakavyosimamia'} />
-        <TextField label="Mkoa" value={region} onChange={setRegion} />
+        <LocationFields levels={2} requireDistrict value={{ region, district }} onChange={(v) => { setRegion(v.region); setDistrict(v.district); }} />
       </div>
-      <datalist id="ov-districts">{districts.map((d) => <option key={d.district} value={d.district}>{`${d.region ?? ''} · vyama ${d.amcos}`}</option>)}</datalist>
+      <p className="st-small muted" style={{ margin: '4px 0 0' }}>{known ? `Vyama ${known.amcos} vimesajiliwa na wilaya hii.` : district ? 'Hakuna chama kilichosajiliwa na wilaya hii bado.' : 'Chagua mkoa, kisha wilaya ya vyama atakavyosimamia.'}</p>
       {moving && <Alert kind="warn">Kubadili wilaya kutamtoa afisa kwenye vifaa vyote; ataingia upya na kuona vyama vya wilaya mpya tu.</Alert>}
       <ul className="sent-steps st-small">
         <li>Afisa anaona taarifa zote za vyama vya wilaya yake (wanachama, fedha, mauzo, mishahara, kumbukumbu) — hawezi kubadilisha rekodi za chama.</li>

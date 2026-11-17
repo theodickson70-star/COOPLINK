@@ -11,6 +11,7 @@
 //   bei za madaraja, makato na mikopo -> kurasa zao (hapa ni hali + kiungo tu)
 //  Kila badiliko linaandikwa kwenye audit.
 // =====================================================================
+import { checkLocation } from '../lib/locations';
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
@@ -177,6 +178,7 @@ settingsRouter.put('/profile', ah(async (req, res) => {
   const amcosId = await resolveWriteAmcosId(req);
   const before = await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId) });
   if (!before) throw notFound('Chama');
+  Object.assign(b, checkLocation(b, before));
   // Utambulisho rasmi (jina, namba ya usajili) ni wa Owner tu — linalinganishwa ili fomu inayotuma thamani ile ile isikataliwe
   if (!acc.edit.identity && ((b.name !== undefined && b.name !== before.name) || (b.regNumber !== undefined && (b.regNumber ?? null) !== (before.regNumber ?? null)))) {
     throw forbidden('Jina na namba ya usajili wa chama vinabadilishwa na CoopLink tu — wasiliana nasi kupitia Help & Support');

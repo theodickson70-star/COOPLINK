@@ -3,6 +3,7 @@
 //   Nani anaweza kubadilisha nini kinatoka kwenye server (GET /settings → access); UI inasoma tu.
 //   Sehemu zenye kurasa zao (bei za madaraja, makato, mikopo, dola) zinaonyesha HALI + KIUNGO tu — hazirudiwi hapa.
 // =====================================================================
+import { LocationFields } from '../components/LocationPicker';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -248,9 +249,7 @@ function ProfileTab({ d, onSaved, go }: { d: Data; onSaved: () => void; go: (k: 
       </Sec>
       <Sec title="Mahali na mawasiliano" sub="Inaonekana juu ya risiti, vocha na taarifa zinazochapishwa.">
         <div className="form-grid">
-          <TextField label="Mkoa" value={f.region} onChange={set('region')} disabled={!edit} />
-          <TextField label="Wilaya" value={f.district} onChange={set('district')} disabled={!edit} />
-          <TextField label="Kata" value={f.ward} onChange={set('ward')} disabled={!edit} />
+          <LocationFields disabled={!edit} value={{ region: f.region, district: f.district, ward: f.ward }} onChange={(v) => setF((s) => ({ ...s, ...v }))} />
           <TextField label="Kijiji" value={f.village} onChange={set('village')} disabled={!edit} />
           <TextField label="Anwani ya posta" value={f.postalAddress} onChange={set('postalAddress')} disabled={!edit} placeholder="mf. S.L.P 149 Urambo" />
           <TextField label="Simu ya ofisi ya chama" value={f.phone} onChange={set('phone')} disabled={!edit} inputMode="tel" placeholder="07XXXXXXXX" />

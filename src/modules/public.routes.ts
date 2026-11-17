@@ -1,4 +1,5 @@
 // Njia zisizohitaji kuingia, na matangazo kwa watumiaji wa vyama
+import { checkLocation, TZ_LOCATIONS } from '../lib/locations';
 import { LEGAL_EFFECTIVE, LEGAL_EFFECTIVE_EN, LEGAL_VERSION } from '../lib/legal';
 import { applyDeliveryEvent, normPhone, sendNow, smsConfigured, smsEnabled, toGsm, verifyAstraSignature } from '../lib/sms';
 import rateLimit from 'express-rate-limit';
@@ -37,20 +38,27 @@ const demoLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: 'draft-7', legacyHeaders: false,
   message: { error: { code: 'TOO_MANY_REQUESTS', message: 'Maombi mengi kutoka mtandao huu. Jaribu tena baadaye au tupigie simu.' } },
 });
+/** v2.5: Mkoa → Wilaya → Kata (orodha rasmi). Inahifadhiwa na kivinjari kwa siku 1. */
+publicRouter.get('/locations', (_req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.json(TZ_LOCATIONS);
+});
+
 const demoBody = z.object({
   name: z.string().trim().min(3, 'Andika jina lako').max(80),
   phone: z.string().trim().min(9, 'Andika namba sahihi ya simu').max(20),
   amcosName: z.string().trim().min(3, 'Andika jina la chama').max(120),
   region: z.string().trim().max(80).optional(),
+  district: z.string().trim().max(80).optional(),
   message: z.string().trim().max(600).optional(),
   website: z.string().max(0).optional(), // honeypot: binadamu haioni sehemu hii
 });
 publicRouter.post('/demo-request', demoLimiter, ah(async (req, res) => {
-  const b = demoBody.parse(req.body);
+  const b = checkLocation(demoBody.parse(req.body));
   const phone = normPhone(b.phone);
   if (!phone) throw badRequest('Andika namba sahihi ya simu (mf. 0712 345 678)');
   const [row] = await db.insert(schema.demoRequests).values({
-    name: b.name, phone, amcosName: b.amcosName, region: b.region || null, message: b.message || null, ip: req.ip ?? null,
+    name: b.name, phone, amcosName: b.amcosName, region: b.region || null, district: b.district || null, message: b.message || null, ip: req.ip ?? null,
   }).returning({ id: schema.demoRequests.id });
   const p = await getSetting('business.profile');
   const to = p.supportPhone || p.phone;

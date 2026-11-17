@@ -8,11 +8,15 @@ import { createApp } from '../src/app';
 import { db, pool } from '../src/db';
 import { hashPassword } from '../src/lib/security';
 import { dryOutbox } from '../src/lib/sms';
+import { TZ_LOCATIONS } from '../src/lib/locations';
 
 let base = '';
 let server: ReturnType<ReturnType<typeof createApp>['listen']>;
 const RUN = Date.now().toString(36).toUpperCase().slice(-5);
-const DISTRICT = `Wilaya${RUN}`;
+// v2.5: wilaya lazima iwe ya orodha rasmi — wilaya ya nasibu (isiyo ya Tabora, ambayo majaribio mengine yanaitumia)
+const POOL = TZ_LOCATIONS.regions.filter((r) => r.name !== 'Tabora').flatMap((r) => r.districts.map((d) => ({ region: r.name, district: d.name })));
+const PICK = POOL[Math.floor(Math.random() * POOL.length)];
+const DISTRICT = PICK.district, REGION = PICK.region;
 const uniqPhone = (p: string) => p + String(Date.now() + Math.floor(Math.random() * 1000)).slice(-7);
 const OWNER_PW = 'OwnerPass2026';
 async function call(method: string, path: string, token?: string, body?: unknown, amcos?: string) {
@@ -30,7 +34,7 @@ async function newAmcos(name: string, district: string) {
   const ph = uniqPhone('25576');
   const r = await call('POST', '/api/v1/owner/amcos', owner, { name, activate: true, manager: { fullName: `Meneja ${name}`, phone: ph, password: 'Meneja#2026x' } });
   assert.equal(r.status, 201, JSON.stringify(r.body));
-  await db.execute(sql`update amcos set district = ${district}, region = 'Tabora' where id = ${r.body.amcos.id}`);
+  await db.execute(sql`update amcos set district = ${district}, region = ${REGION} where id = ${r.body.amcos.id}`);
   return { id: r.body.amcos.id as string, phone: ph };
 }
 
@@ -51,7 +55,7 @@ after(async () => { server.close(); await pool.end(); });
 
 test('Owner pekee anasajili Afisa Ushirika; nenosiri kwa SMS; maafisa 5 kwa wilaya', async () => {
   const ph = uniqPhone('25578');
-  const body = { fullName: `Afisa Ushirika ${RUN}`, phone: ph, district: DISTRICT, region: 'Tabora', jobTitle: 'Afisa Ushirika Wilaya' };
+  const body = { fullName: `Afisa Ushirika ${RUN}`, phone: ph, district: DISTRICT, region: REGION, jobTitle: 'Afisa Ushirika Wilaya' };
   assert.equal((await call('POST', '/api/v1/owner/officers', manager, body)).status, 403, 'Meneja wa chama hawezi');
   const c = await call('POST', '/api/v1/owner/officers', owner, body);
   assert.equal(c.status, 201, JSON.stringify(c.body));

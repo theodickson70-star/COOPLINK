@@ -1,4 +1,5 @@
 // Vyama Vikuu (unions) na Vyama vya Msingi (amcos)
+import { checkLocation } from '../lib/locations';
 import { Router } from 'express';
 import { z } from 'zod';
 import { generateAmcosCode } from '../lib/amcos-code';
@@ -46,7 +47,7 @@ unionsRouter.post(
   '/',
   requireRole(ROLES.SUPER),
   ah(async (req, res) => {
-    const body = unionBody.parse(req.body);
+    const body = checkLocation(unionBody.parse(req.body));
     const row = await db.transaction(async (tx) => {
       const [u] = await tx.insert(schema.unions).values(body).returning();
       await audit(tx, req, { action: 'UNION_CREATE', entity: 'Union', entityId: u.id, after: u });
@@ -64,6 +65,7 @@ unionsRouter.patch(
     const body = unionBody.partial().extend({ isActive: z.boolean().optional() }).parse(req.body);
     const before = await db.query.unions.findFirst({ where: eq(schema.unions.id, id) });
     if (!before) throw notFound('Chama Kikuu');
+    Object.assign(body, checkLocation(body, before));
     const row = await db.transaction(async (tx) => {
       const [u] = await tx.update(schema.unions).set(body).where(eq(schema.unions.id, id)).returning();
       await audit(tx, req, { action: 'UNION_UPDATE', entity: 'Union', entityId: id, before, after: u });
@@ -119,7 +121,7 @@ amcosRouter.post(
   '/',
   requireRole(['SUPER_ADMIN', 'UNION_ADMIN']),
   ah(async (req, res) => {
-    const body = amcosBody.parse(req.body);
+    const body = checkLocation(amcosBody.parse(req.body));
     if (req.auth!.role === 'UNION_ADMIN') body.unionId = req.auth!.unionId!;
     if (body.unionId && !(await db.query.unions.findFirst({ where: eq(schema.unions.id, body.unionId) }))) {
       throw badRequest('Chama Kikuu hakipo');
@@ -149,6 +151,7 @@ amcosRouter.patch(
       throw forbidden('Ni Msimamizi wa mfumo pekee anayeweza kubadilisha hili');
     }
     const before = await db.query.amcos.findFirst({ where: eq(schema.amcos.id, id) });
+    Object.assign(body, checkLocation(body, before));
     // Jina na namba ya usajili ni utambulisho rasmi — Meneja hawezi kuvibadilisha (CoopLink tu)
     if (req.auth!.role === 'AMCOS_ADMIN' && before && ((body.name !== undefined && body.name !== before.name) || (body.regNumber !== undefined && (body.regNumber || null) !== (before.regNumber || null)))) {
       throw forbidden('Jina na namba ya usajili wa chama vinabadilishwa na CoopLink tu');

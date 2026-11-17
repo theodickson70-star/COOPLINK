@@ -1,4 +1,5 @@
 // AMCOS BUSINESS MANAGEMENT — Owner anasimamia vyama kama WATEJA (si shughuli zao za kila siku)
+import { checkLocation } from '../../lib/locations';
 import { Router } from 'express';
 import { z } from 'zod';
 import { and, count, desc, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
@@ -98,6 +99,7 @@ ownerAmcosRouter.post(
         password: z.string().refine(passwordSchemaRule.test, passwordSchemaRule.message).optional(),
       }).optional(),
     }).parse(req.body);
+    Object.assign(b, checkLocation(b));
     if (b.contactPhone) b.contactName = (await lookupNameOrNull(b.contactPhone, 'Simu ya mawasiliano')) ?? b.contactName ?? null;
     if (b.manager) {
       if (!req.auth!.permissions.includes('amcos.staff')) throw forbidden('Huna ruhusa ya kuunda watumishi wa chama');
@@ -183,6 +185,7 @@ ownerAmcosRouter.patch(
     const { id } = uuidParam.parse(req.params);
     const b = body.partial().omit({ code: true }).parse(req.body);
     const before = await findAmcos(id);
+    Object.assign(b, checkLocation(b, before));
     const cph = b.contactPhone !== undefined ? b.contactPhone : before.contactPhone;
     if (cph && (b.contactPhone !== undefined || b.contactName !== undefined)) b.contactName = (await lookupNameOrNull(cph, 'Simu ya mawasiliano')) ?? b.contactName ?? before.contactName;
     const row = await db.transaction(async (tx) => {

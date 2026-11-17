@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { LocationFields } from '../components/LocationPicker';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, apiDownload, type Paged } from '../lib/api';
 import { useAction, useDebounced, useFetch } from '../lib/hooks';
@@ -142,9 +143,7 @@ function AmcosFormModal({ initial, prefill, onClose, onSaved }: { initial?: Amco
           ? <TextField label="Code" help="Code haibadilishwi" value={f.code} disabled onChange={() => undefined} />
           : <TextField label="Code" help="Itatolewa na mfumo kutoka jina la chama (mf. Usoke AMCOS → USOKE)" value="Itatolewa na mfumo" disabled onChange={() => undefined} />}
         <TextField label="Namba ya usajili (Mrajis)" value={f.regNumber} onChange={set('regNumber')} />
-        <TextField label="Mkoa" value={f.region} onChange={set('region')} />
-        <TextField label="Wilaya" value={f.district} onChange={set('district')} />
-        <TextField label="Kata" value={f.ward} onChange={set('ward')} />
+        <LocationFields value={{ region: f.region, district: f.district, ward: f.ward }} onChange={(v) => setF((s) => ({ ...s, ...v }))} />
         <TextField label="Kijiji" value={f.village} onChange={set('village')} />
         <TextField label="Simu ya chama" type="tel" value={f.phone} onChange={set('phone')} />
         <TextField label="Email" type="email" value={f.email} onChange={set('email')} />

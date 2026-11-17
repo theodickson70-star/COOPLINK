@@ -615,6 +615,31 @@ test('Taarifa ya mwaka (Mkutano Mkuu): takwimu za wanachama, mauzo, pembejeo na 
   assert.equal((await call('GET', '/api/v1/accounting/reports/annual', storekeeper)).status, 403);
 });
 
+test('Mkoa → Wilaya → Kata: orodha rasmi, backend inakataa thamani isiyo kwenye orodha (v2.5)', async () => {
+  const loc = await call('GET', '/api/v1/public/locations');
+  assert.equal(loc.status, 200);
+  assert.equal(loc.body.regions.length, 26);
+  const urambo = loc.body.regions.find((r: any) => r.name === 'Tabora').districts.find((d: any) => d.name === 'Urambo');
+  assert.ok(urambo.wards.includes('Usisya') && urambo.wards.length >= 18);
+  const before = (await call('GET', '/api/v1/settings', manager)).body.profile;
+  const put = (b: object) => call('PUT', '/api/v1/settings/profile', manager, b);
+  // Herufi zinasawazishwa kwa majina rasmi
+  let r = await put({ region: 'tabora', district: 'URAMBO', ward: 'usisya' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  let p = (await call('GET', '/api/v1/settings', manager)).body.profile;
+  assert.deepEqual([p.region, p.district, p.ward], ['Tabora', 'Urambo', 'Usisya']);
+  // Wilaya ya mkoa mwingine / kata ya wilaya nyingine / mkoa usiokuwepo -> 400
+  assert.equal((await put({ region: 'Tabora', district: 'Kahama', ward: null })).status, 400);
+  assert.equal((await put({ region: 'Tabora', district: 'Urambo', ward: 'Kariakoo' })).status, 400);
+  assert.equal((await put({ region: 'Mkoa Feki', district: null, ward: null })).status, 400);
+  // Thamani ya zamani (iliyoandikwa kabla ya v2.5) haizuii kuhifadhi sehemu nyingine
+  const me = (await call('GET', '/api/v1/auth/me', manager)).body;
+  await db.execute(sql`update amcos set ward = 'Kata ya Zamani' where id = ${(me.user ?? me).amcosId}`);
+  assert.equal((await put({ postalAddress: 'S.L.P 1 Urambo' })).status, 200);
+  assert.equal((await put({ region: 'Tabora', district: 'Urambo', ward: 'Kata ya Zamani' })).status, 200, 'thamani isiyobadilika inakubaliwa');
+  await put({ region: before.region ?? null, district: before.district ?? null, ward: null });
+});
+
 test('2FA ya lazima kwa Meneja na Mhasibu (v2.4): muda wa kujiandaa, kisha kuzuiwa', async () => {
   const { staff2fa } = await import('../src/lib/staff-2fa');
   const me = (await call('GET', '/api/v1/auth/me', accountant)).body;
@@ -1343,7 +1368,7 @@ test('SMS: OTP ya kuingia (kifaa kinachoaminika) na umesahau nenosiri', async ()
 test('Tovuti: ombi la maonyesho linafika Business Center', async () => {
   assert.equal((await call('POST', '/api/v1/public/demo-request', undefined, { name: 'Ju', phone: '07', amcosName: 'X' })).status, 400);
   assert.equal((await call('POST', '/api/v1/public/demo-request', undefined, { name: 'Roboti', phone: '0712345678', amcosName: 'Spam AMCOS', website: 'http://spam' })).status, 400, 'Mtego wa roboti');
-  const ok = await call('POST', '/api/v1/public/demo-request', undefined, { name: 'Juma Hassan', phone: '0712 345 678', amcosName: 'Usoke AMCOS ' + RUN, region: 'Urambo' });
+  const ok = await call('POST', '/api/v1/public/demo-request', undefined, { name: 'Juma Hassan', phone: '0712 345 678', amcosName: 'Usoke AMCOS ' + RUN, region: 'Tabora', district: 'Urambo' });
   assert.equal(ok.status, 201, JSON.stringify(ok.body));
   // v0.36: ombi linaingia kwenye CRM (leads) likiwa "Mpya", chanzo "Tovuti"
   const list = (await call('GET', '/api/v1/owner/leads?stage=NEW', owner)).body;

@@ -46,6 +46,8 @@ export const ICONS = {
   arrowOut: <path d="M12 5v14M19 12l-7 7-7-7" />,
   arrowRight: <path d="M5 12h14M13 6l6 6-6 6" />,
   chevronRight: <path d="M9 18l6-6-6-6" />,
+  chevronDown: <path d="M6 9l6 6 6-6" />,
+  check: <path d="M20 6L9 17l-5-5" />,
   menu: <path d="M4 6h16M4 12h16M4 18h16" />,
   phone: <><rect x="6" y="2" width="12" height="20" rx="2" /><path d="M11 18h2" /></>,
   sparkle: <><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /><path d="M19 17v4M17 19h4" /></>,

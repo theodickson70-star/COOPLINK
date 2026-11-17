@@ -4,6 +4,7 @@
 //   - nenosiri la muda kwa SMS; 2FA ni lazima (siku za neema kama wafanyakazi wa CoopLink)
 //   - wanaona vyama vyote vya wilaya yao (kusoma tu) + ukaguzi, maagizo na zuio la malipo
 // =====================================================================
+import { checkLocation } from '../../lib/locations';
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { and, desc, eq, sql } from 'drizzle-orm';
@@ -57,7 +58,7 @@ const body = z.object({
 
 officersRouter.post('/', ah(async (req, res) => {
   ownerOnly(req);
-  const b = body.parse(req.body);
+  const b = checkLocation(body.parse(req.body), null, { requireDistrict: true });
   const district = norm(b.district), region = b.region ? norm(b.region) : null;
   if ((await activeInDistrict(district)) >= MAX_OFFICERS_PER_DISTRICT) throw conflict(`Wilaya ya ${district} tayari ina maafisa ${MAX_OFFICERS_PER_DISTRICT} walio hai — zima mmoja kwanza`);
   await assertPhoneFree(b.phone);
@@ -81,6 +82,7 @@ officersRouter.patch('/:id', ah(async (req, res) => {
   const { id } = uuidParam.parse(req.params);
   const b = body.omit({ phone: true }).partial().parse(req.body);
   const before = await findOfficer(id);
+  Object.assign(b, checkLocation(b, { region: before.jurisdictionRegion, district: before.jurisdictionDistrict }));
   const district = b.district ? norm(b.district) : before.jurisdictionDistrict!;
   const moved = !!b.district && district.toLowerCase() !== (before.jurisdictionDistrict ?? '').toLowerCase();
   if (moved && before.isActive && (await activeInDistrict(district, id)) >= MAX_OFFICERS_PER_DISTRICT) throw conflict(`Wilaya ya ${district} tayari ina maafisa ${MAX_OFFICERS_PER_DISTRICT}`);

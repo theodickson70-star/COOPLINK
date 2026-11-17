@@ -247,3 +247,10 @@
 .ws-soon-c p { margin: 0; font-size: 15px; line-height: 1.55; color: #B9CFC3; }
 @media (max-width: 900px) { .ws-soon { padding: 64px 28px; } }
 @media (max-width: 560px) { .ws-soon { padding: 50px 18px; } }
+/* v2.5: Mkoa → Wilaya kwenye fomu ya maonyesho */
+.ws-loc { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ws-loc .field { display: flex; flex-direction: column; gap: 6px; }
+.ws-loc .field label { font-size: 13.5px; font-weight: 600; color: var(--w-forest); }
+.ws-modal-card .ws-loc .cbx-btn { font: inherit; font-size: 16px; font-weight: 400; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--w-line); background: #fff; color: var(--w-ink); }
+.ws-loc .help { font-size: 12px; }
+@media (max-width: 480px) { .ws-loc { grid-template-columns: 1fr; } }

@@ -1,4 +1,5 @@
 // Madeni, Watumiaji, Vyama na Misimu, Audit log
+import { LocationFields } from '../components/LocationPicker';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Paged } from '../lib/api';
@@ -252,9 +253,7 @@ function AmcosModal({ unions, isSuper, onClose, onDone }: { unions: { id: string
       <TextField label="Code" help="Itatolewa na mfumo kutoka jina la chama (mf. Usoke AMCOS → USOKE)" value="Itatolewa na mfumo" disabled onChange={() => undefined} />
       <TextField label="Namba ya usajili (Mrajis)" value={f.regNumber} onChange={set('regNumber')} />
       <div className="form-grid">
-        <TextField label="Mkoa" value={f.region} onChange={set('region')} />
-        <TextField label="Wilaya" value={f.district} onChange={set('district')} />
-        <TextField label="Kata" value={f.ward} onChange={set('ward')} />
+        <LocationFields value={{ region: f.region, district: f.district, ward: f.ward }} onChange={(v) => setF((s) => ({ ...s, ...v }))} />
         <TextField label="Kijiji" value={f.village} onChange={set('village')} />
       </div>
       {isSuper && <SelectField label="Chama Kikuu" value={f.unionId} onChange={set('unionId')} placeholder="— Hakuna —" options={unions.map((u) => ({ value: u.id, label: u.name }))} />}
@@ -265,10 +264,10 @@ function AmcosModal({ unions, isSuper, onClose, onDone }: { unions: { id: string
 function UnionModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
-  const [region, setRegion] = useState('Tabora');
+  const [loc, setLoc] = useState({ region: 'Tabora', district: '' });
   const { busy, error, run } = useAction();
   const save = async () => {
-    const r = await run(() => api('/unions', { method: 'POST', body: { name, code, region: region || undefined } }));
+    const r = await run(() => api('/unions', { method: 'POST', body: { name, code, region: loc.region || undefined, district: loc.district || undefined } }));
     if (r) onDone();
   };
   return (
@@ -277,7 +276,7 @@ function UnionModal({ onClose, onDone }: { onClose: () => void; onDone: () => vo
       <Alert>{error}</Alert>
       <TextField label="Jina *" value={name} onChange={setName} />
       <TextField label="Code *" placeholder="mf. WETCU" value={code} onChange={(v) => setCode(v.toUpperCase())} />
-      <TextField label="Mkoa" value={region} onChange={setRegion} />
+      <div className="form-grid"><LocationFields levels={2} value={loc} onChange={(v) => setLoc({ region: v.region, district: v.district })} /></div>
     </Modal>
   );
 }
