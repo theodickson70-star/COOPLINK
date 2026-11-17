@@ -1,4 +1,5 @@
 import { Router, type Request } from 'express';
+import { villagesOf } from '../lib/locations';
 import { z } from 'zod';
 import { and, asc, count, desc, eq, ilike, ne, or, sql } from 'drizzle-orm';
 import { db, schema } from '../db';
@@ -231,6 +232,18 @@ membersRouter.get(
   }),
 );
 
+/** v2.9: mapendekezo ya kijiji — vijiji vya kata ya chama + vijiji vilivyokwisha andikwa kwa wakulima wa chama */
+membersRouter.get('/villages', requireAmcosPerm('members.read'), ah(async (req, res) => {
+  const amcosId = await resolveWriteAmcosId(req);
+  const a = await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId), columns: { region: true, district: true, ward: true, village: true } });
+  const used = await db.execute<{ v: string; n: number }>(sql`select village as v, count(*)::int as n from members where amcos_id = ${amcosId} and village is not null and village <> '' group by village order by n desc limit 200`);
+  const list = new Map<string, string>();
+  for (const v of [...used.rows.map((x) => x.v), ...(a?.village ? [a.village] : []), ...villagesOf(a?.region, a?.district, a?.ward)]) {
+    const k = v.trim().toLowerCase(); if (k && !list.has(k)) list.set(k, v.trim());
+  }
+  res.json({ villages: [...list.values()], ward: a?.ward ?? null });
+}));
+
 membersRouter.get(
   '/',
   requireAmcosPerm('members.read'),
@@ -340,11 +353,18 @@ membersRouter.post(
     const body = memberBody.extend({ amcosId: z.string().uuid().optional() }).parse(req.body);
     const amcosId = await resolveWriteAmcosId(req, body.amcosId);
     const amcos = (await db.query.amcos.findFirst({ where: eq(schema.amcos.id, amcosId) }))!;
+    // v2.9: kutoka foleni ya offline — ikitumwa mara ya pili, rekodi ileile inarudishwa (haisajiliwi mara mbili)
+    const offRef = z.object({ clientRef: z.string().trim().min(8).max(64).optional() }).parse(req.body).clientRef;
+    if (offRef) {
+      const dup = await db.query.members.findFirst({ where: and(eq(m.amcosId, amcosId), eq(m.clientRef, offRef)) });
+      if (dup) return res.status(200).json({ member: dup, duplicate: true });
+    }
     checkEntryFee(body);
     await verifyMemberNames(req, body);
     await assertUnique(amcosId, body);
     // v0.40: namba ya simu na ya malipo zinathibitishwa kwa OTP (mtumishi asiweke namba yake). Bila OTP: Meneja tu, kwa sababu.
-    const extra = z.object({ phoneOtpOverride: z.string().trim().min(10, 'Eleza sababu ya kutothibitisha kwa OTP (herufi 10+)').optional() }).parse(req.body);
+    const extra = z.object({ phoneOtpOverride: z.string().trim().min(10, 'Eleza sababu ya kutothibitisha kwa OTP (herufi 10+)').optional(),
+    }).parse(req.body);
     const phones = [...new Set([body.phone, body.mobileMoneyNumber].filter((x): x is string => !!x))];
     let phoneVerifiedAt: Date | null = null;
     if (phones.length && smsConfigured() && (await smsEnabled('MEMBER_PHONE_OTP'))) {
@@ -370,7 +390,7 @@ membersRouter.post(
       const confirmer = canAmcos(req.auth!, 'members.approve');
       const [row] = await tx
         .insert(m)
-        .values({ ...data, amcosId, memberNo, createdById: req.auth!.userId, status: confirmer ? 'ACTIVE' : 'PENDING', ...(phoneVerifiedAt ? { phoneVerifiedAt } : {}) })
+        .values({ ...data, amcosId, memberNo, createdById: req.auth!.userId, status: confirmer ? 'ACTIVE' : 'PENDING', clientRef: offRef ?? null, ...(phoneVerifiedAt ? { phoneVerifiedAt } : {}) })
         .returning();
       await audit(tx, req, { action: 'MEMBER_CREATE', entity: 'Member', entityId: row.id, amcosId, after: row });
       if (extra.phoneOtpOverride && phones.length) await audit(tx, req, { action: 'MEMBER_PHONE_OTP_OVERRIDE', entity: 'Member', entityId: row.id, amcosId, after: { phones, reason: extra.phoneOtpOverride, at: 'REGISTER' } });

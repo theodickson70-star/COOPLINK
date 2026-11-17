@@ -255,6 +255,39 @@ test('pembejeo: bila bei / stoo haitoshi / watu wengi kwa wakati mmoja hawazidis
   assert.equal(ins.totals.inQty, '10.0000'); assert.equal(Number(outs.totals.outQty), 10); assert.equal(outs.totals.inCount, 0);
   assert.ok(outs.data.every((m: any) => Number(m.quantity) < 0 && m.member), 'Inayotoka inaonyesha mkulima aliyepewa');
 
+  // v2.9: SMS ya tahadhari ya stoo (Storekeeper + Meneja) — mara moja tu hali ikiwa mbaya zaidi; muhtasari wa Meneja
+  const { getSetting, setSetting } = await import('../src/lib/settings');
+  const { runStockAlertSms, runDailyDigests, stockLine } = await import('../src/lib/daily');
+  const ev = await getSetting('sms.events');
+  await setSetting(db, 'sms.events', { ...ev, STOCK_ALERT: true, DAILY_SUMMARY: true });
+  try {
+    const amcosOf = (await db.execute<{ amcos_id: string }>(sql`select amcos_id from input_items where id = ${id}`)).rows[0].amcos_id;
+    const smsFor = async (kind: string) => (await db.execute<{ message: string; phone: string }>(sql`select message, phone from sms_logs where kind = ${kind} and amcos_id = ${amcosOf} order by created_at desc`)).rows;
+    const before = (await smsFor('STOCK_ALERT')).length;
+    await runStockAlertSms();
+    const first = await smsFor('STOCK_ALERT');
+    assert.ok(first.length > before, 'SMS ya stoo imewekwa foleni');
+    assert.ok(first.some((x) => x.message.includes(`Dawa ${RUN} IMEISHA`)), first[0]?.message);
+    const n = first.length;
+    await runStockAlertSms();
+    assert.equal((await smsFor('STOCK_ALERT')).length, n, 'Hali ileile -> hakuna SMS ya pili');
+    assert.match(stockLine({ name: 'NPK', unit: 'BAG', status: 'LOW', balance: 4, daysLeft: 2 } as any), /NPK chini ya kiwango \(salio 4 mifuko\)/);
+    await runDailyDigests({ force: true });
+    const sum = await smsFor('DAILY_SUMMARY');
+    assert.ok(sum.length >= 1 && /Muhtasari wa jana/.test(sum[0].message) && /zimeisha/.test(sum[0].message), sum[0]?.message);
+  } finally {
+    await setSetting(db, 'sms.events', ev);
+  }
+
+  // v2.9: ufuatiliaji — chama kimoja kikipata makosa mfululizo, Owner anapewa tahadhari (na SMS)
+  const { evaluateConditions } = await import('../src/lib/monitor');
+  const uid = (await db.execute<{ id: string; amcos_id: string }>(sql`select id, amcos_id from users where phone = '255711000002'`)).rows[0];
+  for (let i = 0; i < 5; i++) await db.execute(sql`insert into system_errors (method, path, status, message, user_id) values ('POST', '/api/v1/test-v29', 500, 'jaribio', ${uid.id})`);
+  const conds = await evaluateConditions();
+  const ce = conds.find((c) => c.key === `CHAMA_ERRORS:${uid.amcos_id}`);
+  assert.ok(ce?.active, 'Tahadhari ya chama chenye makosa'); assert.match(ce!.title, /makosa \d+ ya mfumo/);
+  await db.execute(sql`update system_errors set resolved_at = now() where path = '/api/v1/test-v29'`);
+
   assert.equal((await call('POST', '/api/v1/inputs/stock/adjustments', accountant, { inputItemId: id, quantity: -1, notes: 'imeharibika stoo' })).status, 403);
   const adj = await call('POST', '/api/v1/inputs/stock/adjustments', clerk, { inputItemId: id, quantity: -2, notes: 'imeharibika stoo' });
   assert.equal(adj.status, 400, 'marekebisho hayawezi kufanya stoo kuwa hasi');
@@ -304,4 +337,40 @@ test('ukaguzi: shamba la chama kingine haliwezi kuunganishwa na makisio', async 
 
 test('ukaguzi: kuingia kwa mafanikio hakuzuiwi na rate limit', async () => {
   for (let i = 0; i < 12; i++) assert.ok(await login('0711000003', 'Demo12345'));
+});
+
+test('offline (v2.9): kifurushi cha data, usajili na ugawaji kutoka foleni havirudiwi', async () => {
+  const pack = (await call('GET', '/api/v1/offline/pack', clerk)).body;
+  assert.ok(pack.members.length > 0 && pack.items.length > 0 && pack.season.id);
+  assert.ok(pack.can.issue && pack.can.register);
+  const me = pack.members.find((m: any) => m.id === memberId);
+  assert.ok(me, 'Mkulima hai yumo kwenye kifurushi');
+  assert.equal(me.phoneEnd, '456', 'Tarakimu 3 za mwisho tu');
+  assert.ok(!JSON.stringify(pack).includes('255754123456'), 'Hakuna namba kamili ya simu');
+  assert.ok(pack.items.every((i: any) => 'balance' in i && 'price' in i));
+  assert.equal((await call('GET', '/api/v1/offline/pack', undefined)).status, 401);
+
+  // Usajili kutoka foleni: ukitumwa mara mbili (mtandao ukikatika baada ya kutuma) -> rekodi moja
+  const ref = 'off-' + RUN + '-member1';
+  const body = { firstName: 'Offline', lastName: 'Mkulima' + RUN, gender: 'FEMALE', village: 'Usisya', clientRef: ref };
+  const a = await call('POST', '/api/v1/members', clerk, body);
+  assert.equal(a.status, 201, JSON.stringify(a.body));
+  const b = await call('POST', '/api/v1/members', clerk, body);
+  assert.equal(b.status, 200); assert.equal(b.body.duplicate, true); assert.equal(b.body.member.id, a.body.member.id);
+  assert.equal((await db.execute<{ n: number }>(sql`select count(*)::int as n from members where client_ref = ${ref}`)).rows[0].n, 1);
+
+  // Ugawaji kutoka foleni (njia ileile ya kawaida, clientRef)
+  const it = pack.items.find((i: any) => i.price && Number(i.balance) >= 1);
+  if (it) {
+    const iref = 'off-' + RUN + '-issue1';
+    const x = await call('POST', '/api/v1/input-issues', clerk, { memberId, lines: [{ inputItemId: it.id, quantity: 1 }], clientRef: iref });
+    assert.equal(x.status, 201, JSON.stringify(x.body));
+    const y = await call('POST', '/api/v1/input-issues', clerk, { memberId, lines: [{ inputItemId: it.id, quantity: 1 }], clientRef: iref });
+    assert.equal(y.body.duplicate, true); assert.equal(y.body.issue.id, x.body.issue.id);
+  }
+  // Mapendekezo ya vijiji (public + ya chama)
+  const v = (await call('GET', '/api/v1/public/locations/villages?region=Tabora&district=Urambo&ward=Usisya', undefined)).body;
+  assert.ok(v.villages.includes('Katungulu'));
+  const mv = (await call('GET', '/api/v1/members/villages', clerk)).body;
+  assert.ok(mv.villages.some((x: string) => x.toLowerCase() === 'usisya'), 'Vijiji vilivyokwisha andikwa vinapendekezwa');
 });

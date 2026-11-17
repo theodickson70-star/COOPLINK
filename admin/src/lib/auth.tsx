@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { markActive, markSiteSeen } from './session';
-import { api, getToken, setSelectedAmcos, setToken } from './api';
+import { api, ApiError, getToken, setSelectedAmcos, setToken } from './api';
+import { setOfflineOwner } from './offline';
 
 export type Role =
   | 'SUPER_ADMIN' | 'UNION_ADMIN' | 'UNION_VIEWER' | 'AMCOS_ADMIN' | 'ACCOUNTANT' | 'CLERK' | 'AMCOS_VIEWER' | 'COOP_OFFICER'
@@ -94,6 +95,11 @@ interface AuthState {
 
 const Ctx = createContext<AuthState | null>(null);
 
+// v2.9: nakala ya akaunti (bila token) kwa kufungua app bila mtandao
+const ME_KEY = 'cl_me';
+function cacheMe(me: unknown) { try { if (me) localStorage.setItem(ME_KEY, JSON.stringify(me)); else localStorage.removeItem(ME_KEY); } catch { /* */ } }
+function cachedMe(): unknown { try { const v = localStorage.getItem(ME_KEY); return v ? JSON.parse(v) : null; } catch { return null; } }
+
 export const ROLE_GROUPS = {
   STAFF: ['SUPER_ADMIN', 'AMCOS_ADMIN', 'ACCOUNTANT', 'CLERK'] as Role[],
   MANAGERS: ['SUPER_ADMIN', 'AMCOS_ADMIN', 'ACCOUNTANT'] as Role[],
@@ -109,6 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     void api('/auth/logout', { method: 'POST' }).catch(() => {});
+    cacheMe(null); setOfflineOwner(null, null);
     setToken(null);
     setSelectedAmcos(null);
     setUser(null);
@@ -116,9 +123,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
-    const me = await api<{ user: User; amcos: Amcos | null }>('/auth/me');
+    let me: { user: User; amcos: Amcos | null };
+    try {
+      me = await api<{ user: User; amcos: Amcos | null }>('/auth/me');
+      cacheMe(me);
+    } catch (e) {
+      // v2.9: bila mtandao — akaunti ya mwisho iliyoingia kwenye kifaa hiki inatumika (kazi za offline tu)
+      const c = (e as ApiError).code === 'NETWORK' ? cachedMe() : null;
+      if (!c) throw e;
+      me = c as { user: User; amcos: Amcos | null };
+    }
     setUser(me.user);
     setAmcos(me.amcos);
+    setOfflineOwner(me.user.id, me.amcos?.id ?? null);
   }, []);
 
   useEffect(() => {
@@ -138,8 +155,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     markActive(); markSiteSeen(); // ameingia sasa hivi: skrini haijafungwa, na tovuti haionyeshwi tena kikao hiki
     setSelectedAmcos(null);
     const me = await api<{ user: User; amcos: Amcos | null }>('/auth/me');
+    cacheMe(me);
     setUser(me.user);
     setAmcos(me.amcos);
+    setOfflineOwner(me.user.id, me.amcos?.id ?? null);
     return me.user;
   };
 

@@ -51,6 +51,7 @@ export const RESET_STEPS: Step[] = [
   { key: 'finance_accounts', label: 'Akaunti za fedha', table: 'finance_accounts', where: own('finance_accounts') },
   // Akaunti za GL zilizoongezwa na chama (si za mfumo) — pamoja na zinazowakilisha akaunti za fedha zilizofutwa
   { key: 'gl_accounts', label: 'Akaunti za daftari kuu zilizoongezwa', table: 'gl_accounts', where: (a) => sql`gl_accounts.amcos_id = ${a} and (gl_accounts.is_system = false or gl_accounts.finance_account_id is not null)` },
+  { key: 'stock_alert_states', label: 'Hali ya tahadhari za stoo (SMS)', table: 'stock_alert_states', where: own('stock_alert_states') },
   { key: 'stock_movements', label: 'Mizigo ya stoo', table: 'stock_movements', where: own('stock_movements') },
   { key: 'input_issue_lines', label: 'Ugawaji (mistari)', table: 'input_issue_lines', where: via('input_issue_id', 'input_issues') },
   { key: 'input_issues', label: 'Ugawaji wa pembejeo', table: 'input_issues', where: own('input_issues') },

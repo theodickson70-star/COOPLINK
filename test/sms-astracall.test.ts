@@ -40,7 +40,7 @@ async function withAstra<T>(handler: (url: string, init: RequestInit) => { statu
 }
 
 test('Sender ID: MKULIMA kwa kila SMS ya mkulima, COOPLINK kwa watumishi', () => {
-  const staff: SmsKind[] = ['LOGIN_OTP', 'PASSWORD_RESET_OTP', 'STAFF_CREDENTIALS', 'SECURITY_ALERT', 'OWNER_ANNOUNCEMENT', 'STAFF_ALERT', 'SYSTEM_ALERT', 'OVERSIGHT_NOTICE'];
+  const staff: SmsKind[] = ['LOGIN_OTP', 'PASSWORD_RESET_OTP', 'STAFF_CREDENTIALS', 'SECURITY_ALERT', 'OWNER_ANNOUNCEMENT', 'STAFF_ALERT', 'SYSTEM_ALERT', 'OVERSIGHT_NOTICE', 'STOCK_ALERT', 'DAILY_SUMMARY'];
   for (const k of Object.keys(SMS_KINDS) as SmsKind[]) {
     assert.equal(smsAudience(k), staff.includes(k) ? 'STAFF' : 'FARMER', k);
     assert.equal(senderOfKind(k), staff.includes(k) ? 'COOPLINK' : 'MKULIMA', k);

@@ -8,6 +8,7 @@ import { date, phone } from '../lib/format';
 import { useAuth } from '../lib/auth';
 import { NameNote, PhoneNameFields, usePhoneName } from '../components/PhoneName';
 import { PhoneOtpStep } from '../components/FarmerOtp';
+import { ComboSelect } from '../components/LocationPicker';
 import { Alert, Badge, Button, Empty, Input, Loading, PageHead, Pager, Select, SelectField, TextField } from '../components/ui';
 
 export interface Member {
@@ -168,6 +169,13 @@ function stepErrors(step: number, f: Form, idType: IdType): string[] {
   return e;
 }
 
+/** v2.9: kijiji kinachaguliwa (vijiji vya kata ya chama + vilivyokwisha andikwa) au kuongezwa */
+function VillageField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const v = useFetch<{ villages: string[]; ward: string | null }>('/members/villages');
+  return <ComboSelect label="Kijiji" allowCustom value={value} onChange={onChange} options={v.data?.villages ?? []}
+    placeholder={v.data?.villages.length ? 'Chagua au andika kijiji' : 'Andika jina la kijiji'} help={v.data?.ward ? `Vijiji vya kata ya ${v.data.ward} na vilivyokwisha sajiliwa` : undefined} />;
+}
+
 export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editing, currentPhoto }: {
   initial?: Form; onSubmit: (payload: Record<string, unknown>, photo: PhotoChange | null) => void; submitLabel: string; busy: boolean; error: string | null;
   editing?: boolean; currentPhoto?: string | null;
@@ -310,7 +318,7 @@ export function MemberForm({ initial, onSubmit, submitLabel, busy, error, editin
               options={[{ value: 'NIDA', label: 'NIDA' }, { value: 'VOTER', label: 'Kadi ya mpiga kura' }, { value: 'NONE', label: 'Hana kitambulisho kwa sasa' }]} />
             {idType === 'NIDA' && <TextField label="Namba ya NIDA" help={`Tarakimu 20 (${f.nidaNumber.length}/20)`} inputMode="numeric" maxLength={20} value={f.nidaNumber} onChange={(v) => set('nidaNumber')(v.replace(/\D/g, ''))} />}
             {idType === 'VOTER' && <TextField label="Namba ya kadi ya mpiga kura" placeholder="mf. T-1000-1234-567-8" value={f.voterIdNumber} onChange={(v) => set('voterIdNumber')(v.toUpperCase())} />}
-            <TextField label="Kijiji" value={f.village} onChange={set('village')} />
+            <VillageField value={f.village} onChange={set('village')} />
             <TextField label="Kitongoji" value={f.hamlet} onChange={set('hamlet')} />
           </div>
         )}

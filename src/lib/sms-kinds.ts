@@ -34,6 +34,8 @@ export const SMS_KINDS = {
   // ---- Matangazo ----
   CHAMA_BROADCAST: { group: 'BROADCAST', label: 'Matangazo na taarifa za vikao (chama)', who: 'Wakulima (wote / kijiji / kikundi)', urgent: false, desc: 'Meneja anatuma tangazo au taarifa ya kikao kwa wakulima — kikomo cha SMS kwa mwezi kinawekwa na Owner.' },
   OVERSIGHT_NOTICE: { group: 'BROADCAST', label: 'Taarifa za Afisa Ushirika (ukaguzi, maagizo, zuio)', who: 'Meneja na Mhasibu wa chama', urgent: true, desc: 'Ripoti ya ukaguzi ikitolewa, hoja ikirudishwa, agizo jipya, au zuio la malipo likiwekwa/kuondolewa.' },
+  STOCK_ALERT: { group: 'CHAMA', label: 'Tahadhari ya stoo (imeisha / inakaribia kuisha)', who: 'Storekeeper na Meneja', urgent: false, desc: 'Bidhaa ikiisha, ikishuka chini ya kiwango cha chini, au ikikaribia kuisha (siku 14 kwa kasi ya sasa). SMS moja kwa chama — inatumwa tu hali ikiwa mbaya zaidi, si kila saa.' },
+  DAILY_SUMMARY: { group: 'CHAMA', label: 'Muhtasari wa kila siku kwa Meneja', who: 'Meneja wa chama', urgent: false, desc: 'Kila asubuhi saa 1: mapato na matumizi ya jana, idhini zinazosubiri, pembejeo zilizotolewa, wakulima wapya na hali ya stoo.' },
   OWNER_ANNOUNCEMENT: { group: 'BROADCAST', label: 'Matangazo ya CoopLink kwa vyama', who: 'Watumishi wa vyama', urgent: false, desc: 'Matangazo unayotuma kutoka Marketing & Communication.' },
   STAFF_ALERT: { group: 'BROADCAST', label: 'Arifa za kazi kwa wafanyakazi wa CoopLink', who: 'Wafanyakazi wa CoopLink na Owner', urgent: false, desc: 'Ombi jipya kwa Owner, malipo yaliyosubiri uthibitisho zaidi ya saa 24, tiketi zilizochelewa, leads mpya bila mhusika. Moja kwa kila jambo.' },
   SYSTEM_ALERT: { group: 'BROADCAST', label: 'Tahadhari za mfumo kwa Owner', who: 'Owner / Tech Support', urgent: true, desc: 'System Control Center: tahadhari kubwa (CRITICAL).' },
@@ -46,10 +48,10 @@ export type SmsKind = keyof typeof SMS_KINDS;
  *   STAFF  -> Sender ID ya CoopLink (COOPLINK): wafanyakazi wa CoopLink na watumishi wote wa vyama
  */
 export type SmsAudience = 'FARMER' | 'STAFF';
-const STAFF_KINDS: SmsKind[] = ['LOGIN_OTP', 'PASSWORD_RESET_OTP', 'STAFF_CREDENTIALS', 'SECURITY_ALERT', 'OWNER_ANNOUNCEMENT', 'STAFF_ALERT', 'SYSTEM_ALERT', 'OVERSIGHT_NOTICE'];
+const STAFF_KINDS: SmsKind[] = ['STOCK_ALERT', 'DAILY_SUMMARY', 'LOGIN_OTP', 'PASSWORD_RESET_OTP', 'STAFF_CREDENTIALS', 'SECURITY_ALERT', 'OWNER_ANNOUNCEMENT', 'STAFF_ALERT', 'SYSTEM_ALERT', 'OVERSIGHT_NOTICE'];
 export const smsAudience = (kind: SmsKind | string | null | undefined): SmsAudience =>
   kind && STAFF_KINDS.includes(kind as SmsKind) ? 'STAFF' : kind && kind in SMS_KINDS ? 'FARMER' : 'STAFF';
-export const SMS_GROUPS: Record<string, string> = { OTP: 'OTP na usalama', FARMER: 'Taarifa kwa mkulima', GROUP: 'Vikundi', BROADCAST: 'Matangazo na tahadhari' };
+export const SMS_GROUPS: Record<string, string> = { OTP: 'OTP na usalama', FARMER: 'Taarifa kwa mkulima', GROUP: 'Vikundi', CHAMA: 'Taarifa kwa watumishi wa chama', BROADCAST: 'Matangazo na tahadhari' };
 /** Zilizokuwa zikitumika kabla ya swichi hizi zinaanza zikiwa wazi; mpya zote zimefungwa mpaka Owner aziwashe. */
 export const SMS_EVENT_DEFAULTS = Object.fromEntries((Object.keys(SMS_KINDS) as SmsKind[]).map((k) => [k, ['SECURITY_ALERT', 'OWNER_ANNOUNCEMENT', 'SYSTEM_ALERT', 'STAFF_CREDENTIALS', 'STAFF_ALERT', 'OVERSIGHT_NOTICE'].includes(k)])) as Record<SmsKind, boolean>;
 

@@ -1,5 +1,5 @@
 // Njia zisizohitaji kuingia, na matangazo kwa watumiaji wa vyama
-import { checkLocation, TZ_LOCATIONS } from '../lib/locations';
+import { checkLocation, TZ_LOCATIONS, villagesOf } from '../lib/locations';
 import { LEGAL_EFFECTIVE, LEGAL_EFFECTIVE_EN, LEGAL_VERSION } from '../lib/legal';
 import { applyDeliveryEvent, normPhone, sendNow, smsConfigured, smsEnabled, toGsm, verifyAstraSignature } from '../lib/sms';
 import rateLimit from 'express-rate-limit';
@@ -42,6 +42,13 @@ const demoLimiter = rateLimit({
 publicRouter.get('/locations', (_req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=86400');
   res.json(TZ_LOCATIONS);
+});
+
+/** v2.9: vijiji/mitaa ya kata moja (mapendekezo) */
+publicRouter.get('/locations/villages', (req, res) => {
+  const q = z.object({ region: z.string().max(80), district: z.string().max(80), ward: z.string().max(80) }).safeParse(req.query);
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.json({ villages: q.success ? villagesOf(q.data.region, q.data.district, q.data.ward) : [] });
 });
 
 const demoBody = z.object({

@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useOffline } from '../lib/offline';
 import { Link, Navigate, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth, ROLE_GROUPS, type AmcosPermission, type Role } from '../lib/auth';
 import { useFetch } from '../lib/hooks';
@@ -18,6 +19,23 @@ import { date, tsh } from '../lib/format';
 import { BottomNav, UserSheet, useTableCards, type BottomItem } from './MobileUi';
 import { ICONS, type IconName } from './icons';
 import { CommandPalette, useCommandPalette, type PaletteItem } from './CommandPalette';
+
+/** v2.9: hali ya mtandao na foleni ya kazi za offline */
+function OfflineStrip() {
+  const s = useOffline();
+  const loc = useLocation();
+  const wait = s.queue.filter((x) => x.status === 'PENDING' || x.status === 'SYNCING').length;
+  const fix = s.queue.filter((x) => x.status === 'ERROR' || x.status === 'NEEDS_OTP').length;
+  if (s.online && !wait && !fix) return null;
+  const here = loc.pathname === '/offline';
+  return (
+    <div className={`off-strip ${s.online ? '' : 'off'}`} role="status">
+      <span>{s.online ? (s.syncing ? 'Inatuma kazi za offline…' : fix ? `Kazi ${fix} za offline zinahitaji hatua` : `Kazi ${wait} za offline zinasubiri kutumwa`)
+        : `Huna mtandao — ${wait ? `kazi ${wait} zimehifadhiwa kwenye kifaa. ` : ''}Tumia "Kazi nje ya mtandao" kutoa pembejeo na kusajili wakulima.`}</span>
+      {!here && <Link to="/offline">Fungua →</Link>}
+    </div>
+  );
+}
 
 // v2: nakshi zote zinatoka kwenye seti moja (components/icons.tsx)
 const I = Object.fromEntries(Object.entries(ICONS)) as Record<IconName, ReactNode>;
@@ -60,6 +78,7 @@ const NAV: { section?: string; items: NavItem[] }[] = [
     items: [
       { to: '/inputs', label: 'Pembejeo na stoo', icon: I.inputs, perm: ['stock.read'] },
       { to: '/input-issues', label: 'Ugawaji wa pembejeo', icon: I.issue, perm: ['stock.read'] },
+      { to: '/offline', label: 'Kazi nje ya mtandao', icon: I.wifiOff, perm: ['issues.request', 'members.write'] },
       { to: '/sales', label: 'Mauzo ya tumbaku', icon: I.leaf, perm: ['sales.manage', 'oversight.manage'] },
       { to: '/kuni', label: 'Mikopo (kuni)', icon: I.handCoins, perm: ['finance.record', 'oversight.manage'] },
       { to: '/purchases', label: 'Manunuzi na wazabuni', icon: I.cart, perm: ['purchases.request', 'purchases.receive', 'approvals.decide'] },
@@ -293,6 +312,7 @@ export function Layout() {
           <button type="button" className="us-btn danger" onClick={logout}>{t('Toka')}</button>
         </UserSheet>
         <SystemBanner />
+        <OfflineStrip />
         {amcos?.training && user.amcosId && <div className="training-strip" role="status">🎓 {t('Hali ya mafunzo: data ya chama hiki ni ya mazoezi na itafutwa yote kabla ya kuanza matumizi halisi. Akaunti zenu zitabaki.')}</div>}
         <main className="content" ref={contentRef}>
           {officer && user.twoFactor?.required && !user.totpEnabled && !user.twoFactor.overdue && user.twoFactor.deadline && loc.pathname !== '/oversight/account' && (

@@ -6,6 +6,7 @@
 //  mpaka mtumiaji azibadilishe.
 // =====================================================================
 import data from '../data/tz-locations.json';
+import villagesData from '../data/tz-villages.json';
 import { badRequest } from './errors';
 
 interface Loc { regions: { name: string; districts: { name: string; wards: string[] }[] }[] }
@@ -46,4 +47,15 @@ export function checkLocation<T extends In>(b: T, prev?: Prev, opts: { requireDi
   }
   if (w && b.ward !== undefined) out.ward = w;
   return out;
+}
+
+// ------------------------------ VIJIJI / MITAA (v2.9) ------------------------------
+// Orodha ya postikodi si kamili kwa vijiji vyote, kwa hiyo kijiji kinapendekezwa (si lazima kiwe kwenye orodha).
+const VIL = villagesData as Record<string, string[]>;
+export function villagesOf(region?: string | null, district?: string | null, ward?: string | null): string[] {
+  if (!region || !district || !ward) return [];
+  const r = REGIONS.get(key(region));
+  const d = r?.districts.find((x) => key(x.name) === key(district));
+  const w = d?.wards.find((x) => key(x) === key(ward));
+  return r && d && w ? VIL[`${r.name}|${d.name}|${w}`] ?? [] : [];
 }

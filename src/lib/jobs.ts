@@ -7,6 +7,7 @@ import { runSubscriptionSweep } from './subscriptions';
 import { runFeesSweep } from './fees';
 import { runMonitor } from './monitor';
 import { runRemindersSweep } from './reminders';
+import { runDailyDigests, runStockAlertSms } from './daily';
 
 const LOCK_BASE = 815_204; // nambari yoyote ya kipekee
 /** Kila kazi ina lock yake (kazi mbili tofauti zinaweza kuendeshwa pamoja; kazi moja haiendeshwi mara mbili). */
@@ -61,13 +62,18 @@ export const JOBS = {
   subscriptions: () => runJob('subscriptions.sweep', () => runSubscriptionSweep()),
   fees: () => runJob('fees.sweep', () => runFeesSweep()),
   reminders: () => runJob('reminders.sweep', () => runRemindersSweep()),
+  stockAlerts: () => runJob('stock.alerts', () => runStockAlertSms()),
+  daily: () => runJob('daily.digest', () => runDailyDigests()),
 };
+const hourly = () => JOBS.subscriptions().then(() => JOBS.fees()).then(() => JOBS.reminders()).then(() => JOBS.stockAlerts()).then(() => JOBS.daily());
 
 /** Orodha ya kazi zote za nyuma (System Control Center). Kazi ya ufuatiliaji haiandikwi job_runs (inaendeshwa kila dk 5). */
 export const JOB_CATALOG = [
   { name: 'subscriptions.sweep', label: 'Subscriptions', desc: 'Inasitisha vyama ambavyo subscription imeisha (baada ya grace) na kuonya vinavyokaribia kuisha', everyMin: 60, run: JOBS.subscriptions },
   { name: 'fees.sweep', label: 'Ada za CoopLink', desc: 'Inaweka ada ya msimu mpya na kuhakiki malipo ya simu ambayo webhook haikufika', everyMin: 60, run: JOBS.fees },
   { name: 'reminders.sweep', label: 'Vikumbusho na arifa', desc: 'Vikumbusho vya ada (siku 14 na 3 kabla, siku 1 baada) na SMS za kazi kwa wafanyakazi (malipo, tiketi, leads)', everyMin: 60, run: JOBS.reminders },
+  { name: 'stock.alerts', label: 'Tahadhari za stoo (SMS)', desc: 'Bidhaa iliyoisha / chini ya kiwango / inayokaribia kuisha -> SMS kwa Storekeeper na Meneja (hali ikiwa mbaya zaidi tu)', everyMin: 60, run: JOBS.stockAlerts },
+  { name: 'daily.digest', label: 'Muhtasari wa kila siku', desc: 'Asubuhi saa 1: muhtasari kwa Meneja wa kila chama na muhtasari wa afya ya mfumo kwa Owner (mara moja kwa siku)', everyMin: 60, run: JOBS.daily },
   { name: 'system.monitor', label: 'Ufuatiliaji wa mfumo', desc: 'Inajikagua (uptime, kasi ya database) na kutoa tahadhari kwa Owner', everyMin: 5, run: () => runMonitor() },
 ] as const;
 export type JobName = (typeof JOB_CATALOG)[number]['name'];
@@ -75,8 +81,8 @@ export type JobName = (typeof JOB_CATALOG)[number]['name'];
 export function startJobs() {
   if (process.env.DISABLE_JOBS === 'true') return;
   const first = Number(process.env.JOBS_FIRST_RUN_MS ?? 20_000);
-  setTimeout(() => { void JOBS.subscriptions().then(() => JOBS.fees()).then(() => JOBS.reminders()); }, first).unref();
-  setInterval(() => { void JOBS.subscriptions().then(() => JOBS.fees()).then(() => JOBS.reminders()); }, 60 * 60 * 1000).unref();
+  setTimeout(() => { void hourly(); }, first).unref();
+  setInterval(() => { void hourly(); }, 60 * 60 * 1000).unref();
   // Ufuatiliaji: mara moja baada ya kuwaka (inagundua muda mfumo haukuwa hewani), kisha kila dakika 5
   setTimeout(() => { void runMonitor({ startup: true }); }, Math.min(first, 15_000)).unref();
   setInterval(() => { void runMonitor(); }, 5 * 60 * 1000).unref();

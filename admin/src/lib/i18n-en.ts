@@ -1264,6 +1264,13 @@ export const EN: Record<string, string> = {
   'Kichwa cha kijani chenye nembo — cha kisasa na kinachovutia': 'Green header with logo — modern and attractive',
   'Nyeupe, mistari myembamba — inaokoa wino wa printa': 'White with thin lines — saves printer ink',
   'Fremu mbili, muhuri na maandishi ya usalama — kama hati ya serikali': 'Double frame, seal and security text — like an official document',
+  'Ongeza': 'Add',
+  'halipo kwenye orodha': 'not in the list',
+  'Kijiji / mtaa': 'Village / street',
+  'Chagua au andika kijiji': 'Choose or type a village',
+  'Andika jina la kijiji': 'Type the village name',
+  'Chagua kata kwanza (au andika)': 'Choose a ward first (or type)',
+  'Kazi nje ya mtandao': 'Offline work',
   // v0.28 — chapa
   'Kwa usalama, mfumo umefungwa baada ya dakika {n} bila kutumika. Weka nenosiri lako kuendelea.': 'For security, the system locked after {n} minutes of inactivity. Enter your password to continue.',
   'Fungua mfumo': 'Unlock',

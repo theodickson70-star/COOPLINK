@@ -10,6 +10,7 @@ import { Login, ChangePassword } from './pages/Login';
 import { OwnerLayout, OWNER_NAV } from './owner/OwnerLayout';
 import { PrefsProvider, tr } from './lib/prefs';
 import { PAGE_LOADERS } from './lib/prefetch';
+import { Offline } from './pages/Offline'; // v2.9: haipakiwi kwa lazy — lazima ifunguke bila mtandao
 import type { AmcosPermission, Permission } from './lib/auth';
 
 
@@ -344,6 +345,7 @@ export default function App() {
             <Route path="estimates/new" element={<Need p={['estimates.write']}><EstimateForm /></Need>} />
             <Route path="estimates/:id/edit" element={<Need p={['estimates.write']}><EstimateForm /></Need>} />
             <Route path="inputs" element={<Inputs />} />
+            <Route path="offline" element={<Offline />} />
             <Route path="input-issues" element={<InputIssues />} />
             <Route path="input-issues/new" element={<Need p={['issues.request']}><InputIssueNew /></Need>} />
             <Route path="input-issues/:id" element={<InputIssueDetail />} />

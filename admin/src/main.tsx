@@ -11,10 +11,14 @@ import '@fontsource/outfit/700.css';
 import '@fontsource/outfit/800.css';
 import './styles.css';
 import { applyLang, applyTheme, initialLang, initialTheme } from './lib/prefs';
+import { registerServiceWorker, startOffline } from './lib/offline';
 
 // Mwonekano na lugha vinawekwa kabla ya kuchora, ili ukurasa usimweke mwanga kwanza
 applyTheme(initialTheme());
 applyLang(initialLang());
+// v2.9: app inafunguka bila mtandao; foleni ya kazi za offline inatumwa mtandao ukirudi
+registerServiceWorker();
+startOffline();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

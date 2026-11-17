@@ -250,8 +250,7 @@ function ProfileTab({ d, onSaved, go }: { d: Data; onSaved: () => void; go: (k: 
       </Sec>
       <Sec title="Mahali na mawasiliano" sub="Inaonekana juu ya risiti, vocha na taarifa zinazochapishwa.">
         <div className="form-grid">
-          <LocationFields disabled={!edit} value={{ region: f.region, district: f.district, ward: f.ward }} onChange={(v) => setF((s) => ({ ...s, ...v }))} />
-          <TextField label="Kijiji" value={f.village} onChange={set('village')} disabled={!edit} />
+          <LocationFields withVillage disabled={!edit} value={{ region: f.region, district: f.district, ward: f.ward, village: f.village }} onChange={(v) => setF((s) => ({ ...s, ...v }))} />
           <TextField label="Anwani ya posta" value={f.postalAddress} onChange={set('postalAddress')} disabled={!edit} placeholder="mf. S.L.P 149 Urambo" />
           <TextField label="Simu ya ofisi ya chama" value={f.phone} onChange={set('phone')} disabled={!edit} inputMode="tel" placeholder="07XXXXXXXX" />
           <TextField label="Barua pepe ya chama" type="email" value={f.email} onChange={set('email')} disabled={!edit} />

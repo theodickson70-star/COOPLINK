@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { offlineRouter } from './modules/offline.routes';
 import { smsRouter } from './modules/sms.routes';
 import { scheduleFlush } from './lib/sms';
 import path from 'path';
@@ -125,7 +126,8 @@ export function createApp() {
   api.use('/audit-logs', auditRouter);
   api.use('/approvals', approvalsRouter);       // Idhini za Meneja
   api.use('/finance', financeRouter);           // Fedha za chama (Mhasibu)
-  api.use('/store', storeRouter);               // Stoo, manunuzi, wazabuni (Storekeeper)
+  api.use('/store', storeRouter);
+  api.use('/offline', offlineRouter);             // v2.9: kifurushi cha data kwa kazi nje ya mtandao               // Stoo, manunuzi, wazabuni (Storekeeper)
   api.use('/accounting', accountingRouter);     // Daftari kuu na ripoti kuu (Mhasibu)
   api.use('/bank', bankRouter);                 // Uhamisho, usuluhishi wa benki, vocha
   api.use('/sales', salesRouter);               // Mauzo ya tumbaku na makato
@@ -144,6 +146,8 @@ export function createApp() {
     app.use('/assets', express.static(path.join(adminDir, 'assets'), { maxAge: '1y', immutable: true }));
     app.use('/assets', (_req, res) => res.status(404).end()); // faili la zamani lisirudishe index.html
     // redirect:false — /login isiende /login/ (kuna folda ya picha za login)
+    // v2.9: service worker lazima isomwe upya kila mara (toleo jipya la app lifike haraka)
+    app.get('/sw.js', (_req, res) => { res.setHeader('Cache-Control', 'no-cache'); res.setHeader('Content-Type', 'application/javascript'); res.sendFile(path.join(adminDir, 'sw.js')); });
     app.use(express.static(adminDir, { index: false, maxAge: '7d', redirect: false }));
     // Kurasa kama /members/123 zinarudisha index.html (React Router inashughulikia)
     app.get(/^\/(?!api\/|health$).*/, (_req, res) => {

@@ -143,8 +143,7 @@ function AmcosFormModal({ initial, prefill, onClose, onSaved }: { initial?: Amco
           ? <TextField label="Code" help="Code haibadilishwi" value={f.code} disabled onChange={() => undefined} />
           : <TextField label="Code" help="Itatolewa na mfumo kutoka jina la chama (mf. Usoke AMCOS → USOKE)" value="Itatolewa na mfumo" disabled onChange={() => undefined} />}
         <TextField label="Namba ya usajili (Mrajis)" value={f.regNumber} onChange={set('regNumber')} />
-        <LocationFields value={{ region: f.region, district: f.district, ward: f.ward }} onChange={(v) => setF((s) => ({ ...s, ...v }))} />
-        <TextField label="Kijiji" value={f.village} onChange={set('village')} />
+        <LocationFields withVillage value={{ region: f.region, district: f.district, ward: f.ward, village: f.village }} onChange={(v) => setF((s) => ({ ...s, ...v }))} />
         <TextField label="Simu ya chama" type="tel" value={f.phone} onChange={set('phone')} />
         <TextField label="Email" type="email" value={f.email} onChange={set('email')} />
         <PhoneNameFields phoneLabel="Simu ya mawasiliano" phone={f.contactPhone} onPhone={set('contactPhone')} nameLabel="Mtu wa mawasiliano" name={f.contactName} onName={(v) => set('contactName')(v)} optionalPhone />

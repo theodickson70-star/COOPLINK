@@ -266,11 +266,13 @@ export const members = pgTable('members', {
   portalPinIssuedAt: timestamp({ withTimezone: true }),
   portalPinIssuedById: uuid(),
   portalLastLoginAt: timestamp({ withTimezone: true }),
+  clientRef: text(),                  // v2.9: usajili kutoka foleni ya offline (kuzuia nakala mbili)
   createdById: uuid(),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (t) => [
   uniqueIndex().on(t.amcosId, t.memberNo),
+  uniqueIndex('members_amcos_client_ref_unique').on(t.amcosId, t.clientRef),
   uniqueIndex().on(t.amcosId, t.nidaNumber),
   uniqueIndex().on(t.amcosId, t.voterIdNumber),
   index().on(t.amcosId, t.lastName),
@@ -1258,6 +1260,15 @@ export const announcementReads = pgTable('announcement_reads', {
   userId: uuid().notNull().references(() => users.id, { onDelete: 'cascade' }),
   readAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
 }, (t) => [uniqueIndex('announcement_reads_unique').on(t.announcementId, t.userId), index().on(t.userId)]);
+
+/** v2.9: hali ya mwisho ya stoo iliyotumwa kwa SMS (kila bidhaa) — SMS inatumwa tu hali ikiwa mbaya zaidi */
+export const stockAlertStates = pgTable('stock_alert_states', {
+  id: id(),
+  amcosId: uuid().notNull().references(() => amcos.id),
+  inputItemId: uuid().notNull().references(() => inputItems.id),
+  status: text().notNull(),           // OUT | LOW | SOON
+  notifiedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex('stock_alert_states_item_unique').on(t.inputItemId)]);
 
 /** v2.7: "imesomwa" kwa arifa zisizo matangazo (mf. risiti za ada ya CoopLink) — kwa kila mtumiaji */
 export const notificationReads = pgTable('notification_reads', {

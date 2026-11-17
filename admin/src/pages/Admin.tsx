@@ -253,8 +253,7 @@ function AmcosModal({ unions, isSuper, onClose, onDone }: { unions: { id: string
       <TextField label="Code" help="Itatolewa na mfumo kutoka jina la chama (mf. Usoke AMCOS → USOKE)" value="Itatolewa na mfumo" disabled onChange={() => undefined} />
       <TextField label="Namba ya usajili (Mrajis)" value={f.regNumber} onChange={set('regNumber')} />
       <div className="form-grid">
-        <LocationFields value={{ region: f.region, district: f.district, ward: f.ward }} onChange={(v) => setF((s) => ({ ...s, ...v }))} />
-        <TextField label="Kijiji" value={f.village} onChange={set('village')} />
+        <LocationFields withVillage value={{ region: f.region, district: f.district, ward: f.ward, village: f.village }} onChange={(v) => setF((s) => ({ ...s, ...v }))} />
       </div>
       {isSuper && <SelectField label="Chama Kikuu" value={f.unionId} onChange={set('unionId')} placeholder="— Hakuna —" options={unions.map((u) => ({ value: u.id, label: u.name }))} />}
     </Modal>

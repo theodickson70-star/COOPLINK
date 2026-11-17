@@ -1,0 +1,10 @@
+{
+  "name": "CoopLink",
+  "short_name": "CoopLink",
+  "description": "Mfumo wa kidijitali wa Vyama vya Msingi vya Ushirika (AMCOS)",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B2F23",
+  "theme_color": "#0B2F23",
+  "icons": [{ "src": "/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
